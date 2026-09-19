@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2";
 import { auditLogs, followUps, InsertUser, leadActivities, leadImports, LeadStatus, leads, pdvs, sellerProfiles, userPdvs, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -8,7 +9,14 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      // TiDB Cloud only accepts encrypted client connections. Creating the
+      // mysql2 pool explicitly keeps the setting in the backend instead of
+      // relying on a frontend or provider-specific URL convention.
+      const pool = mysql.createPool({
+        uri: process.env.DATABASE_URL,
+        ssl: { minVersion: "TLSv1.2", rejectUnauthorized: true },
+      });
+      _db = drizzle({ client: pool });
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
