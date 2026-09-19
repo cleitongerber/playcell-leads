@@ -401,6 +401,30 @@ export async function updateUserAccess(input: { userId: number; role: AppRole; i
   await writeAudit(actorId, "user_access_updated", "user", input.userId, { role: input.role, isActive: input.isActive, pdvIds: input.pdvIds });
 }
 
+export async function createManagedUser(input: { name: string; email: string; passwordHash: string; role: AppRole; pdvIds: number[] }, actorId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  const openId = `local:${email}`;
+  if (input.role === "user" && !input.pdvIds.length) throw new Error("Selecione ao menos um PDV para o vendedor");
+  const existing = await db.select({ id: users.id }).from(users).where(or(eq(users.email, email), eq(users.openId, openId))).limit(1);
+  if (existing.length) throw new Error("Já existe um usuário com este e-mail");
+  let userId = 0;
+  await db.transaction(async (tx) => {
+    const inserted = await tx.insert(users).values({ openId, name, email, loginMethod: "password", passwordHash: input.passwordHash, role: input.role, isActive: true, lastSignedIn: new Date() });
+    userId = Number((inserted as unknown as [{ insertId?: number }])[0]?.insertId ?? 0);
+    if (!userId) throw new Error("Não foi possível criar o usuário");
+    if (input.pdvIds.length) await tx.insert(userPdvs).values(input.pdvIds.map((pdvId) => ({ userId, pdvId })));
+    if (input.role === "user" && input.pdvIds.length) {
+      const primaryPdv = await tx.select({ name: pdvs.name }).from(pdvs).where(eq(pdvs.id, input.pdvIds[0])).limit(1);
+      if (primaryPdv[0]) await tx.insert(sellerProfiles).values({ userId, store: primaryPdv[0].name, displayName: name });
+    }
+  });
+  await writeAudit(actorId, "user_created", "user", userId, { email, role: input.role, pdvIds: input.pdvIds });
+  return { id: userId };
+}
+
 export async function getAuditLogs(page = 1, pageSize = 50) {
   const db = await getDb();
   if (!db) return { items: [], total: 0 };
