@@ -15,12 +15,21 @@ const statusLabels: Record<string, string> = { new: "Novo", assigned: "Assumido"
 const statusStyles: Record<string, string> = { new: "bg-[#eef3f0] text-[#557069]", assigned: "bg-[#e7f2f5] text-[#277287]", contacted: "bg-[#e7f2f5] text-[#277287]", no_answer: "bg-[#fff3d9] text-[#ad7215]", interested: "bg-[#eaf7df] text-[#4b8349]", proposal: "bg-[#eaf7df] text-[#4b8349]", scheduled: "bg-[#eee9fb] text-[#7354a5]", converted: "bg-[#dff6e7] text-[#27734a]", not_interested: "bg-[#f6ece8] text-[#9c5c4d]", invalid: "bg-[#f6ece8] text-[#9c5c4d]", callback: "bg-[#fff3d9] text-[#ad7215]" };
 
 function cleanPhone(phone: string) { const digits = phone.replace(/\D/g, ""); return digits.startsWith("55") ? digits : `55${digits}`; }
+const normalizeDataKey = (key: string) => key.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+const dataFieldPriority = (key: string) => {
+  const normalized = normalizeDataKey(key);
+  if (["nome", "name", "cliente"].includes(normalized)) return 0;
+  if (["telefone", "phone", "celular", "whatsapp"].includes(normalized)) return 1;
+  if (normalized.includes("endereco") || normalized === "logradouro" || normalized === "rua") return 2;
+  if (normalized === "cpf" || normalized === "cpfcnpj" || normalized === "documento") return 3;
+  return 10;
+};
 
 function ExtraDataPanel({ data }: { data?: string | null }) {
   if (!data) return null;
   let values: Record<string, unknown> = {};
   try { values = JSON.parse(data) as Record<string, unknown>; } catch { return null; }
-  const entries = Object.entries(values).filter(([, value]) => value !== "" && value !== null && value !== undefined);
+  const entries = Object.entries(values).filter(([, value]) => value !== "" && value !== null && value !== undefined).sort(([firstKey], [secondKey]) => dataFieldPriority(firstKey) - dataFieldPriority(secondKey) || firstKey.localeCompare(secondKey));
   if (!entries.length) return null;
   return <div className="rounded-2xl border border-[#e5eee7] bg-[#f8fbf8] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-sm font-semibold text-[#1d3d45]">Informações da planilha</p><span className="text-[11px] text-muted-foreground">{entries.length} campos</span></div><div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">{entries.map(([key, value]) => <div key={key} className="min-w-0"><p className="truncate text-[10px] font-semibold uppercase tracking-[.1em] text-[#6da768]">{key.replace(/[_-]+/g, " ")}</p><p className="mt-1 break-words text-sm text-[#557069]">{String(value)}</p></div>)}</div></div>;
 }
