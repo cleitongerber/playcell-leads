@@ -6,6 +6,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
+  passwordHash: varchar("passwordHash", { length: 255 }),
   // "user" is kept as the legacy value for vendedor so existing OAuth users remain valid.
   role: mysqlEnum("role", ["user", "supervisor", "admin"]).default("user").notNull(),
   isActive: boolean("isActive").default(true).notNull(),

@@ -5,6 +5,9 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { assignSellerToStore, assumeLead, canAccessLead, getAuditLogs, getDashboardStatsScoped, getLeadActivities, getLeadById, getPendingLeads, getProductivityReport, getTeam, getVisibleLeads, getVisibleLeadsPage, importLeadRows, listPdvs, savePdv, setPdvActive, updateLeadTreatment, updateUserAccess } from "./db";
 import { leadStatus } from "../drizzle/schema";
+import { loginWithPassword } from "./localAuth";
+import { sdk } from "./_core/sdk";
+import { ONE_YEAR_MS } from "@shared/const";
 
 const leadInput = z.object({
   name: z.string().min(1),
@@ -21,6 +24,12 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    login: publicProcedure.input(z.object({ email: z.string().email(), password: z.string().min(8).max(256) })).mutation(async ({ ctx, input }) => {
+      const user = await loginWithPassword(input.email, input.password);
+      const token = await sdk.createSessionToken(user.openId, { name: user.name ?? "", expiresInMs: ONE_YEAR_MS });
+      ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: ONE_YEAR_MS });
+      return { success: true };
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

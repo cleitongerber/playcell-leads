@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -19,13 +20,13 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { BarChart3, ClipboardList, FileUp, LayoutDashboard, LogOut, MapPin, PanelLeft, ScrollText, UsersRound } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/", roles: ["admin", "supervisor", "user"] },
@@ -52,6 +53,10 @@ export default function DashboardLayout({
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
   const { loading, user } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const utils = trpc.useUtils();
+  const login = trpc.auth.login.useMutation({ onSuccess: async () => { await utils.auth.me.invalidate(); }, onError: (error) => setPassword("") });
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -65,21 +70,8 @@ export default function DashboardLayout({
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <div className="flex flex-col items-center gap-6">
-            <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Sign in to continue
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Access to this dashboard requires authentication. Continue to launch the login flow.
-            </p>
-          </div>
-          <Button
-            onClick={() => startLogin()}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
-          >
-            Sign in
-          </Button>
+          <div className="flex flex-col items-center gap-3"><h1 className="text-2xl font-semibold tracking-tight text-center">Playcell Leads</h1><p className="text-sm text-muted-foreground text-center">Acesse sua operação comercial.</p></div>
+          <form className="w-full space-y-3" onSubmit={(event) => { event.preventDefault(); login.mutate({ email, password }); }}><Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" /><Input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Senha" /><Button type="submit" disabled={login.isPending} size="lg" className="w-full shadow-lg">Entrar</Button>{login.error && <p className="text-center text-sm text-destructive">{login.error.message}</p>}</form>
         </div>
       </div>
     );

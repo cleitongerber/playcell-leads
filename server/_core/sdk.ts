@@ -213,7 +213,6 @@ class SDKServer {
 
       if (
         !isNonEmptyString(openId) ||
-        !isNonEmptyString(appId) ||
         !isNonEmptyString(name)
       ) {
         console.warn("[Auth] Session payload missing required fields");
@@ -222,7 +221,7 @@ class SDKServer {
 
       return {
         openId,
-        appId,
+        appId: isNonEmptyString(appId) ? appId : "playcell-leads",
         name,
       };
     } catch (error) {
