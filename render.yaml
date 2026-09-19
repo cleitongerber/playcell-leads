@@ -4,7 +4,8 @@ services:
     runtime: node
     # Start on Render's free instance; upgrade after validating production traffic.
     plan: free
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    # Render's pnpm version may normalize overrides differently from the lockfile.
+    buildCommand: pnpm install --no-frozen-lockfile && pnpm build
     startCommand: pnpm start
     healthCheckPath: /
     autoDeployTrigger: commit
