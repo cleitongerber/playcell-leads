@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { assignSellerToStore, assumeLead, canAccessLead, createManagedUser, getAuditLogs, getDashboardStatsScoped, getLeadActivities, getLeadById, getPendingLeads, getProductivityReport, getTeam, getVisibleLeads, getVisibleLeadsPage, importLeadRows, listPdvs, savePdv, setPdvActive, updateLeadTreatment, updateUserAccess } from "./db";
+import { assignSellerToStore, assumeLead, canAccessLead, createManagedUser, deactivateManagedUser, getAuditLogs, getDashboardStatsScoped, getLeadActivities, getLeadById, getPendingLeads, getProductivityReport, getTeam, getVisibleLeads, getVisibleLeadsPage, importLeadRows, listPdvs, resetManagedUserPassword, savePdv, setPdvActive, updateLeadTreatment, updateUserAccess } from "./db";
 import { leadStatus } from "../drizzle/schema";
 import { hashPassword, loginWithPassword } from "./localAuth";
 import { sdk } from "./_core/sdk";
@@ -70,6 +70,8 @@ export const appRouter = router({
   }),
   users: router({
     create: adminProcedure.input(z.object({ name: z.string().min(2).max(160), email: z.string().email().max(320), password: z.string().min(8).max(256), role: z.enum(["user", "supervisor", "admin"]), pdvIds: z.array(z.number().int().positive()).max(50) })).mutation(async ({ ctx, input }) => createManagedUser({ ...input, passwordHash: await hashPassword(input.password) }, ctx.user.id)),
+    resetPassword: adminProcedure.input(z.object({ userId: z.number().int().positive(), password: z.string().min(8).max(256) })).mutation(async ({ ctx, input }) => resetManagedUserPassword(input.userId, await hashPassword(input.password), ctx.user.id)),
+    deactivate: adminProcedure.input(z.object({ userId: z.number().int().positive() })).mutation(({ ctx, input }) => deactivateManagedUser(input.userId, ctx.user.id)),
     updateAccess: adminProcedure.input(z.object({ userId: z.number().int().positive(), role: z.enum(["user", "supervisor", "admin"]), isActive: z.boolean(), pdvIds: z.array(z.number().int().positive()).max(50) })).mutation(({ ctx, input }) => updateUserAccess(input, ctx.user.id)),
   }),
   audit: router({

@@ -425,6 +425,26 @@ export async function createManagedUser(input: { name: string; email: string; pa
   return { id: userId };
 }
 
+export async function resetManagedUserPassword(userId: number, passwordHash: string, actorId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  const existing = await db.select({ id: users.id, isActive: users.isActive }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!existing[0]) throw new Error("Usuário não encontrado");
+  if (!existing[0].isActive) throw new Error("Reative o usuário antes de redefinir a senha");
+  await db.update(users).set({ passwordHash, loginMethod: "password", updatedAt: new Date() }).where(eq(users.id, userId));
+  await writeAudit(actorId, "user_password_reset", "user", userId);
+}
+
+export async function deactivateManagedUser(userId: number, actorId: number) {
+  if (userId === actorId) throw new Error("Você não pode excluir seu próprio usuário");
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!existing[0]) throw new Error("Usuário não encontrado");
+  await db.update(users).set({ isActive: false, updatedAt: new Date() }).where(eq(users.id, userId));
+  await writeAudit(actorId, "user_deactivated", "user", userId);
+}
+
 export async function getAuditLogs(page = 1, pageSize = 50) {
   const db = await getDb();
   if (!db) return { items: [], total: 0 };
