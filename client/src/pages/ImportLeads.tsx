@@ -1,0 +1,46 @@
+import DashboardLayout from "@/components/DashboardLayout";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
+import * as XLSX from "xlsx";
+import { CheckCircle2, FileSpreadsheet, UploadCloud } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
+type PreviewRow = { name: string; phone: string; email?: string; store: string; segment?: string; priority?: "high" | "medium" | "low"; source?: string; extraData: string; original: Record<string, string> };
+const normalize = (value: unknown) => String(value ?? "").trim();
+const normalizedKey = (value: string) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+const pick = (row: Record<string, string>, names: string[]) => { const key = Object.keys(row).find((candidate) => names.includes(normalizedKey(candidate))); return key ? normalize(row[key]) : ""; };
+
+export default function ImportLeads() {
+  const { user } = useAuth();
+  const [fileName, setFileName] = useState("");
+  const [rows, setRows] = useState<PreviewRow[]>([]);
+  const [defaultStore, setDefaultStore] = useState("");
+  const pdvsQuery = trpc.pdvs.list.useQuery(undefined, { enabled: user?.role === "admin" });
+  const pdvs = pdvsQuery.data ?? [];
+  useEffect(() => { if (!defaultStore && pdvs[0]) setDefaultStore(pdvs[0].name); }, [defaultStore, pdvs]);
+  const importMutation = trpc.leads.import.useMutation({ onSuccess: (result) => { toast.success(`${result.inserted} novos, ${result.updated} atualizados, ${result.duplicates} duplicados no arquivo e ${result.invalid} inválidos.`); setRows([]); setFileName(""); }, onError: (error) => toast.error(error.message) });
+  const handleFile = async (file?: File) => {
+    if (!file) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+      const parsed = json.map((rawRow) => {
+        const original = Object.fromEntries(Object.entries(rawRow).map(([key, value]) => [key, normalize(value)]));
+        return { name: pick(original, ["nome", "name", "cliente", "client"]), phone: pick(original, ["telefone", "phone", "celular", "whatsapp"]), email: pick(original, ["email", "e-mail"]), store: pick(original, ["loja", "store", "pdv"]) || defaultStore, segment: pick(original, ["segmento", "segment", "oferta"]), priority: (pick(original, ["prioridade", "priority"]) || "medium") as PreviewRow["priority"], source: pick(original, ["origem", "source"]) || file.name, extraData: JSON.stringify(original), original } satisfies PreviewRow;
+      }).filter((row) => row.name && row.phone);
+      setRows(parsed); setFileName(file.name);
+      if (!parsed.length) toast.error("Não encontrei linhas com nome e telefone. Confira o cabeçalho da planilha.");
+    } catch { toast.error("Não foi possível ler o arquivo. Use CSV, XLS ou XLSX."); }
+  };
+  const downloadTemplate = () => { const worksheet = XLSX.utils.json_to_sheet([{ nome: "Maria da Silva", telefone: "49999999999", email: "maria@email.com", loja: defaultStore || "NOME_DO_PDV", segmento: "Móvel sem residencial", prioridade: "high", observacao: "Cliente elegível a Fibra" }]); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Leads"); XLSX.writeFile(workbook, "modelo-importacao-leads.xlsx"); };
+
+  if (user?.role !== "admin") return <DashboardLayout><div className="mx-auto max-w-2xl rounded-3xl bg-white p-10 text-center shadow-sm"><h1 className="text-2xl font-semibold text-[#102b35]">Acesso administrativo</h1><p className="mt-3 text-sm text-muted-foreground">A importação da base está disponível apenas para administradores.</p></div></DashboardLayout>;
+  return <DashboardLayout><div className="mx-auto max-w-[1200px] space-y-6"><div><div className="mb-2 text-[11px] font-semibold uppercase tracking-[.18em] text-[#6da768]">Administração / base</div><h1 className="text-3xl font-semibold tracking-[-.04em] text-[#102b35]">Importar leads</h1><p className="mt-2 text-sm text-muted-foreground">Carregue uma planilha CSV ou Excel. Todas as colunas originais serão preservadas na ficha do lead.</p></div><div className="grid gap-5 lg:grid-cols-[.75fr_1.25fr]"><Card className="border-0 bg-white/80 shadow-[0_10px_35px_-25px_rgba(16,43,53,.4)]"><CardHeader><CardTitle className="text-lg">1. Escolha o arquivo</CardTitle></CardHeader><CardContent className="space-y-5"><label className="flex min-h-[220px] cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-[#b9d7bd] bg-[#f6fbf5] p-6 text-center transition hover:border-[#74b878] hover:bg-[#f0faed]"><UploadCloud className="mb-4 h-9 w-9 text-[#6da768]" /><span className="font-semibold text-[#3e7a45]">Clique para selecionar CSV ou Excel</span><span className="mt-2 text-xs text-muted-foreground">Nome e telefone são obrigatórios; as demais colunas também serão salvas.</span><input type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} /></label>{fileName && <div className="flex items-center gap-3 rounded-2xl bg-[#edf8eb] p-3 text-sm text-[#4b754d]"><FileSpreadsheet className="h-5 w-5" /><span className="min-w-0 flex-1 truncate">{fileName}</span><Badge className="bg-[#dff2d8] text-[#4b8349] hover:bg-[#dff2d8]">{rows.length} válidos</Badge></div>}<div><label className="mb-2 block text-sm font-semibold text-[#1d3d45]">PDV padrão</label><Select value={defaultStore} onValueChange={setDefaultStore}><SelectTrigger className="h-11 rounded-xl border-[#dce7e1]"><SelectValue placeholder="Selecione o PDV" /></SelectTrigger><SelectContent>{pdvs.map((pdv) => <SelectItem key={pdv.id} value={pdv.name}>{pdv.name}</SelectItem>)}</SelectContent></Select><p className="mt-2 text-xs text-muted-foreground">Usado quando a planilha não tiver uma coluna de PDV.</p></div><Button variant="outline" onClick={downloadTemplate} className="w-full rounded-xl border-[#cfe1d3] text-[#3e7a45]">Baixar modelo de planilha</Button></CardContent></Card><Card className="border-0 bg-white/80 shadow-[0_10px_35px_-25px_rgba(16,43,53,.4)]"><CardHeader className="flex flex-row items-center justify-between"><div><CardTitle className="text-lg">2. Revisar e importar</CardTitle><p className="mt-1 text-sm text-muted-foreground">{rows.length ? "Amostra da base carregada; confira as linhas antes do envio." : "Confirme os primeiros registros antes de enviar ao sistema."}</p></div>{rows.length > 0 && <Badge variant="outline" className="rounded-full border-[#d5e5dc] text-[#3e7a45]">{rows.length} leads · {Object.keys(rows[0]?.original ?? {}).length} colunas</Badge>}</CardHeader><CardContent>{rows.length === 0 ? <div className="flex min-h-[330px] items-center justify-center rounded-3xl bg-[#fafcfb] text-center text-sm text-muted-foreground"><div><FileSpreadsheet className="mx-auto mb-3 h-8 w-8 text-[#b4c9bb]" /><p>A pré-visualização aparecerá aqui.</p></div></div> : <><div className="overflow-hidden rounded-2xl border border-[#e5eee7]"><div className="max-h-[360px] overflow-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="sticky top-0 bg-[#f5faf5] text-xs uppercase tracking-[.08em] text-[#557069]"><tr><th className="px-4 py-3">Nome</th><th className="px-4 py-3">Telefone</th><th className="px-4 py-3">PDV</th><th className="px-4 py-3">Segmento</th><th className="px-4 py-3">Outras informações</th></tr></thead><tbody>{rows.slice(0, 50).map((row, index) => <tr key={`${row.phone}-${index}`} className="border-t border-[#edf2ee]"><td className="px-4 py-3 font-medium text-[#1d3d45]">{row.name}</td><td className="px-4 py-3 text-muted-foreground">{row.phone}</td><td className="px-4 py-3 text-muted-foreground">{row.store}</td><td className="px-4 py-3 text-muted-foreground">{row.segment || "—"}</td><td className="max-w-[260px] truncate px-4 py-3 text-xs text-muted-foreground">{Object.entries(row.original).filter(([key]) => !["nome", "name", "telefone", "phone"].includes(normalizedKey(key))).slice(0, 4).map(([key, value]) => `${key}: ${value}`).join(" · ") || "—"}</td></tr>)}</tbody></table></div></div><Button onClick={() => importMutation.mutate({ fileName, rows: rows.map(({ original, ...row }) => row) })} disabled={importMutation.isPending || !defaultStore} className="mt-5 h-12 w-full rounded-xl bg-[#102b35] text-white hover:bg-[#173b47]"><CheckCircle2 className="mr-2 h-5 w-5" /> Confirmar importação de {rows.length} leads</Button></>}</CardContent></Card></div><div className="rounded-2xl border border-[#e3ece5] bg-[#f5faf5] p-4 text-sm leading-6 text-[#557069]"><strong className="text-[#3e7a45]">Carteirização:</strong> após a importação, os leads ficam disponíveis para os vendedores do PDV correspondente. Quando um vendedor assumir o lead, ele permanece em sua carteira até a finalização do tratamento.</div></div></DashboardLayout>;
+}

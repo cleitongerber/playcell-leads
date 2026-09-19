@@ -1,0 +1,384 @@
+import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/mysql2";
+import { auditLogs, followUps, InsertUser, leadActivities, leadImports, LeadStatus, leads, pdvs, sellerProfiles, userPdvs, users } from "../drizzle/schema";
+import { ENV } from "./_core/env";
+
+let _db: ReturnType<typeof drizzle> | null = null;
+
+export async function getDb() {
+  if (!_db && process.env.DATABASE_URL) {
+    try {
+      _db = drizzle(process.env.DATABASE_URL);
+    } catch (error) {
+      console.warn("[Database] Failed to connect:", error);
+      _db = null;
+    }
+  }
+  return _db;
+}
+
+export async function upsertUser(user: InsertUser): Promise<void> {
+  if (!user.openId) throw new Error("User openId is required for upsert");
+  const db = await getDb();
+  if (!db) return;
+  const values: InsertUser = { openId: user.openId };
+  const updateSet: Record<string, unknown> = {};
+  const textFields = ["name", "email", "loginMethod"] as const;
+  textFields.forEach((field) => {
+    if (user[field] !== undefined) {
+      values[field] = user[field] ?? null;
+      updateSet[field] = user[field] ?? null;
+    }
+  });
+  if (user.lastSignedIn !== undefined) {
+    values.lastSignedIn = user.lastSignedIn;
+    updateSet.lastSignedIn = user.lastSignedIn;
+  }
+  if (user.role !== undefined) {
+    values.role = user.role;
+    updateSet.role = user.role;
+  } else if (user.openId === ENV.ownerOpenId) {
+    values.role = "admin";
+    updateSet.role = "admin";
+  }
+  if (!values.lastSignedIn) values.lastSignedIn = new Date();
+  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
+  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+}
+
+export async function getUserByOpenId(openId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  return result[0];
+}
+
+export async function getSellerProfile(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(sellerProfiles).where(eq(sellerProfiles.userId, userId)).limit(1);
+  return result[0];
+}
+
+type AppRole = "admin" | "supervisor" | "user";
+type AccessUser = { id: number; role: AppRole; isActive?: boolean };
+
+async function getAccessiblePdvIds(user: AccessUser) {
+  const db = await getDb();
+  if (!db || user.role === "admin") return null;
+  const rows = await db.select({ pdvId: userPdvs.pdvId }).from(userPdvs).where(eq(userPdvs.userId, user.id));
+  return rows.map((row) => row.pdvId);
+}
+
+async function writeAudit(userId: number | null, action: string, entityType: string, entityId?: number | string, details?: Record<string, unknown>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(auditLogs).values({ userId, action, entityType, entityId: entityId === undefined ? null : String(entityId), details: details ? JSON.stringify(details) : null });
+}
+
+export async function getTeam() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({
+    id: users.id,
+    name: users.name,
+    email: users.email,
+    role: users.role,
+    isActive: users.isActive,
+    store: sellerProfiles.store,
+    displayName: sellerProfiles.displayName,
+  }).from(users).leftJoin(sellerProfiles, eq(users.id, sellerProfiles.userId)).orderBy(users.name);
+  const scopes = await db.select({ userId: userPdvs.userId, pdvId: pdvs.id, pdvName: pdvs.name }).from(userPdvs).innerJoin(pdvs, eq(userPdvs.pdvId, pdvs.id));
+  return rows.map((row) => ({ ...row, pdvs: scopes.filter((scope) => scope.userId === row.id).map(({ pdvId, pdvName }) => ({ id: pdvId, name: pdvName })) }));
+}
+
+export async function assignSellerToStore(input: { userId: number; store: string; displayName: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  const existing = await getSellerProfile(input.userId);
+  if (existing) {
+    await db.update(sellerProfiles).set({ store: input.store, displayName: input.displayName, updatedAt: new Date() }).where(eq(sellerProfiles.userId, input.userId));
+  } else {
+    await db.insert(sellerProfiles).values({ userId: input.userId, store: input.store, displayName: input.displayName });
+  }
+  return { success: true } as const;
+}
+
+export async function getVisibleLeads(user: AccessUser, filters: { status?: LeadStatus; search?: string; store?: string; pdvId?: number; view?: "available" | "mine" | "all" }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters.status) conditions.push(eq(leads.status, filters.status));
+  if (filters.search) {
+    const term = `%${filters.search}%`;
+    conditions.push(or(like(leads.name, term), like(leads.phone, term)));
+  }
+  if (filters.store) conditions.push(eq(leads.store, filters.store));
+  if (filters.pdvId) conditions.push(eq(leads.pdvId, filters.pdvId));
+  conditions.push(isNull(leads.deletedAt));
+  if (user.role !== "admin") {
+    const allowedPdvs = await getAccessiblePdvIds(user);
+    if (!allowedPdvs?.length) return [];
+    conditions.push(inArray(leads.pdvId, allowedPdvs));
+    if (user.role === "user") {
+      if (filters.view === "available") conditions.push(isNull(leads.assignedTo));
+      else if (filters.view === "mine") conditions.push(eq(leads.assignedTo, user.id));
+      else conditions.push(or(eq(leads.assignedTo, user.id), isNull(leads.assignedTo)));
+    }
+  } else if (filters.view === "available") {
+    conditions.push(isNull(leads.assignedTo));
+  } else if (filters.view === "mine") {
+    conditions.push(eq(leads.assignedTo, user.id));
+  }
+  const query = db.select().from(leads).orderBy(desc(leads.updatedAt)).limit(500);
+  return conditions.length ? query.where(and(...conditions)) : query;
+}
+
+export async function getVisibleLeadsPage(user: AccessUser, filters: Parameters<typeof getVisibleLeads>[1] & { page: number; pageSize: number }) {
+  const all = await getVisibleLeads(user, filters);
+  const page = Math.max(1, filters.page);
+  const pageSize = Math.min(100, Math.max(10, filters.pageSize));
+  return { items: all.slice((page - 1) * pageSize, page * pageSize), total: all.length, page, pageSize };
+}
+
+export async function getLeadById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(leads).where(eq(leads.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getLeadActivities(leadId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(leadActivities).where(eq(leadActivities.leadId, leadId)).orderBy(desc(leadActivities.createdAt));
+}
+
+export async function canAccessLead(user: AccessUser, lead: typeof leads.$inferSelect) {
+  if (user.role === "admin") return true;
+  const allowedPdvs = await getAccessiblePdvIds(user);
+  if (!allowedPdvs?.includes(lead.pdvId ?? -1)) return false;
+  return user.role === "supervisor" || lead.assignedTo === user.id || lead.assignedTo === null;
+}
+
+export async function importLeadRows(rows: Array<{ name: string; phone: string; email?: string; store: string; segment?: string; priority?: "high" | "medium" | "low"; source?: string; extraData?: string }>, importedBy: number, fileName: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  if (!rows.length) return { inserted: 0 };
+  const normalizePhone = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    return digits.length >= 10 ? (digits.startsWith("55") ? digits : `55${digits}`) : "";
+  };
+  const pdvRows = await db.select({ id: pdvs.id, name: pdvs.name, isActive: pdvs.isActive }).from(pdvs);
+  const pdvByName = new Map(pdvRows.map((pdv) => [pdv.name.trim().toLocaleLowerCase(), pdv]));
+  const phones = rows.map((row) => normalizePhone(row.phone)).filter(Boolean);
+  const existing = phones.length ? await db.select({ id: leads.id, phone: leads.phone }).from(leads).where(inArray(leads.phone, phones)) : [];
+  const existingByPhone = new Map(existing.map((lead) => [lead.phone, lead.id]));
+  const newRows = [];
+  let updated = 0;
+  const processedPhones = new Set<string>();
+  let duplicates = 0;
+  let invalid = 0;
+  for (const row of rows) {
+    const phone = normalizePhone(row.phone);
+    const pdv = pdvByName.get(row.store.trim().toLocaleLowerCase());
+    if (!phone || !row.name.trim() || !pdv || !pdv.isActive) { invalid += 1; continue; }
+    if (processedPhones.has(phone)) { duplicates += 1; continue; }
+    processedPhones.add(phone);
+    const normalized = {
+      name: row.name.trim(),
+      phone,
+      email: row.email?.trim() || null,
+      store: pdv.name,
+      pdvId: pdv.id,
+      segment: row.segment?.trim() || null,
+      priority: row.priority ?? "medium",
+      source: row.source?.trim() || `Importação: ${fileName}`,
+      extraData: row.extraData ?? null,
+    };
+    const existingId = existingByPhone.get(normalized.phone);
+    if (existingId) {
+      await db.update(leads).set({ ...normalized, updatedAt: new Date() }).where(eq(leads.id, existingId));
+      updated += 1;
+    } else {
+      newRows.push(normalized);
+    }
+  }
+  if (newRows.length) await db.insert(leads).values(newRows);
+  await db.insert(leadImports).values({ fileName, importedBy, rowCount: rows.length });
+  await writeAudit(importedBy, "leads_imported", "lead_import", fileName, { total: rows.length, inserted: newRows.length, updated, duplicates, invalid });
+  return { processed: rows.length, inserted: newRows.length, updated, duplicates, invalid };
+}
+
+export async function assumeLead(leadId: number, user: AccessUser) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  if (user.role !== "user") throw new Error("Somente vendedores podem assumir leads");
+  if (user.isActive === false) throw new Error("Seu acesso está inativo");
+  const allowedPdvs = await getAccessiblePdvIds(user);
+  if (!allowedPdvs?.length) throw new Error("Seu usuário não possui PDV autorizado");
+  const now = new Date();
+  // The conditional UPDATE is the lock: exactly one concurrent request can affect a row.
+  const result = await db.update(leads).set({ assignedTo: user.id, assignedAt: now, status: "assigned", updatedAt: now })
+    .where(and(eq(leads.id, leadId), isNull(leads.assignedTo), inArray(leads.pdvId, allowedPdvs), isNull(leads.deletedAt)));
+  const affected = Number((result as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0);
+  if (affected !== 1) throw new Error("Este lead já foi assumido por outro vendedor.");
+  await db.insert(leadActivities).values({ leadId, userId: user.id, action: "assigned", status: "assigned", note: "Lead assumido pelo vendedor" });
+  await writeAudit(user.id, "lead_assumed", "lead", leadId);
+  return getLeadById(leadId);
+}
+
+export async function updateLeadTreatment(input: { leadId: number; userId: number; role: AppRole; status: LeadStatus; channel?: "whatsapp" | "phone" | "other"; note?: string; nextFollowUpAt?: Date }) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  const lead = await getLeadById(input.leadId);
+  if (!lead) throw new Error("Lead não encontrado");
+  if (input.role === "supervisor") throw new Error("Supervisores possuem acesso de acompanhamento");
+  if (input.role !== "admin" && lead.assignedTo !== input.userId) throw new Error("Assuma o lead antes de atualizar o atendimento");
+  const now = new Date();
+  await db.update(leads).set({
+    status: input.status,
+    lastContactAt: input.channel ? now : lead.lastContactAt,
+    firstContactAt: input.channel && !lead.firstContactAt ? now : lead.firstContactAt,
+    lastContactChannel: input.channel ?? lead.lastContactChannel,
+    lastNote: input.note ?? lead.lastNote,
+    nextFollowUpAt: input.nextFollowUpAt ?? null,
+    updatedAt: now,
+  }).where(eq(leads.id, input.leadId));
+  await db.insert(leadActivities).values({ leadId: input.leadId, userId: input.userId, action: input.channel ? "contact" : "status", channel: input.channel, status: input.status, note: input.note });
+  if (input.nextFollowUpAt) await db.insert(followUps).values({ leadId: input.leadId, createdBy: input.userId, dueAt: input.nextFollowUpAt, note: input.note ?? null });
+  await writeAudit(input.userId, input.channel ? "lead_contacted" : "lead_updated", "lead", input.leadId, { status: input.status });
+  return getLeadById(input.leadId);
+}
+
+export async function getDashboardStats() {
+  const db = await getDb();
+  if (!db) return { total: 0, newLeads: 0, assigned: 0, inTreatment: 0, scheduled: 0, converted: 0, noAnswer: 0, byStore: [] };
+  const [summary, stores] = await Promise.all([
+    db.select({ status: leads.status, count: sql<number>`count(*)` }).from(leads).groupBy(leads.status),
+    db.select({ store: leads.store, total: sql<number>`count(*)`, converted: sql<number>`sum(case when ${leads.status} = 'converted' then 1 else 0 end)`, scheduled: sql<number>`sum(case when ${leads.status} = 'scheduled' then 1 else 0 end)` }).from(leads).groupBy(leads.store),
+  ]);
+  const counts = Object.fromEntries(summary.map((row) => [row.status, Number(row.count)]));
+  return {
+    total: Object.values(counts).reduce((sum, value) => sum + value, 0),
+    newLeads: counts.new ?? 0,
+    assigned: (counts.assigned ?? 0) + (counts.contacted ?? 0),
+    inTreatment: (counts.interested ?? 0) + (counts.proposal ?? 0) + (counts.callback ?? 0),
+    scheduled: counts.scheduled ?? 0,
+    converted: counts.converted ?? 0,
+    noAnswer: counts.no_answer ?? 0,
+    byStore: stores.map((row) => ({ store: row.store, total: Number(row.total), converted: Number(row.converted), scheduled: Number(row.scheduled) })),
+  };
+}
+
+export async function getDashboardStatsScoped(user: AccessUser, filters: { from?: Date; to?: Date; pdvId?: number; sellerId?: number; status?: LeadStatus; source?: string }) {
+  const visible = await getVisibleLeads(user, { pdvId: filters.pdvId, status: filters.status, view: user.role === "user" ? "mine" : "all" });
+  const rows = visible.filter((lead) => (!filters.from || lead.createdAt >= filters.from) && (!filters.to || lead.createdAt <= filters.to) && (!filters.sellerId || lead.assignedTo === filters.sellerId) && (!filters.source || lead.source === filters.source));
+  const count = (predicate: (lead: typeof leads.$inferSelect) => boolean) => rows.filter(predicate).length;
+  const received = rows.length;
+  const assumed = count((lead) => lead.assignedTo !== null);
+  const contacted = count((lead) => lead.firstContactAt !== null);
+  const interested = count((lead) => ["interested", "proposal", "scheduled", "converted"].includes(lead.status));
+  const scheduled = count((lead) => lead.status === "scheduled");
+  const converted = count((lead) => lead.status === "converted");
+  const average = (values: number[]) => values.length ? Math.round(values.reduce((sum, item) => sum + item, 0) / values.length) : 0;
+  return {
+    total: received, newLeads: count((lead) => lead.assignedTo === null), received, available: count((lead) => lead.assignedTo === null), assumed, contacted, interested, scheduled, converted,
+    inTreatment: count((lead) => ["assigned", "contacted", "interested", "proposal", "callback"].includes(lead.status)),
+    noAnswer: count((lead) => lead.status === "no_answer"), conversionRate: received ? Math.round((converted / received) * 1000) / 10 : 0,
+    avgClaimMinutes: average(rows.filter((lead) => lead.assignedAt).map((lead) => (lead.assignedAt!.getTime() - lead.createdAt.getTime()) / 60000)),
+    avgFirstContactMinutes: average(rows.filter((lead) => lead.assignedAt && lead.firstContactAt).map((lead) => (lead.firstContactAt!.getTime() - lead.assignedAt!.getTime()) / 60000)),
+    funnel: [{ label: "Recebidos", value: received }, { label: "Assumidos", value: assumed }, { label: "Contatados", value: contacted }, { label: "Interessados", value: interested }, { label: "Agendados", value: scheduled }, { label: "Convertidos", value: converted }],
+    byStore: Object.entries(rows.reduce<Record<string, { total: number; converted: number; scheduled: number }>>((result, lead) => ({ ...result, [lead.store]: { total: (result[lead.store]?.total ?? 0) + 1, converted: (result[lead.store]?.converted ?? 0) + (lead.status === "converted" ? 1 : 0), scheduled: (result[lead.store]?.scheduled ?? 0) + (lead.status === "scheduled" ? 1 : 0) } }), {})).map(([store, values]) => ({ store, ...values })),
+    byStatus: Object.entries(rows.reduce<Record<string, number>>((result, lead) => ({ ...result, [lead.status]: (result[lead.status] ?? 0) + 1 }), {})).map(([status, value]) => ({ status, value })),
+  };
+}
+
+export async function getProductivityReport() {
+  const db = await getDb();
+  if (!db) return { rows: [], totals: { leads: 0, contacted: 0, scheduled: 0, converted: 0, conversionRate: 0 } };
+  const rows = await db.select({
+    userId: leads.assignedTo,
+    seller: users.name,
+    displayName: sellerProfiles.displayName,
+    store: leads.store,
+    leads: sql<number>`count(*)`,
+    contacted: sql<number>`sum(case when ${leads.lastContactAt} is not null then 1 else 0 end)`,
+    scheduled: sql<number>`sum(case when ${leads.status} = 'scheduled' then 1 else 0 end)`,
+    converted: sql<number>`sum(case when ${leads.status} = 'converted' then 1 else 0 end)`,
+    noAnswer: sql<number>`sum(case when ${leads.status} = 'no_answer' then 1 else 0 end)`,
+  }).from(leads)
+    .leftJoin(users, eq(leads.assignedTo, users.id))
+    .leftJoin(sellerProfiles, eq(leads.assignedTo, sellerProfiles.userId))
+    .groupBy(leads.assignedTo, users.name, sellerProfiles.displayName, leads.store)
+    .orderBy(desc(sql`count(*)`));
+  const normalized = rows.map((row) => ({ ...row, leads: Number(row.leads), contacted: Number(row.contacted), scheduled: Number(row.scheduled), converted: Number(row.converted), noAnswer: Number(row.noAnswer) }));
+  const totalLeads = normalized.reduce((sum, row) => sum + row.leads, 0);
+  const totalContacted = normalized.reduce((sum, row) => sum + row.contacted, 0);
+  const totalScheduled = normalized.reduce((sum, row) => sum + row.scheduled, 0);
+  const totalConverted = normalized.reduce((sum, row) => sum + row.converted, 0);
+  return { rows: normalized, totals: { leads: totalLeads, contacted: totalContacted, scheduled: totalScheduled, converted: totalConverted, conversionRate: totalLeads ? Math.round((totalConverted / totalLeads) * 1000) / 10 : 0 } };
+}
+
+export async function listPdvs(includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(pdvs).where(includeInactive ? undefined : eq(pdvs.isActive, true)).orderBy(asc(pdvs.name));
+}
+
+export async function savePdv(input: { id?: number; name: string; code: string; city?: string; region?: string; managerUserId?: number; leadTarget?: number; conversionTarget?: number; isActive?: boolean }, actorId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  const values = { name: input.name.trim(), code: input.code.trim().toUpperCase(), city: input.city?.trim() || null, region: input.region?.trim() || null, managerUserId: input.managerUserId ?? null, leadTarget: input.leadTarget ?? null, conversionTarget: input.conversionTarget ?? null, isActive: input.isActive ?? true, updatedAt: new Date() };
+  if (input.id) {
+    await db.update(pdvs).set(values).where(eq(pdvs.id, input.id));
+    await writeAudit(actorId, "pdv_updated", "pdv", input.id, { name: values.name });
+    return input.id;
+  }
+  const inserted = await db.insert(pdvs).values(values);
+  const id = Number((inserted as unknown as [{ insertId?: number }])[0]?.insertId);
+  await writeAudit(actorId, "pdv_created", "pdv", id, { name: values.name });
+  return id;
+}
+
+export async function setPdvActive(id: number, isActive: boolean, actorId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  await db.update(pdvs).set({ isActive, updatedAt: new Date() }).where(eq(pdvs.id, id));
+  await writeAudit(actorId, isActive ? "pdv_activated" : "pdv_deactivated", "pdv", id);
+}
+
+export async function updateUserAccess(input: { userId: number; role: AppRole; isActive: boolean; pdvIds: number[] }, actorId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  if (input.userId === actorId && input.role !== "admin") throw new Error("Você não pode remover seu próprio acesso administrativo");
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ role: input.role, isActive: input.isActive, updatedAt: new Date() }).where(eq(users.id, input.userId));
+    await tx.delete(userPdvs).where(eq(userPdvs.userId, input.userId));
+    if (input.pdvIds.length) await tx.insert(userPdvs).values(input.pdvIds.map((pdvId) => ({ userId: input.userId, pdvId })));
+  });
+  await writeAudit(actorId, "user_access_updated", "user", input.userId, { role: input.role, isActive: input.isActive, pdvIds: input.pdvIds });
+}
+
+export async function getAuditLogs(page = 1, pageSize = 50) {
+  const db = await getDb();
+  if (!db) return { items: [], total: 0 };
+  const [items, count] = await Promise.all([
+    db.select({ id: auditLogs.id, action: auditLogs.action, entityType: auditLogs.entityType, entityId: auditLogs.entityId, details: auditLogs.details, createdAt: auditLogs.createdAt, userName: users.name, userEmail: users.email }).from(auditLogs).leftJoin(users, eq(auditLogs.userId, users.id)).orderBy(desc(auditLogs.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
+    db.select({ count: sql<number>`count(*)` }).from(auditLogs),
+  ]);
+  return { items, total: Number(count[0]?.count ?? 0) };
+}
+
+export async function getPendingLeads(user: AccessUser) {
+  const visible = await getVisibleLeads(user, {});
+  const now = new Date();
+  const day = 24 * 60 * 60 * 1000;
+  return {
+    withoutContact: visible.filter((lead) => !lead.firstContactAt),
+    noAnswer: visible.filter((lead) => lead.status === "no_answer"),
+    followUpsToday: visible.filter((lead) => lead.nextFollowUpAt && lead.nextFollowUpAt <= new Date(now.getTime() + day)),
+    stale: visible.filter((lead) => now.getTime() - lead.updatedAt.getTime() > day),
+    nearSla: visible.filter((lead) => !lead.assignedTo && now.getTime() - lead.createdAt.getTime() > 5 * 60 * 1000),
+  };
+}

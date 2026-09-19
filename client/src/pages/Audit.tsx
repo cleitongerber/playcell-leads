@@ -1,0 +1,8 @@
+import DashboardLayout from "@/components/DashboardLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { trpc } from "@/lib/trpc";
+
+export default function Audit() {
+  const audit = trpc.audit.list.useQuery({ page: 1, pageSize: 50 });
+  return <DashboardLayout><div className="mx-auto max-w-6xl space-y-6"><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#6da768]">Administração</p><h1 className="mt-2 text-3xl font-semibold text-[#102b35]">Auditoria</h1><p className="mt-2 text-sm text-muted-foreground">Registro imutável das ações administrativas e operacionais relevantes.</p></div><Card><CardHeader><CardTitle>Eventos recentes</CardTitle></CardHeader><CardContent className="overflow-x-auto p-0"><table className="w-full min-w-[700px] text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-4">Data</th><th className="p-4">Usuário</th><th className="p-4">Ação</th><th className="p-4">Entidade</th><th className="p-4">Detalhes</th></tr></thead><tbody>{audit.data?.items.map((event) => <tr key={event.id} className="border-t"><td className="p-4">{event.createdAt.toLocaleString("pt-BR")}</td><td className="p-4">{event.userName || event.userEmail || "Sistema"}</td><td className="p-4">{event.action}</td><td className="p-4">{event.entityType} {event.entityId || ""}</td><td className="max-w-[260px] truncate p-4 text-muted-foreground">{event.details || "—"}</td></tr>)}</tbody></table>{!audit.data?.items.length && <p className="p-8 text-center text-sm text-muted-foreground">Nenhum evento registrado.</p>}</CardContent></Card></div></DashboardLayout>;
+}
