@@ -30,7 +30,6 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
-  await bootstrapAdmin();
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
@@ -62,6 +61,9 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    // Database availability must not delay the web-service health check. The
+    // bootstrap is idempotent and will create the initial admin when the DB is reachable.
+    bootstrapAdmin().catch((error) => console.error("[Auth] Initial admin bootstrap failed", error));
   });
 }
 
