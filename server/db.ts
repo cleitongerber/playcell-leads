@@ -3,23 +3,56 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
 import { auditLogs, followUps, InsertUser, leadActivities, leadImports, LeadStatus, leads, pdvs, sellerProfiles, userPdvs, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { initialSchemaStatements } from "./schemaBootstrap";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let initializePromise: Promise<void> | null = null;
+
+function getDatabaseConfig() {
+  const sourceUrl = process.env.DATABASE_URL;
+  if (!sourceUrl) throw new Error("DATABASE_URL não configurada");
+  const adminUrl = new URL(sourceUrl);
+  const sourceDatabase = adminUrl.pathname.replace(/^\//, "");
+  const databaseName = process.env.APP_DATABASE?.trim() || (sourceDatabase === "sys" ? "playcell_leads" : sourceDatabase);
+  if (!/^[a-zA-Z0-9_]+$/.test(databaseName)) throw new Error("APP_DATABASE possui um nome inválido");
+  const appUrl = new URL(sourceUrl);
+  appUrl.pathname = `/${databaseName}`;
+  return { adminUrl: adminUrl.toString(), appUrl: appUrl.toString(), databaseName, needsDatabaseCreation: sourceDatabase !== databaseName };
+}
+
+const tls = { minVersion: "TLSv1.2" as const, rejectUnauthorized: true };
+
+async function initializeDatabase() {
+  const { adminUrl, appUrl, databaseName, needsDatabaseCreation } = getDatabaseConfig();
+  if (needsDatabaseCreation) {
+    const adminPool = mysql.createPool({ uri: adminUrl, ssl: tls });
+    try {
+      await adminPool.promise().query(`CREATE DATABASE IF NOT EXISTS \`${databaseName}\``);
+    } finally {
+      await adminPool.promise().end();
+    }
+  }
+  const pool = mysql.createPool({ uri: appUrl, ssl: tls });
+  try {
+    for (const statement of initialSchemaStatements) await pool.promise().query(statement);
+    _db = drizzle({ client: pool });
+  } catch (error) {
+    await pool.promise().end();
+    throw error;
+  }
+}
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      // TiDB Cloud only accepts encrypted client connections. Creating the
-      // mysql2 pool explicitly keeps the setting in the backend instead of
-      // relying on a frontend or provider-specific URL convention.
-      const pool = mysql.createPool({
-        uri: process.env.DATABASE_URL,
-        ssl: { minVersion: "TLSv1.2", rejectUnauthorized: true },
-      });
-      _db = drizzle({ client: pool });
+      // One shared, additive first-run setup. This keeps the Render service
+      // independent while preserving any existing application data.
+      initializePromise ??= initializeDatabase();
+      await initializePromise;
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
+      initializePromise = null;
     }
   }
   return _db;
