@@ -21,7 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { BarChart3, ClipboardList, FileUp, LayoutDashboard, LogOut, MapPin, Megaphone, PanelLeft, ScrollText, UsersRound } from "lucide-react";
+import { BarChart3, CalendarClock, ClipboardList, FileUp, LayoutDashboard, LogOut, MapPin, Megaphone, PanelLeft, ScrollText, UsersRound } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -32,6 +32,7 @@ import { InstallAppButton } from "./InstallAppButton";
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/", roles: ["admin", "supervisor", "user"] },
   { icon: ClipboardList, label: "Leads", path: "/leads", roles: ["admin", "supervisor", "user"] },
+  { icon: CalendarClock, label: "Follow-ups", path: "/follow-ups", roles: ["admin", "supervisor", "user"] },
   { icon: BarChart3, label: "Produtividade", path: "/reports", roles: ["admin", "supervisor"] },
   { icon: FileUp, label: "Importar leads", path: "/import", roles: ["admin"] },
   { icon: UsersRound, label: "Usuários", path: "/team", roles: ["admin"] },

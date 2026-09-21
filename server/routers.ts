@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { assignSellerToStore, assumeLead, canAccessLead, createManagedUser, deactivateManagedUser, deleteCampaign, getAuditLogs, getDashboardFilters, getDashboardStatsScoped, getLeadActivities, getLeadById, getPasswordResetRequests, getPendingLeads, getProductivityReport, getTeam, getVisibleLeads, getVisibleLeadsPage, importLeadRows, listCampaigns, listPdvs, requestPasswordReset, resetManagedUserPassword, saveCampaign, savePdv, setCampaignFrozen, setPdvActive, updateLeadTreatment, updateUserAccess } from "./db";
+import { assignSellerToStore, assumeLead, canAccessLead, createManagedUser, deactivateManagedUser, deleteCampaign, getAuditLogs, getDashboardFilters, getDashboardStatsScoped, getLeadActivities, getLeadById, getLeadTreatmentExport, getPasswordResetRequests, getPendingLeads, getProductivityReport, getScheduledFollowUps, getTeam, getVisibleLeads, getVisibleLeadsPage, importLeadRows, listCampaigns, listPdvs, requestPasswordReset, resetManagedUserPassword, saveCampaign, savePdv, setCampaignFrozen, setPdvActive, updateLeadTreatment, updateUserAccess } from "./db";
 import { leadStatus } from "../drizzle/schema";
 import { hashPassword, loginWithPassword } from "./localAuth";
 import { sdk } from "./_core/sdk";
@@ -54,11 +54,13 @@ export const appRouter = router({
       note: z.string().max(2000).optional(),
       nextFollowUpAt: z.string().optional(),
     })).mutation(({ ctx, input }) => updateLeadTreatment({ ...input, userId: ctx.user.id, role: ctx.user.role, nextFollowUpAt: input.nextFollowUpAt ? new Date(input.nextFollowUpAt) : undefined })),
-    import: adminProcedure.input(z.object({ fileName: z.string(), campaignId: z.number().int().positive(), rows: z.array(leadInput).min(1).max(10000) })).mutation(({ ctx, input }) => importLeadRows(input.rows, input.campaignId, ctx.user.id, input.fileName)),
+    import: adminProcedure.input(z.object({ fileName: z.string(), campaignId: z.number().int().positive(), targetPdvId: z.number().int().positive().optional(), useSpreadsheetPdv: z.boolean().optional(), rows: z.array(leadInput).min(1).max(10000) })).mutation(({ ctx, input }) => importLeadRows(input.rows, input.campaignId, ctx.user.id, input.fileName, input.targetPdvId, input.useSpreadsheetPdv)),
     dashboard: protectedProcedure.input(z.object({ from: z.string().datetime().optional(), to: z.string().datetime().optional(), pdvId: z.number().int().positive().optional(), campaignId: z.number().int().positive().optional(), sellerId: z.number().int().positive().optional(), status: z.enum(leadStatus).optional(), source: z.string().max(120).optional() }).optional()).query(({ ctx, input }) => getDashboardStatsScoped(ctx.user, { ...input, from: input?.from ? new Date(input.from) : undefined, to: input?.to ? new Date(input.to) : undefined })),
     dashboardFilters: protectedProcedure.query(({ ctx }) => getDashboardFilters(ctx.user)),
     productivity: protectedProcedure.input(z.object({ pdvId: z.number().int().positive().optional(), campaignId: z.number().int().positive().optional(), sellerId: z.number().int().positive().optional() }).optional()).query(({ ctx, input }) => getProductivityReport(ctx.user, input ?? {})),
     pending: protectedProcedure.query(({ ctx }) => getPendingLeads(ctx.user)),
+    followUps: protectedProcedure.query(({ ctx }) => getScheduledFollowUps(ctx.user)),
+    exportTreatments: protectedProcedure.input(z.object({ pdvId: z.number().int().positive().optional(), campaignId: z.number().int().positive().optional(), sellerId: z.number().int().positive().optional() }).optional()).query(({ ctx, input }) => getLeadTreatmentExport(ctx.user, input ?? {})),
   }),
   team: router({
     list: adminProcedure.query(() => getTeam()),

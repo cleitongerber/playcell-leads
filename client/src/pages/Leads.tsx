@@ -9,7 +9,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Check, ChevronRight, MessageCircle, Phone, Search, ShieldCheck, UserRound, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 
 const statusLabels: Record<string, string> = { new: "Novo", assigned: "Assumido", contacted: "Contatado", no_answer: "Sem resposta", interested: "Interessado", proposal: "Proposta", scheduled: "Agendado", converted: "Convertido", not_interested: "Sem interesse", invalid: "Número inválido", callback: "Retorno futuro" };
 const statusStyles: Record<string, string> = { new: "bg-[#eef3f0] text-[#557069]", assigned: "bg-[#e7f2f5] text-[#277287]", contacted: "bg-[#e7f2f5] text-[#277287]", no_answer: "bg-[#fff3d9] text-[#ad7215]", interested: "bg-[#eaf7df] text-[#4b8349]", proposal: "bg-[#eaf7df] text-[#4b8349]", scheduled: "bg-[#eee9fb] text-[#7354a5]", converted: "bg-[#dff6e7] text-[#27734a]", not_interested: "bg-[#f6ece8] text-[#9c5c4d]", invalid: "bg-[#f6ece8] text-[#9c5c4d]", callback: "bg-[#fff3d9] text-[#ad7215]" };
@@ -36,6 +37,7 @@ function ExtraDataPanel({ data }: { data?: string | null }) {
 
 export default function Leads() {
   const { user } = useAuth();
+  const [location] = useLocation();
   const [search, setSearch] = useState("");
   const [store, setStore] = useState("all");
   const [status, setStatus] = useState("all");
@@ -47,6 +49,10 @@ export default function Leads() {
   const filters = useMemo(() => ({ search: search || undefined, store: store === "all" ? undefined : store, status: status === "all" ? undefined : status as any }), [search, store, status]);
   const query = trpc.leads.list.useQuery(filters, { enabled: Boolean(user) });
   const leads = query.data ?? [];
+  useEffect(() => {
+    const leadId = Number(new URLSearchParams(location.split("?")[1] ?? "").get("leadId"));
+    if (leadId && leads.some((lead) => lead.id === leadId)) setSelectedId(leadId);
+  }, [location, leads]);
   const selected = leads.find((lead) => lead.id === selectedId) ?? (leads[0] ?? null);
   const utils = trpc.useUtils();
   const assume = trpc.leads.assume.useMutation({ onSuccess: () => { toast.success("Lead assumido e carteirizado para você"); utils.leads.list.invalidate(); }, onError: (error) => toast.error(error.message) });

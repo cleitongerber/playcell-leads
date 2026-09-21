@@ -175,12 +175,21 @@ export async function getTeam() {
 export async function assignSellerToStore(input: { userId: number; store: string; displayName: string }) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível");
+  const pdv = (await db.select({ id: pdvs.id, name: pdvs.name, isActive: pdvs.isActive }).from(pdvs).where(eq(pdvs.name, input.store.trim())).limit(1))[0];
+  if (!pdv?.isActive) throw new Error("Selecione um PDV ativo e cadastrado");
   const existing = await getSellerProfile(input.userId);
-  if (existing) {
-    await db.update(sellerProfiles).set({ store: input.store, displayName: input.displayName, updatedAt: new Date() }).where(eq(sellerProfiles.userId, input.userId));
-  } else {
-    await db.insert(sellerProfiles).values({ userId: input.userId, store: input.store, displayName: input.displayName });
-  }
+  await db.transaction(async (tx) => {
+    // This legacy single-PDV editor must update the authorization relation too.
+    // Keeping only seller_profiles in sync was the source of sellers seeing the
+    // wrong portfolio (or none at all).
+    await tx.delete(userPdvs).where(eq(userPdvs.userId, input.userId));
+    await tx.insert(userPdvs).values({ userId: input.userId, pdvId: pdv.id });
+    if (existing) {
+      await tx.update(sellerProfiles).set({ store: pdv.name, displayName: input.displayName.trim(), updatedAt: new Date() }).where(eq(sellerProfiles.userId, input.userId));
+    } else {
+      await tx.insert(sellerProfiles).values({ userId: input.userId, store: pdv.name, displayName: input.displayName.trim() });
+    }
+  });
   return { success: true } as const;
 }
 
@@ -242,7 +251,7 @@ export async function canAccessLead(user: AccessUser, lead: typeof leads.$inferS
   return user.role === "supervisor" || lead.assignedTo === user.id || lead.assignedTo === null;
 }
 
-export async function importLeadRows(rows: Array<{ name: string; phone: string; email?: string; store: string; segment?: string; priority?: "high" | "medium" | "low"; source?: string; extraData?: string }>, campaignId: number, importedBy: number, fileName: string) {
+export async function importLeadRows(rows: Array<{ name: string; phone: string; email?: string; store: string; segment?: string; priority?: "high" | "medium" | "low"; source?: string; extraData?: string }>, campaignId: number, importedBy: number, fileName: string, targetPdvId?: number, useSpreadsheetPdv = false) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível");
   if (!rows.length) return { inserted: 0 };
@@ -258,6 +267,10 @@ export async function importLeadRows(rows: Array<{ name: string; phone: string; 
   };
   const pdvRows = await db.select({ id: pdvs.id, name: pdvs.name, isActive: pdvs.isActive }).from(pdvs);
   const pdvByName = new Map(pdvRows.map((pdv) => [pdv.name.trim().toLocaleLowerCase(), pdv]));
+  const targetPdv = targetPdvId ? pdvRows.find((pdv) => pdv.id === targetPdvId) : undefined;
+  if (targetPdvId && (!targetPdv?.isActive || !campaignPdvIds.has(targetPdv.id))) {
+    throw new Error("O PDV selecionado não está ativo ou não tem acesso a esta campanha");
+  }
   const phones = rows.map((row) => normalizePhone(row.phone)).filter(Boolean);
   const existing = phones.length ? await db.select({ id: leads.id, phone: leads.phone }).from(leads).where(and(inArray(leads.phone, phones), eq(leads.campaignId, campaignId))) : [];
   const existingByPhone = new Map(existing.map((lead) => [lead.phone, lead.id]));
@@ -268,7 +281,10 @@ export async function importLeadRows(rows: Array<{ name: string; phone: string; 
   let invalid = 0;
   for (const row of rows) {
     const phone = normalizePhone(row.phone);
-    const pdv = pdvByName.get(row.store.trim().toLocaleLowerCase());
+    // The selected target is authoritative. Spreadsheet PDV values are only
+    // used when the administrator deliberately opts into a multi-PDV sheet.
+    const spreadsheetPdv = pdvByName.get(row.store.trim().toLocaleLowerCase());
+    const pdv = useSpreadsheetPdv ? spreadsheetPdv : targetPdv ?? spreadsheetPdv;
     if (!phone || !row.name.trim() || !pdv || !pdv.isActive || !campaignPdvIds.has(pdv.id)) { invalid += 1; continue; }
     if (processedPhones.has(phone)) { duplicates += 1; continue; }
     processedPhones.add(phone);
@@ -294,7 +310,7 @@ export async function importLeadRows(rows: Array<{ name: string; phone: string; 
   }
   if (newRows.length) await db.insert(leads).values(newRows);
   await db.insert(leadImports).values({ fileName, importedBy, rowCount: rows.length });
-  await writeAudit(importedBy, "leads_imported", "lead_import", fileName, { campaignId, campaign: campaign.name, total: rows.length, inserted: newRows.length, updated, duplicates, invalid });
+  await writeAudit(importedBy, "leads_imported", "lead_import", fileName, { campaignId, campaign: campaign.name, targetPdvId: targetPdv?.id ?? null, useSpreadsheetPdv, total: rows.length, inserted: newRows.length, updated, duplicates, invalid });
   return { processed: rows.length, inserted: newRows.length, updated, duplicates, invalid };
 }
 
@@ -625,6 +641,84 @@ export async function getAuditLogs(page = 1, pageSize = 50) {
     db.select({ count: sql<number>`count(*)` }).from(auditLogs),
   ]);
   return { items, total: Number(count[0]?.count ?? 0) };
+}
+
+export async function getScheduledFollowUps(user: AccessUser) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [isNull(followUps.completedAt), isNull(leads.deletedAt)];
+  if (user.role === "user") {
+    // A seller sees only appointments that they created for leads in their own
+    // portfolio, never another seller's or an unassigned lead's follow-up.
+    conditions.push(eq(followUps.createdBy, user.id), eq(leads.assignedTo, user.id));
+  } else if (user.role === "supervisor") {
+    const allowedPdvs = await getAccessiblePdvIds(user);
+    if (!allowedPdvs?.length) return [];
+    conditions.push(inArray(leads.pdvId, allowedPdvs));
+  }
+  return db.select({
+    id: followUps.id,
+    leadId: followUps.leadId,
+    dueAt: followUps.dueAt,
+    note: followUps.note,
+    createdAt: followUps.createdAt,
+    leadName: leads.name,
+    leadPhone: leads.phone,
+    leadStore: leads.store,
+    leadStatus: leads.status,
+  }).from(followUps).innerJoin(leads, eq(followUps.leadId, leads.id))
+    .where(and(...conditions)).orderBy(asc(followUps.dueAt));
+}
+
+export async function getLeadTreatmentExport(user: AccessUser, filters: { sellerId?: number; pdvId?: number; campaignId?: number } = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [isNull(leads.deletedAt)];
+  if (filters.pdvId) conditions.push(eq(leads.pdvId, filters.pdvId));
+  if (filters.campaignId) conditions.push(eq(leads.campaignId, filters.campaignId));
+  if (user.role === "user") {
+    conditions.push(eq(leads.assignedTo, user.id));
+  } else if (user.role === "supervisor") {
+    const allowedPdvs = await getAccessiblePdvIds(user);
+    if (!allowedPdvs?.length) return [];
+    conditions.push(inArray(leads.pdvId, allowedPdvs));
+  }
+  // A seller cannot turn an export filter into access to another seller.
+  if (filters.sellerId && (user.role !== "user" || filters.sellerId === user.id)) {
+    conditions.push(eq(leads.assignedTo, filters.sellerId));
+  }
+  const scopedLeads = await db.select().from(leads).where(and(...conditions)).orderBy(asc(leads.id));
+  if (!scopedLeads.length) return [];
+  const leadIds = scopedLeads.map((lead) => lead.id);
+  const activities = await db.select().from(leadActivities).where(inArray(leadActivities.leadId, leadIds)).orderBy(asc(leadActivities.createdAt));
+  const personIds = Array.from(new Set([...scopedLeads.flatMap((lead) => lead.assignedTo ? [lead.assignedTo] : []), ...activities.map((activity) => activity.userId)]));
+  const people = personIds.length ? await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(inArray(users.id, personIds)) : [];
+  const personName = new Map(people.map((person) => [person.id, person.name || person.email || `Usuário #${person.id}`]));
+  const activitiesByLead = new Map<number, typeof activities>();
+  for (const activity of activities) activitiesByLead.set(activity.leadId, [...(activitiesByLead.get(activity.leadId) ?? []), activity]);
+  return scopedLeads.flatMap((lead) => {
+    const leadActivities = activitiesByLead.get(lead.id) ?? [];
+    const base = {
+      leadId: lead.id,
+      leadName: lead.name,
+      phone: lead.phone,
+      pdv: lead.store,
+      campaignId: lead.campaignId,
+      seller: lead.assignedTo ? personName.get(lead.assignedTo) ?? `Vendedor #${lead.assignedTo}` : "Não assumido",
+      statusAtual: lead.status,
+      dataEntrada: lead.createdAt,
+      proximoFollowUp: lead.nextFollowUpAt,
+    };
+    return (leadActivities.length ? leadActivities : [null]).map((activity) => ({
+      ...base,
+      dataTratativa: activity?.createdAt ?? null,
+      responsavelTratativa: activity ? personName.get(activity.userId) ?? `Usuário #${activity.userId}` : null,
+      acao: activity?.action ?? "",
+      canal: activity?.channel ?? null,
+      statusTratativa: activity?.status ?? null,
+      observacao: activity?.note ?? "",
+    }));
+  });
 }
 
 export async function getPendingLeads(user: AccessUser) {
