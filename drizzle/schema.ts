@@ -191,6 +191,19 @@ export const notifications = mysqlTable("notifications", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({ userCreatedIdx: index("notifications_user_created_idx").on(table.userId, table.createdAt) }));
 
+/** Requests are queued for an administrator; no password or reset token is stored here. */
+export const passwordResetRequests = mysqlTable("password_reset_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),
+  email: varchar("email", { length: 320 }).notNull(),
+  requestedAt: timestamp("requestedAt").defaultNow().notNull(),
+  resolvedAt: timestamp("resolvedAt"),
+  resolvedBy: int("resolvedBy"),
+}, (table) => ({
+  pendingIdx: index("password_reset_pending_idx").on(table.resolvedAt, table.requestedAt),
+  userIdx: index("password_reset_user_idx").on(table.userId),
+}));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Lead = typeof leads.$inferSelect;

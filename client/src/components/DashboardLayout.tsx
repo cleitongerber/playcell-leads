@@ -27,6 +27,7 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { InstallAppButton } from "./InstallAppButton";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/", roles: ["admin", "supervisor", "user"] },
@@ -56,8 +57,11 @@ export default function DashboardLayout({
   const { loading, user } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [requestingReset, setRequestingReset] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const utils = trpc.useUtils();
   const login = trpc.auth.login.useMutation({ onSuccess: async () => { await utils.auth.me.invalidate(); }, onError: (error) => setPassword("") });
+  const requestReset = trpc.auth.requestPasswordReset.useMutation({ onSuccess: () => { setResetSent(true); setRequestingReset(false); }, onError: () => setResetSent(true) });
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -72,7 +76,9 @@ export default function DashboardLayout({
       <div className="flex items-center justify-center min-h-screen">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-3"><h1 className="text-2xl font-semibold tracking-tight text-center">Playcell Leads</h1><p className="text-sm text-muted-foreground text-center">Acesse sua operação comercial.</p></div>
-          <form className="w-full space-y-3" onSubmit={(event) => { event.preventDefault(); login.mutate({ email, password }); }}><Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" /><Input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Senha" /><Button type="submit" disabled={login.isPending} size="lg" className="w-full shadow-lg">Entrar</Button>{login.error && <p className="text-center text-sm text-destructive">{login.error.message}</p>}</form>
+          {requestingReset ? <form className="w-full space-y-3" onSubmit={(event) => { event.preventDefault(); requestReset.mutate({ email }); }}><p className="text-center text-sm leading-6 text-muted-foreground">Informe seu e-mail. Se existir um acesso ativo, a solicitação será encaminhada ao administrador.</p><Input autoFocus type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Seu e-mail" /><Button type="submit" disabled={requestReset.isPending} size="lg" className="w-full shadow-lg">Solicitar redefinição</Button><Button type="button" variant="ghost" className="w-full" onClick={() => setRequestingReset(false)}>Voltar ao login</Button></form> : <form className="w-full space-y-3" onSubmit={(event) => { event.preventDefault(); login.mutate({ email, password }); }}><Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" /><Input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Senha" /><Button type="submit" disabled={login.isPending} size="lg" className="w-full shadow-lg">Entrar</Button><Button type="button" variant="link" className="w-full text-sm" onClick={() => { setResetSent(false); setRequestingReset(true); }}>Esqueci minha senha</Button>{login.error && <p className="text-center text-sm text-destructive">{login.error.message}</p>}</form>}
+          {resetSent && <p className="w-full rounded-xl bg-[#edf8eb] p-3 text-center text-sm text-[#4b754d]">Se houver uma conta ativa com este e-mail, o administrador foi avisado da solicitação.</p>}
+          <InstallAppButton className="w-full" />
         </div>
       </div>
     );
@@ -198,6 +204,7 @@ function DashboardLayoutContent({
           </SidebarContent>
 
           <SidebarFooter className="p-3">
+            <InstallAppButton className="mb-3 group-data-[collapsible=icon]:hidden" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">

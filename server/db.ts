@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
-import { auditLogs, campaignPdvs, campaigns, followUps, InsertUser, leadActivities, leadImports, LeadStatus, leads, pdvs, sellerProfiles, userPdvs, users } from "../drizzle/schema";
+import { auditLogs, campaignPdvs, campaigns, followUps, InsertUser, leadActivities, leadImports, LeadStatus, leads, passwordResetRequests, pdvs, sellerProfiles, userPdvs, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { initialSchemaStatements } from "./schemaBootstrap";
 
@@ -514,8 +514,36 @@ export async function resetManagedUserPassword(userId: number, passwordHash: str
   const existing = await db.select({ id: users.id, isActive: users.isActive }).from(users).where(eq(users.id, userId)).limit(1);
   if (!existing[0]) throw new Error("Usuário não encontrado");
   if (!existing[0].isActive) throw new Error("Reative o usuário antes de redefinir a senha");
-  await db.update(users).set({ passwordHash, loginMethod: "password", updatedAt: new Date() }).where(eq(users.id, userId));
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ passwordHash, loginMethod: "password", updatedAt: now }).where(eq(users.id, userId));
+    await tx.update(passwordResetRequests).set({ resolvedAt: now, resolvedBy: actorId }).where(and(eq(passwordResetRequests.userId, userId), isNull(passwordResetRequests.resolvedAt)));
+  });
   await writeAudit(actorId, "user_password_reset", "user", userId);
+}
+
+export async function requestPasswordReset(email: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = (await db.select({ id: users.id, isActive: users.isActive }).from(users).where(eq(users.email, normalizedEmail)).limit(1))[0];
+  // The response remains the same for every address, preventing account discovery.
+  if (!user?.isActive) return { accepted: true } as const;
+  const pending = await db.select({ id: passwordResetRequests.id }).from(passwordResetRequests)
+    .where(and(eq(passwordResetRequests.userId, user.id), isNull(passwordResetRequests.resolvedAt))).limit(1);
+  if (!pending[0]) {
+    await db.insert(passwordResetRequests).values({ userId: user.id, email: normalizedEmail });
+    await writeAudit(user.id, "password_reset_requested", "user", user.id);
+  }
+  return { accepted: true } as const;
+}
+
+export async function getPasswordResetRequests() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: passwordResetRequests.id, userId: passwordResetRequests.userId, email: passwordResetRequests.email, requestedAt: passwordResetRequests.requestedAt, userName: users.name })
+    .from(passwordResetRequests).leftJoin(users, eq(passwordResetRequests.userId, users.id))
+    .where(isNull(passwordResetRequests.resolvedAt)).orderBy(desc(passwordResetRequests.requestedAt));
 }
 
 export async function deactivateManagedUser(userId: number, actorId: number) {

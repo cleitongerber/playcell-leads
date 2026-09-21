@@ -101,4 +101,10 @@ export const initialSchemaStatements = [
     \`createdAt\` timestamp NOT NULL DEFAULT (now()), PRIMARY KEY (\`id\`),
     KEY \`notifications_user_created_idx\` (\`userId\`, \`createdAt\`)
   )`,
+  `CREATE TABLE IF NOT EXISTS \`password_reset_requests\` (
+    \`id\` int AUTO_INCREMENT NOT NULL, \`userId\` int, \`email\` varchar(320) NOT NULL,
+    \`requestedAt\` timestamp NOT NULL DEFAULT (now()), \`resolvedAt\` timestamp NULL, \`resolvedBy\` int,
+    PRIMARY KEY (\`id\`), KEY \`password_reset_pending_idx\` (\`resolvedAt\`, \`requestedAt\`),
+    KEY \`password_reset_user_idx\` (\`userId\`)
+  )`,
 ];
