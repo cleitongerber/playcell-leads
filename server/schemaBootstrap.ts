@@ -37,10 +37,11 @@ export const initialSchemaStatements = [
   )`,
   `CREATE TABLE IF NOT EXISTS \`campaigns\` (
     \`id\` int AUTO_INCREMENT NOT NULL, \`name\` varchar(160) NOT NULL, \`description\` text,
-    \`isActive\` boolean NOT NULL DEFAULT true, \`createdBy\` int NOT NULL, \`deletedAt\` timestamp NULL,
+    \`isActive\` boolean NOT NULL DEFAULT true, \`isFrozen\` boolean NOT NULL DEFAULT false, \`createdBy\` int NOT NULL, \`deletedAt\` timestamp NULL,
     \`createdAt\` timestamp NOT NULL DEFAULT (now()), \`updatedAt\` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (\`id\`), KEY \`campaigns_active_idx\` (\`isActive\`), KEY \`campaigns_created_idx\` (\`createdAt\`)
   )`,
+  `ALTER TABLE \`campaigns\` ADD COLUMN \`isFrozen\` boolean NOT NULL DEFAULT false`,
   `CREATE TABLE IF NOT EXISTS \`campaign_pdvs\` (
     \`id\` int AUTO_INCREMENT NOT NULL, \`campaignId\` int NOT NULL, \`pdvId\` int NOT NULL,
     \`createdAt\` timestamp NOT NULL DEFAULT (now()), PRIMARY KEY (\`id\`),
@@ -106,5 +107,8 @@ export const initialSchemaStatements = [
     \`requestedAt\` timestamp NOT NULL DEFAULT (now()), \`resolvedAt\` timestamp NULL, \`resolvedBy\` int,
     PRIMARY KEY (\`id\`), KEY \`password_reset_pending_idx\` (\`resolvedAt\`, \`requestedAt\`),
     KEY \`password_reset_user_idx\` (\`userId\`)
+  )`,
+  `CREATE TABLE IF NOT EXISTS \`maintenance_jobs\` (
+    \`id\` varchar(100) NOT NULL, \`details\` text, \`completedAt\` timestamp NOT NULL DEFAULT (now()), PRIMARY KEY (\`id\`)
   )`,
 ];

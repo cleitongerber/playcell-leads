@@ -51,6 +51,7 @@ export const campaigns = mysqlTable("campaigns", {
   name: varchar("name", { length: 160 }).notNull(),
   description: text("description"),
   isActive: boolean("isActive").default(true).notNull(),
+  isFrozen: boolean("isFrozen").default(false).notNull(),
   createdBy: int("createdBy").notNull(),
   deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -59,6 +60,13 @@ export const campaigns = mysqlTable("campaigns", {
   activeIdx: index("campaigns_active_idx").on(table.isActive),
   createdIdx: index("campaigns_created_idx").on(table.createdAt),
 }));
+
+/** Records completed one-off administrator maintenance operations. */
+export const maintenanceJobs = mysqlTable("maintenance_jobs", {
+  id: varchar("id", { length: 100 }).primaryKey(),
+  details: text("details"),
+  completedAt: timestamp("completedAt").defaultNow().notNull(),
+});
 
 /** A campaign can be made available to multiple PDVs, and a PDV can run many campaigns. */
 export const campaignPdvs = mysqlTable("campaign_pdvs", {

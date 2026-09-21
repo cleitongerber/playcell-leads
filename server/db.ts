@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
-import { auditLogs, campaignPdvs, campaigns, followUps, InsertUser, leadActivities, leadImports, LeadStatus, leads, passwordResetRequests, pdvs, sellerProfiles, userPdvs, users } from "../drizzle/schema";
+import { auditLogs, campaignPdvs, campaigns, followUps, InsertUser, leadActivities, leadImports, LeadStatus, leads, maintenanceJobs, passwordResetRequests, pdvs, sellerProfiles, userPdvs, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { initialSchemaStatements } from "./schemaBootstrap";
 
@@ -21,6 +21,36 @@ function getDatabaseConfig() {
 }
 
 const tls = { minVersion: "TLSv1.2" as const, rejectUnauthorized: true };
+
+// Explicit one-off maintenance requested for this production system. The marker
+// makes it idempotent: a restart or later deployment can never clear new leads.
+const REQUESTED_LEAD_CLEANUP_ID = "lead_cleanup_2026_09_21";
+
+async function runRequestedLeadCleanup(pool: mysql.Pool) {
+  const [existing] = await pool.promise().query("SELECT id FROM `maintenance_jobs` WHERE id = ? LIMIT 1", [REQUESTED_LEAD_CLEANUP_ID]) as unknown as [{ id: string }[], unknown];
+  if (existing.length) return;
+  const connection = await pool.promise().getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[leadCount]] = await connection.query("SELECT COUNT(*) AS total FROM `leads`") as unknown as [[{ total: number }], unknown];
+    const [[activityCount]] = await connection.query("SELECT COUNT(*) AS total FROM `lead_activities`") as unknown as [[{ total: number }], unknown];
+    const [[followUpCount]] = await connection.query("SELECT COUNT(*) AS total FROM `follow_ups`") as unknown as [[{ total: number }], unknown];
+    const [[importCount]] = await connection.query("SELECT COUNT(*) AS total FROM `lead_imports`") as unknown as [[{ total: number }], unknown];
+    await connection.query("DELETE FROM `follow_ups`");
+    await connection.query("DELETE FROM `lead_activities`");
+    await connection.query("DELETE FROM `lead_imports`");
+    await connection.query("DELETE FROM `leads`");
+    const details = JSON.stringify({ leads: Number(leadCount.total), activities: Number(activityCount.total), followUps: Number(followUpCount.total), imports: Number(importCount.total) });
+    await connection.query("INSERT INTO `maintenance_jobs` (`id`, `details`) VALUES (?, ?)", [REQUESTED_LEAD_CLEANUP_ID, details]);
+    await connection.query("INSERT INTO `audit_logs` (`userId`, `action`, `entityType`, `details`) VALUES (NULL, 'lead_data_cleared', 'system_maintenance', ?)", [details]);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
 
 async function initializeDatabase() {
   const { adminUrl, appUrl, databaseName, needsDatabaseCreation } = getDatabaseConfig();
@@ -43,6 +73,7 @@ async function initializeDatabase() {
         if (!["ER_DUP_FIELDNAME", "ER_DUP_KEYNAME", "ER_TABLE_EXISTS_ERROR"].includes(error?.code)) throw error;
       }
     }
+    await runRequestedLeadCleanup(pool);
     _db = drizzle({ client: pool });
   } catch (error) {
     await pool.promise().end();
@@ -217,6 +248,7 @@ export async function importLeadRows(rows: Array<{ name: string; phone: string; 
   if (!rows.length) return { inserted: 0 };
   const campaign = (await db.select().from(campaigns).where(and(eq(campaigns.id, campaignId), eq(campaigns.isActive, true), isNull(campaigns.deletedAt))).limit(1))[0];
   if (!campaign) throw new Error("A campanha selecionada não está disponível");
+  if (campaign.isFrozen) throw new Error("Esta campanha está congelada e não aceita novas importações");
   const campaignPdvRows = await db.select({ pdvId: campaignPdvs.pdvId }).from(campaignPdvs).where(eq(campaignPdvs.campaignId, campaignId));
   const campaignPdvIds = new Set(campaignPdvRows.map((row) => row.pdvId));
   if (!campaignPdvIds.size) throw new Error("A campanha não possui PDVs autorizados");
@@ -415,7 +447,7 @@ export async function saveCampaign(input: { id?: number; name: string; descripti
       await tx.update(campaigns).set(values).where(eq(campaigns.id, campaignId));
       await tx.delete(campaignPdvs).where(eq(campaignPdvs.campaignId, campaignId));
     } else {
-      const inserted = await tx.insert(campaigns).values({ ...values, createdBy: actorId, isActive: true, deletedAt: null });
+      const inserted = await tx.insert(campaigns).values({ ...values, createdBy: actorId, isActive: true, isFrozen: false, deletedAt: null });
       campaignId = Number(inserted[0].insertId);
     }
     await tx.insert(campaignPdvs).values(uniquePdvIds.map((pdvId) => ({ campaignId: campaignId!, pdvId })));
@@ -424,13 +456,39 @@ export async function saveCampaign(input: { id?: number; name: string; descripti
   return { id: campaignId };
 }
 
-export async function deactivateCampaign(id: number, actorId: number) {
+export async function deleteCampaign(id: number, actorId: number) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível");
-  const result = await db.update(campaigns).set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() }).where(and(eq(campaigns.id, id), isNull(campaigns.deletedAt)));
+  const campaign = (await db.select({ id: campaigns.id, name: campaigns.name }).from(campaigns).where(eq(campaigns.id, id)).limit(1))[0];
+  if (!campaign) throw new Error("Campanha não encontrada");
+  const counts = { leads: 0, activities: 0, followUps: 0 };
+  await db.transaction(async (tx) => {
+    const campaignLeads = await tx.select({ id: leads.id }).from(leads).where(eq(leads.campaignId, id));
+    const leadIds = campaignLeads.map((lead) => lead.id);
+    counts.leads = leadIds.length;
+    if (leadIds.length) {
+      const [activities] = await tx.select({ count: sql<number>`count(*)` }).from(leadActivities).where(inArray(leadActivities.leadId, leadIds));
+      const [followUpsForLeads] = await tx.select({ count: sql<number>`count(*)` }).from(followUps).where(inArray(followUps.leadId, leadIds));
+      counts.activities = Number(activities?.count ?? 0);
+      counts.followUps = Number(followUpsForLeads?.count ?? 0);
+      await tx.delete(followUps).where(inArray(followUps.leadId, leadIds));
+      await tx.delete(leadActivities).where(inArray(leadActivities.leadId, leadIds));
+      await tx.delete(leads).where(inArray(leads.id, leadIds));
+    }
+    await tx.delete(campaignPdvs).where(eq(campaignPdvs.campaignId, id));
+    await tx.delete(campaigns).where(eq(campaigns.id, id));
+  });
+  await writeAudit(actorId, "campaign_deleted", "campaign", id, { name: campaign.name, cascadeDeleted: counts });
+  return { success: true } as const;
+}
+
+export async function setCampaignFrozen(id: number, isFrozen: boolean, actorId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  const result = await db.update(campaigns).set({ isFrozen, updatedAt: new Date() }).where(and(eq(campaigns.id, id), eq(campaigns.isActive, true), isNull(campaigns.deletedAt)));
   const affected = Number((result as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0);
-  if (!affected) throw new Error("Campanha não encontrada ou já excluída");
-  await writeAudit(actorId, "campaign_deleted", "campaign", id, { softDelete: true });
+  if (!affected) throw new Error("Campanha não encontrada");
+  await writeAudit(actorId, isFrozen ? "campaign_frozen" : "campaign_unfrozen", "campaign", id);
   return { success: true } as const;
 }
 

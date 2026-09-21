@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { assignSellerToStore, assumeLead, canAccessLead, createManagedUser, deactivateCampaign, deactivateManagedUser, getAuditLogs, getDashboardFilters, getDashboardStatsScoped, getLeadActivities, getLeadById, getPasswordResetRequests, getPendingLeads, getProductivityReport, getTeam, getVisibleLeads, getVisibleLeadsPage, importLeadRows, listCampaigns, listPdvs, requestPasswordReset, resetManagedUserPassword, saveCampaign, savePdv, setPdvActive, updateLeadTreatment, updateUserAccess } from "./db";
+import { assignSellerToStore, assumeLead, canAccessLead, createManagedUser, deactivateManagedUser, deleteCampaign, getAuditLogs, getDashboardFilters, getDashboardStatsScoped, getLeadActivities, getLeadById, getPasswordResetRequests, getPendingLeads, getProductivityReport, getTeam, getVisibleLeads, getVisibleLeadsPage, importLeadRows, listCampaigns, listPdvs, requestPasswordReset, resetManagedUserPassword, saveCampaign, savePdv, setCampaignFrozen, setPdvActive, updateLeadTreatment, updateUserAccess } from "./db";
 import { leadStatus } from "../drizzle/schema";
 import { hashPassword, loginWithPassword } from "./localAuth";
 import { sdk } from "./_core/sdk";
@@ -73,7 +73,8 @@ export const appRouter = router({
   campaigns: router({
     list: protectedProcedure.input(z.object({ includeInactive: z.boolean().optional() }).optional()).query(({ ctx, input }) => listCampaigns(ctx.user, input?.includeInactive)),
     save: adminProcedure.input(z.object({ id: z.number().int().positive().optional(), name: z.string().min(2).max(160), description: z.string().max(2000).optional(), pdvIds: z.array(z.number().int().positive()).min(1).max(100) })).mutation(({ ctx, input }) => saveCampaign(input, ctx.user.id)),
-    deactivate: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => deactivateCampaign(input.id, ctx.user.id)),
+    delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => deleteCampaign(input.id, ctx.user.id)),
+    setFrozen: adminProcedure.input(z.object({ id: z.number().int().positive(), isFrozen: z.boolean() })).mutation(({ ctx, input }) => setCampaignFrozen(input.id, input.isFrozen, ctx.user.id)),
   }),
   users: router({
     resetRequests: adminProcedure.query(() => getPasswordResetRequests()),
