@@ -7,6 +7,7 @@ import Team from "@/pages/Team";
 import Reports from "@/pages/Reports";
 import Pdvs from "@/pages/Pdvs";
 import Audit from "@/pages/Audit";
+import Campaigns from "@/pages/Campaigns";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -20,6 +21,7 @@ function Router() {
     <Route path="/team" component={Team} />
     <Route path="/reports" component={Reports} />
     <Route path="/pdvs" component={Pdvs} />
+    <Route path="/campaigns" component={Campaigns} />
     <Route path="/audit" component={Audit} />
     <Route path="/404" component={NotFound} />
     <Route component={NotFound} />

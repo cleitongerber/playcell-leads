@@ -35,6 +35,18 @@ export const initialSchemaStatements = [
     UNIQUE KEY \`user_pdvs_user_pdv_unique\` (\`userId\`, \`pdvId\`),
     KEY \`user_pdvs_user_idx\` (\`userId\`), KEY \`user_pdvs_pdv_idx\` (\`pdvId\`)
   )`,
+  `CREATE TABLE IF NOT EXISTS \`campaigns\` (
+    \`id\` int AUTO_INCREMENT NOT NULL, \`name\` varchar(160) NOT NULL, \`description\` text,
+    \`isActive\` boolean NOT NULL DEFAULT true, \`createdBy\` int NOT NULL, \`deletedAt\` timestamp NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT (now()), \`updatedAt\` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (\`id\`), KEY \`campaigns_active_idx\` (\`isActive\`), KEY \`campaigns_created_idx\` (\`createdAt\`)
+  )`,
+  `CREATE TABLE IF NOT EXISTS \`campaign_pdvs\` (
+    \`id\` int AUTO_INCREMENT NOT NULL, \`campaignId\` int NOT NULL, \`pdvId\` int NOT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT (now()), PRIMARY KEY (\`id\`),
+    UNIQUE KEY \`campaign_pdvs_campaign_pdv_unique\` (\`campaignId\`, \`pdvId\`),
+    KEY \`campaign_pdvs_campaign_idx\` (\`campaignId\`), KEY \`campaign_pdvs_pdv_idx\` (\`pdvId\`)
+  )`,
   `CREATE TABLE IF NOT EXISTS \`seller_profiles\` (
     \`id\` int AUTO_INCREMENT NOT NULL, \`userId\` int NOT NULL, \`store\` varchar(80) NOT NULL,
     \`displayName\` varchar(160) NOT NULL, \`createdAt\` timestamp NOT NULL DEFAULT (now()),
@@ -43,7 +55,7 @@ export const initialSchemaStatements = [
   )`,
   `CREATE TABLE IF NOT EXISTS \`leads\` (
     \`id\` int AUTO_INCREMENT NOT NULL, \`name\` varchar(160) NOT NULL, \`phone\` varchar(40) NOT NULL,
-    \`email\` varchar(320), \`store\` varchar(80) NOT NULL, \`pdvId\` int, \`segment\` varchar(120),
+    \`email\` varchar(320), \`store\` varchar(80) NOT NULL, \`pdvId\` int, \`campaignId\` int, \`segment\` varchar(120),
     \`priority\` enum('high','medium','low') NOT NULL DEFAULT 'medium',
     \`source\` varchar(120) NOT NULL DEFAULT 'Importação manual',
     \`status\` enum('new','assigned','contacted','no_answer','interested','proposal','scheduled','converted','not_interested','invalid','callback','finalized') NOT NULL DEFAULT 'new',
@@ -53,9 +65,12 @@ export const initialSchemaStatements = [
     \`createdAt\` timestamp NOT NULL DEFAULT (now()), \`updatedAt\` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
     \`deletedAt\` timestamp NULL, PRIMARY KEY (\`id\`),
     KEY \`leads_status_idx\` (\`status\`), KEY \`leads_store_idx\` (\`store\`), KEY \`leads_assigned_idx\` (\`assignedTo\`),
-    KEY \`leads_pdv_idx\` (\`pdvId\`), KEY \`leads_created_idx\` (\`createdAt\`), KEY \`leads_updated_idx\` (\`updatedAt\`),
+    KEY \`leads_pdv_idx\` (\`pdvId\`), KEY \`leads_campaign_idx\` (\`campaignId\`), KEY \`leads_created_idx\` (\`createdAt\`), KEY \`leads_updated_idx\` (\`updatedAt\`),
     KEY \`leads_available_idx\` (\`pdvId\`, \`assignedTo\`, \`status\`)
   )`,
+  // These two statements are harmlessly ignored on later boots once the additive change exists.
+  `ALTER TABLE \`leads\` ADD COLUMN \`campaignId\` int NULL`,
+  `CREATE INDEX \`leads_campaign_idx\` ON \`leads\` (\`campaignId\`)`,
   `CREATE TABLE IF NOT EXISTS \`lead_activities\` (
     \`id\` int AUTO_INCREMENT NOT NULL, \`leadId\` int NOT NULL, \`userId\` int NOT NULL,
     \`action\` enum('assigned','contact','status','note','created','follow_up','appointment','conversion','assignment_changed') NOT NULL,

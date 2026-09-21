@@ -2,10 +2,12 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import { ArrowUpRight, CalendarCheck2, CheckCircle2, Clock3, LayoutDashboard, PhoneCall, Target, UsersRound } from "lucide-react";
+import { useMemo, useState } from "react";
 
 const statusLabels: Record<string, string> = {
   new: "Novo",
@@ -24,9 +26,15 @@ const statusLabels: Record<string, string> = {
 export default function Home() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const isManager = user?.role === "admin" || user?.role === "supervisor";
+  const [campaignId, setCampaignId] = useState("all");
+  const [pdvId, setPdvId] = useState("all");
+  const [sellerId, setSellerId] = useState("all");
   const leadsQuery = trpc.leads.list.useQuery(undefined, { enabled: Boolean(user) });
-  const dashboardQuery = trpc.leads.dashboard.useQuery(undefined, { enabled: isAdmin });
-  const stats = isAdmin ? dashboardQuery.data : undefined;
+  const dashboardFilters = trpc.leads.dashboardFilters.useQuery(undefined, { enabled: isManager });
+  const dashboardInput = useMemo(() => ({ campaignId: campaignId === "all" ? undefined : Number(campaignId), pdvId: pdvId === "all" ? undefined : Number(pdvId), sellerId: sellerId === "all" ? undefined : Number(sellerId) }), [campaignId, pdvId, sellerId]);
+  const dashboardQuery = trpc.leads.dashboard.useQuery(dashboardInput, { enabled: isManager });
+  const stats = isManager ? dashboardQuery.data : undefined;
   const leads = leadsQuery.data ?? [];
   const sellerStats = {
     total: leads.length,
@@ -34,7 +42,7 @@ export default function Home() {
     scheduled: leads.filter((lead) => lead.status === "scheduled").length,
     converted: leads.filter((lead) => lead.status === "converted").length,
   };
-  const cards = isAdmin
+  const cards = isManager
     ? [
         { label: "Leads na operação", value: stats?.total ?? 0, detail: "Base disponível no sistema", icon: UsersRound, tone: "mint" },
         { label: "Novos para tratamento", value: stats?.newLeads ?? 0, detail: "Aguardando assunção", icon: Target, tone: "amber" },
@@ -77,10 +85,12 @@ export default function Home() {
           })}
         </div>
 
+        {isManager && <Card className="border-0 bg-white/80 shadow-[0_10px_35px_-25px_rgba(16,43,53,.4)]"><CardContent className="grid gap-3 p-4 md:grid-cols-3"><div><p className="mb-1.5 text-xs font-semibold uppercase tracking-[.1em] text-muted-foreground">Campanha</p><Select value={campaignId} onValueChange={setCampaignId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as campanhas</SelectItem>{dashboardFilters.data?.campaigns.map((campaign) => <SelectItem key={campaign.id} value={String(campaign.id)}>{campaign.name}</SelectItem>)}</SelectContent></Select></div><div><p className="mb-1.5 text-xs font-semibold uppercase tracking-[.1em] text-muted-foreground">PDV</p><Select value={pdvId} onValueChange={setPdvId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os PDVs</SelectItem>{dashboardFilters.data?.pdvs.map((pdv) => <SelectItem key={pdv.id} value={String(pdv.id)}>{pdv.name}</SelectItem>)}</SelectContent></Select></div><div><p className="mb-1.5 text-xs font-semibold uppercase tracking-[.1em] text-muted-foreground">Vendedor</p><Select value={sellerId} onValueChange={setSellerId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os vendedores</SelectItem>{dashboardFilters.data?.sellers.map((seller) => <SelectItem key={seller.id} value={String(seller.id)}>{seller.name}</SelectItem>)}</SelectContent></Select></div></CardContent></Card>}
+
         <div className="grid gap-6 xl:grid-cols-[1.35fr_.9fr]">
           <Card className="border-0 bg-white/80 shadow-[0_10px_35px_-25px_rgba(16,43,53,.4)]">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-[#e8eeed] px-6 py-5"><div><CardTitle className="text-lg tracking-[-.02em]">Distribuição por loja</CardTitle><p className="mt-1 text-sm text-muted-foreground">Acompanhe o ritmo de Videira, Fraiburgo e Caçador.</p></div><Badge variant="outline" className="rounded-full border-[#d5e5dc] bg-[#f6fbf5] text-[#3e7a45]">Área Fibra</Badge></CardHeader>
-            <CardContent className="p-6">{isAdmin ? <div className="space-y-5">{(stats?.byStore ?? []).map((row) => { const rate = row.total ? Math.round((row.converted / row.total) * 100) : 0; return <div key={row.store}><div className="mb-2 flex items-center justify-between text-sm"><span className="font-semibold text-[#1d3d45]">{row.store}</span><span className="text-muted-foreground">{row.total} leads · {row.converted} convertidos</span></div><div className="h-2 overflow-hidden rounded-full bg-[#edf1ed]"><div className="h-full rounded-full bg-[#80c47d]" style={{ width: `${Math.max(rate, row.total ? 8 : 0)}%` }} /></div><div className="mt-1 text-xs text-muted-foreground">{rate}% de conversão registrada</div></div>; })}</div> : <div className="rounded-2xl bg-[#f5faf5] p-5 text-sm leading-6 text-[#557069]">Sua carteira será exibida aqui com o avanço por loja assim que os leads forem assumidos e tratados.</div>}</CardContent>
+            <CardHeader className="flex flex-row items-center justify-between border-b border-[#e8eeed] px-6 py-5"><div><CardTitle className="text-lg tracking-[-.02em]">Distribuição por PDV</CardTitle><p className="mt-1 text-sm text-muted-foreground">Os indicadores acompanham os filtros selecionados acima.</p></div><Badge variant="outline" className="rounded-full border-[#d5e5dc] bg-[#f6fbf5] text-[#3e7a45]">Gestão comercial</Badge></CardHeader>
+            <CardContent className="p-6">{isManager ? <div className="space-y-5">{(stats?.byStore ?? []).map((row) => { const rate = row.total ? Math.round((row.converted / row.total) * 100) : 0; return <div key={row.store}><div className="mb-2 flex items-center justify-between text-sm"><span className="font-semibold text-[#1d3d45]">{row.store}</span><span className="text-muted-foreground">{row.total} leads · {row.converted} convertidos</span></div><div className="h-2 overflow-hidden rounded-full bg-[#edf1ed]"><div className="h-full rounded-full bg-[#80c47d]" style={{ width: `${Math.max(rate, row.total ? 8 : 0)}%` }} /></div><div className="mt-1 text-xs text-muted-foreground">{rate}% de conversão registrada</div></div>; })}</div> : <div className="rounded-2xl bg-[#f5faf5] p-5 text-sm leading-6 text-[#557069]">Sua carteira será exibida aqui com o avanço por loja assim que os leads forem assumidos e tratados.</div>}</CardContent>
           </Card>
           <Card className="border-0 bg-[#f8f3e9] shadow-[0_10px_35px_-25px_rgba(16,43,53,.35)]"><CardHeader><CardTitle className="flex items-center gap-2 text-lg tracking-[-.02em] text-[#473d31]"><LayoutDashboard className="h-5 w-5 text-[#b87928]" /> Próxima rotina</CardTitle></CardHeader><CardContent className="space-y-4"><div className="rounded-2xl bg-white/70 p-4"><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#b87928]">Terça a quinta</p><p className="mt-2 text-sm leading-6 text-[#6e5f4c]">Cada vendedor trabalha a fila de leads, realiza os disparos e registra o status do atendimento.</p></div><div className="rounded-2xl bg-white/70 p-4"><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#b87928]">Sexta-feira</p><p className="mt-2 text-sm leading-6 text-[#6e5f4c]">Dia de fechamento, agendamentos, retornos e recuperação de oportunidades.</p></div><Link href="/leads"><Button variant="outline" className="w-full rounded-xl border-[#dfcfb4] bg-transparent text-[#6e5f4c] hover:bg-white">Abrir carteira <ArrowUpRight className="ml-2 h-4 w-4" /></Button></Link></CardContent></Card>
         </div>

@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
-import { auditLogs, followUps, InsertUser, leadActivities, leadImports, LeadStatus, leads, pdvs, sellerProfiles, userPdvs, users } from "../drizzle/schema";
+import { auditLogs, campaignPdvs, campaigns, followUps, InsertUser, leadActivities, leadImports, LeadStatus, leads, pdvs, sellerProfiles, userPdvs, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { initialSchemaStatements } from "./schemaBootstrap";
 
@@ -34,7 +34,15 @@ async function initializeDatabase() {
   }
   const pool = mysql.createPool({ uri: appUrl, ssl: tls });
   try {
-    for (const statement of initialSchemaStatements) await pool.promise().query(statement);
+    for (const statement of initialSchemaStatements) {
+      try {
+        await pool.promise().query(statement);
+      } catch (error: any) {
+        // The bootstrap runs on every deployment. Explicit additive ALTER/INDEX
+        // statements must therefore tolerate an already-upgraded database.
+        if (!["ER_DUP_FIELDNAME", "ER_DUP_KEYNAME", "ER_TABLE_EXISTS_ERROR"].includes(error?.code)) throw error;
+      }
+    }
     _db = drizzle({ client: pool });
   } catch (error) {
     await pool.promise().end();
@@ -145,7 +153,7 @@ export async function assignSellerToStore(input: { userId: number; store: string
   return { success: true } as const;
 }
 
-export async function getVisibleLeads(user: AccessUser, filters: { status?: LeadStatus; search?: string; store?: string; pdvId?: number; view?: "available" | "mine" | "all" }) {
+export async function getVisibleLeads(user: AccessUser, filters: { status?: LeadStatus; search?: string; store?: string; pdvId?: number; campaignId?: number; view?: "available" | "mine" | "all" }) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
@@ -156,6 +164,7 @@ export async function getVisibleLeads(user: AccessUser, filters: { status?: Lead
   }
   if (filters.store) conditions.push(eq(leads.store, filters.store));
   if (filters.pdvId) conditions.push(eq(leads.pdvId, filters.pdvId));
+  if (filters.campaignId) conditions.push(eq(leads.campaignId, filters.campaignId));
   conditions.push(isNull(leads.deletedAt));
   if (user.role !== "admin") {
     const allowedPdvs = await getAccessiblePdvIds(user);
@@ -202,10 +211,15 @@ export async function canAccessLead(user: AccessUser, lead: typeof leads.$inferS
   return user.role === "supervisor" || lead.assignedTo === user.id || lead.assignedTo === null;
 }
 
-export async function importLeadRows(rows: Array<{ name: string; phone: string; email?: string; store: string; segment?: string; priority?: "high" | "medium" | "low"; source?: string; extraData?: string }>, importedBy: number, fileName: string) {
+export async function importLeadRows(rows: Array<{ name: string; phone: string; email?: string; store: string; segment?: string; priority?: "high" | "medium" | "low"; source?: string; extraData?: string }>, campaignId: number, importedBy: number, fileName: string) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível");
   if (!rows.length) return { inserted: 0 };
+  const campaign = (await db.select().from(campaigns).where(and(eq(campaigns.id, campaignId), eq(campaigns.isActive, true), isNull(campaigns.deletedAt))).limit(1))[0];
+  if (!campaign) throw new Error("A campanha selecionada não está disponível");
+  const campaignPdvRows = await db.select({ pdvId: campaignPdvs.pdvId }).from(campaignPdvs).where(eq(campaignPdvs.campaignId, campaignId));
+  const campaignPdvIds = new Set(campaignPdvRows.map((row) => row.pdvId));
+  if (!campaignPdvIds.size) throw new Error("A campanha não possui PDVs autorizados");
   const normalizePhone = (value: string) => {
     const digits = value.replace(/\D/g, "");
     return digits.length >= 10 ? (digits.startsWith("55") ? digits : `55${digits}`) : "";
@@ -213,7 +227,7 @@ export async function importLeadRows(rows: Array<{ name: string; phone: string; 
   const pdvRows = await db.select({ id: pdvs.id, name: pdvs.name, isActive: pdvs.isActive }).from(pdvs);
   const pdvByName = new Map(pdvRows.map((pdv) => [pdv.name.trim().toLocaleLowerCase(), pdv]));
   const phones = rows.map((row) => normalizePhone(row.phone)).filter(Boolean);
-  const existing = phones.length ? await db.select({ id: leads.id, phone: leads.phone }).from(leads).where(inArray(leads.phone, phones)) : [];
+  const existing = phones.length ? await db.select({ id: leads.id, phone: leads.phone }).from(leads).where(and(inArray(leads.phone, phones), eq(leads.campaignId, campaignId))) : [];
   const existingByPhone = new Map(existing.map((lead) => [lead.phone, lead.id]));
   const newRows = [];
   let updated = 0;
@@ -223,7 +237,7 @@ export async function importLeadRows(rows: Array<{ name: string; phone: string; 
   for (const row of rows) {
     const phone = normalizePhone(row.phone);
     const pdv = pdvByName.get(row.store.trim().toLocaleLowerCase());
-    if (!phone || !row.name.trim() || !pdv || !pdv.isActive) { invalid += 1; continue; }
+    if (!phone || !row.name.trim() || !pdv || !pdv.isActive || !campaignPdvIds.has(pdv.id)) { invalid += 1; continue; }
     if (processedPhones.has(phone)) { duplicates += 1; continue; }
     processedPhones.add(phone);
     const normalized = {
@@ -232,6 +246,7 @@ export async function importLeadRows(rows: Array<{ name: string; phone: string; 
       email: row.email?.trim() || null,
       store: pdv.name,
       pdvId: pdv.id,
+      campaignId,
       segment: row.segment?.trim() || null,
       priority: row.priority ?? "medium",
       source: row.source?.trim() || `Importação: ${fileName}`,
@@ -247,7 +262,7 @@ export async function importLeadRows(rows: Array<{ name: string; phone: string; 
   }
   if (newRows.length) await db.insert(leads).values(newRows);
   await db.insert(leadImports).values({ fileName, importedBy, rowCount: rows.length });
-  await writeAudit(importedBy, "leads_imported", "lead_import", fileName, { total: rows.length, inserted: newRows.length, updated, duplicates, invalid });
+  await writeAudit(importedBy, "leads_imported", "lead_import", fileName, { campaignId, campaign: campaign.name, total: rows.length, inserted: newRows.length, updated, duplicates, invalid });
   return { processed: rows.length, inserted: newRows.length, updated, duplicates, invalid };
 }
 
@@ -312,8 +327,8 @@ export async function getDashboardStats() {
   };
 }
 
-export async function getDashboardStatsScoped(user: AccessUser, filters: { from?: Date; to?: Date; pdvId?: number; sellerId?: number; status?: LeadStatus; source?: string }) {
-  const visible = await getVisibleLeads(user, { pdvId: filters.pdvId, status: filters.status, view: user.role === "user" ? "mine" : "all" });
+export async function getDashboardStatsScoped(user: AccessUser, filters: { from?: Date; to?: Date; pdvId?: number; campaignId?: number; sellerId?: number; status?: LeadStatus; source?: string }) {
+  const visible = await getVisibleLeads(user, { pdvId: filters.pdvId, campaignId: filters.campaignId, status: filters.status, view: user.role === "user" ? "mine" : "all" });
   const rows = visible.filter((lead) => (!filters.from || lead.createdAt >= filters.from) && (!filters.to || lead.createdAt <= filters.to) && (!filters.sellerId || lead.assignedTo === filters.sellerId) && (!filters.source || lead.source === filters.source));
   const count = (predicate: (lead: typeof leads.$inferSelect) => boolean) => rows.filter(predicate).length;
   const received = rows.length;
@@ -365,6 +380,74 @@ export async function listPdvs(includeInactive = false) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(pdvs).where(includeInactive ? undefined : eq(pdvs.isActive, true)).orderBy(asc(pdvs.name));
+}
+
+export async function listCampaigns(user: AccessUser, includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  const allowedPdvs = await getAccessiblePdvIds(user);
+  const campaignRows = await db.select().from(campaigns)
+    .where(includeInactive && user.role === "admin" ? undefined : and(eq(campaigns.isActive, true), isNull(campaigns.deletedAt)))
+    .orderBy(desc(campaigns.createdAt));
+  const scopes = await db.select({ campaignId: campaignPdvs.campaignId, pdvId: pdvs.id, pdvName: pdvs.name, pdvActive: pdvs.isActive })
+    .from(campaignPdvs).innerJoin(pdvs, eq(campaignPdvs.pdvId, pdvs.id));
+  return campaignRows
+    .map((campaign) => ({ ...campaign, pdvs: scopes.filter((scope) => scope.campaignId === campaign.id).map(({ pdvId, pdvName, pdvActive }) => ({ id: pdvId, name: pdvName, isActive: pdvActive })) }))
+    .filter((campaign) => user.role === "admin" || campaign.pdvs.some((pdv) => allowedPdvs?.includes(pdv.id)));
+}
+
+export async function saveCampaign(input: { id?: number; name: string; description?: string; pdvIds: number[] }, actorId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  const uniquePdvIds = Array.from(new Set(input.pdvIds));
+  if (!uniquePdvIds.length) throw new Error("Selecione ao menos um PDV para a campanha");
+  const activePdvs = await db.select({ id: pdvs.id }).from(pdvs).where(and(inArray(pdvs.id, uniquePdvIds), eq(pdvs.isActive, true)));
+  if (activePdvs.length !== uniquePdvIds.length) throw new Error("Um ou mais PDVs selecionados não estão ativos");
+  const values = { name: input.name.trim(), description: input.description?.trim() || null, updatedAt: new Date() };
+  let campaignId = input.id;
+  await db.transaction(async (tx) => {
+    if (campaignId) {
+      const current = await tx.select({ id: campaigns.id }).from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+      if (!current[0]) throw new Error("Campanha não encontrada");
+      await tx.update(campaigns).set(values).where(eq(campaigns.id, campaignId));
+      await tx.delete(campaignPdvs).where(eq(campaignPdvs.campaignId, campaignId));
+    } else {
+      const inserted = await tx.insert(campaigns).values({ ...values, createdBy: actorId, isActive: true, deletedAt: null });
+      campaignId = Number(inserted[0].insertId);
+    }
+    await tx.insert(campaignPdvs).values(uniquePdvIds.map((pdvId) => ({ campaignId: campaignId!, pdvId })));
+  });
+  await writeAudit(actorId, input.id ? "campaign_updated" : "campaign_created", "campaign", campaignId, { name: values.name, pdvIds: uniquePdvIds });
+  return { id: campaignId };
+}
+
+export async function deactivateCampaign(id: number, actorId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível");
+  const result = await db.update(campaigns).set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() }).where(and(eq(campaigns.id, id), isNull(campaigns.deletedAt)));
+  const affected = Number((result as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0);
+  if (!affected) throw new Error("Campanha não encontrada ou já excluída");
+  await writeAudit(actorId, "campaign_deleted", "campaign", id, { softDelete: true });
+  return { success: true } as const;
+}
+
+export async function getDashboardFilters(user: AccessUser) {
+  const [visiblePdvs, visibleCampaigns] = await Promise.all([
+    user.role === "admin" ? listPdvs(false) : listPdvs(false).then(async (items) => {
+      const allowed = await getAccessiblePdvIds(user);
+      return items.filter((pdv) => allowed?.includes(pdv.id));
+    }),
+    listCampaigns(user, false),
+  ]);
+  const db = await getDb();
+  if (!db) return { pdvs: visiblePdvs, campaigns: visibleCampaigns, sellers: [] };
+  const allowedIds = visiblePdvs.map((pdv) => pdv.id);
+  if (!allowedIds.length) return { pdvs: visiblePdvs, campaigns: visibleCampaigns, sellers: [] };
+  const sellerScopes = await db.select({ userId: users.id, name: users.name, email: users.email, pdvId: userPdvs.pdvId })
+    .from(users).innerJoin(userPdvs, eq(users.id, userPdvs.userId))
+    .where(and(eq(users.isActive, true), eq(users.role, "user"), inArray(userPdvs.pdvId, allowedIds)));
+  const sellers = Array.from(new Map(sellerScopes.map((seller) => [seller.userId, { id: seller.userId, name: seller.name || seller.email || `Vendedor #${seller.userId}` }])).values());
+  return { pdvs: visiblePdvs, campaigns: visibleCampaigns, sellers };
 }
 
 export async function savePdv(input: { id?: number; name: string; code: string; city?: string; region?: string; managerUserId?: number; leadTarget?: number; conversionTarget?: number; isActive?: boolean }, actorId: number) {

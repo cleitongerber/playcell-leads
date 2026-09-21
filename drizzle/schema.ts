@@ -45,6 +45,33 @@ export const userPdvs = mysqlTable("user_pdvs", {
   userPdvUnique: uniqueIndex("user_pdvs_user_pdv_unique").on(table.userId, table.pdvId),
 }));
 
+/** Campaigns organize imported bases without tying them to a single PDV. */
+export const campaigns = mysqlTable("campaigns", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 160 }).notNull(),
+  description: text("description"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdBy: int("createdBy").notNull(),
+  deletedAt: timestamp("deletedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  activeIdx: index("campaigns_active_idx").on(table.isActive),
+  createdIdx: index("campaigns_created_idx").on(table.createdAt),
+}));
+
+/** A campaign can be made available to multiple PDVs, and a PDV can run many campaigns. */
+export const campaignPdvs = mysqlTable("campaign_pdvs", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignId: int("campaignId").notNull(),
+  pdvId: int("pdvId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  campaignIdx: index("campaign_pdvs_campaign_idx").on(table.campaignId),
+  pdvIdx: index("campaign_pdvs_pdv_idx").on(table.pdvId),
+  uniqueScope: uniqueIndex("campaign_pdvs_campaign_pdv_unique").on(table.campaignId, table.pdvId),
+}));
+
 export const sellerProfiles = mysqlTable("seller_profiles", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull().unique(),
@@ -78,6 +105,7 @@ export const leads = mysqlTable("leads", {
   email: varchar("email", { length: 320 }),
   store: varchar("store", { length: 80 }).notNull(),
   pdvId: int("pdvId"),
+  campaignId: int("campaignId"),
   segment: varchar("segment", { length: 120 }),
   priority: mysqlEnum("priority", ["high", "medium", "low"]).default("medium").notNull(),
   source: varchar("source", { length: 120 }).default("Importação manual").notNull(),
@@ -98,6 +126,7 @@ export const leads = mysqlTable("leads", {
   storeIdx: index("leads_store_idx").on(table.store),
   assignedIdx: index("leads_assigned_idx").on(table.assignedTo),
   pdvIdx: index("leads_pdv_idx").on(table.pdvId),
+  campaignIdx: index("leads_campaign_idx").on(table.campaignId),
   createdIdx: index("leads_created_idx").on(table.createdAt),
   updatedIdx: index("leads_updated_idx").on(table.updatedAt),
   availableIdx: index("leads_available_idx").on(table.pdvId, table.assignedTo, table.status),
@@ -169,3 +198,4 @@ export type InsertLead = typeof leads.$inferInsert;
 export type LeadStatus = (typeof leadStatus)[number];
 export type SellerProfile = typeof sellerProfiles.$inferSelect;
 export type Pdv = typeof pdvs.$inferSelect;
+export type Campaign = typeof campaigns.$inferSelect;
