@@ -57,7 +57,7 @@ export const appRouter = router({
     import: adminProcedure.input(z.object({ fileName: z.string(), campaignId: z.number().int().positive(), rows: z.array(leadInput).min(1).max(10000) })).mutation(({ ctx, input }) => importLeadRows(input.rows, input.campaignId, ctx.user.id, input.fileName)),
     dashboard: protectedProcedure.input(z.object({ from: z.string().datetime().optional(), to: z.string().datetime().optional(), pdvId: z.number().int().positive().optional(), campaignId: z.number().int().positive().optional(), sellerId: z.number().int().positive().optional(), status: z.enum(leadStatus).optional(), source: z.string().max(120).optional() }).optional()).query(({ ctx, input }) => getDashboardStatsScoped(ctx.user, { ...input, from: input?.from ? new Date(input.from) : undefined, to: input?.to ? new Date(input.to) : undefined })),
     dashboardFilters: protectedProcedure.query(({ ctx }) => getDashboardFilters(ctx.user)),
-    productivity: adminProcedure.query(() => getProductivityReport()),
+    productivity: protectedProcedure.input(z.object({ pdvId: z.number().int().positive().optional(), campaignId: z.number().int().positive().optional(), sellerId: z.number().int().positive().optional() }).optional()).query(({ ctx, input }) => getProductivityReport(ctx.user, input ?? {})),
     pending: protectedProcedure.query(({ ctx }) => getPendingLeads(ctx.user)),
   }),
   team: router({

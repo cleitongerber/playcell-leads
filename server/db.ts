@@ -350,30 +350,33 @@ export async function getDashboardStatsScoped(user: AccessUser, filters: { from?
   };
 }
 
-export async function getProductivityReport() {
+export async function getProductivityReport(user: AccessUser, filters: { pdvId?: number; campaignId?: number; sellerId?: number } = {}) {
+  if (user.role === "user") throw new Error("O relatório de produtividade é destinado à gestão");
   const db = await getDb();
   if (!db) return { rows: [], totals: { leads: 0, contacted: 0, scheduled: 0, converted: 0, conversionRate: 0 } };
-  const rows = await db.select({
-    userId: leads.assignedTo,
-    seller: users.name,
-    displayName: sellerProfiles.displayName,
-    store: leads.store,
-    leads: sql<number>`count(*)`,
-    contacted: sql<number>`sum(case when ${leads.lastContactAt} is not null then 1 else 0 end)`,
-    scheduled: sql<number>`sum(case when ${leads.status} = 'scheduled' then 1 else 0 end)`,
-    converted: sql<number>`sum(case when ${leads.status} = 'converted' then 1 else 0 end)`,
-    noAnswer: sql<number>`sum(case when ${leads.status} = 'no_answer' then 1 else 0 end)`,
-  }).from(leads)
-    .leftJoin(users, eq(leads.assignedTo, users.id))
-    .leftJoin(sellerProfiles, eq(leads.assignedTo, sellerProfiles.userId))
-    .groupBy(leads.assignedTo, users.name, sellerProfiles.displayName, leads.store)
-    .orderBy(desc(sql`count(*)`));
-  const normalized = rows.map((row) => ({ ...row, leads: Number(row.leads), contacted: Number(row.contacted), scheduled: Number(row.scheduled), converted: Number(row.converted), noAnswer: Number(row.noAnswer) }));
-  const totalLeads = normalized.reduce((sum, row) => sum + row.leads, 0);
-  const totalContacted = normalized.reduce((sum, row) => sum + row.contacted, 0);
-  const totalScheduled = normalized.reduce((sum, row) => sum + row.scheduled, 0);
-  const totalConverted = normalized.reduce((sum, row) => sum + row.converted, 0);
-  return { rows: normalized, totals: { leads: totalLeads, contacted: totalContacted, scheduled: totalScheduled, converted: totalConverted, conversionRate: totalLeads ? Math.round((totalConverted / totalLeads) * 1000) / 10 : 0 } };
+  const visible = await getVisibleLeads(user, { pdvId: filters.pdvId, campaignId: filters.campaignId, view: "all" });
+  const selected = visible.filter((lead) => !filters.sellerId || lead.assignedTo === filters.sellerId);
+  const sellerIds = Array.from(new Set(selected.flatMap((lead) => lead.assignedTo === null ? [] : [lead.assignedTo])));
+  const people = sellerIds.length ? await db.select({ id: users.id, name: users.name, displayName: sellerProfiles.displayName }).from(users).leftJoin(sellerProfiles, eq(users.id, sellerProfiles.userId)).where(inArray(users.id, sellerIds)) : [];
+  const peopleById = new Map(people.map((person) => [person.id, person]));
+  const grouped = new Map<string, { userId: number | null; seller: string | null; displayName: string | null; store: string; leads: number; contacted: number; scheduled: number; converted: number; noAnswer: number }>();
+  for (const lead of selected) {
+    const key = `${lead.assignedTo ?? "available"}:${lead.store}`;
+    const person = lead.assignedTo === null ? undefined : peopleById.get(lead.assignedTo);
+    const row = grouped.get(key) ?? { userId: lead.assignedTo, seller: person?.name ?? null, displayName: person?.displayName ?? null, store: lead.store, leads: 0, contacted: 0, scheduled: 0, converted: 0, noAnswer: 0 };
+    row.leads += 1;
+    row.contacted += lead.lastContactAt ? 1 : 0;
+    row.scheduled += lead.status === "scheduled" ? 1 : 0;
+    row.converted += lead.status === "converted" ? 1 : 0;
+    row.noAnswer += lead.status === "no_answer" ? 1 : 0;
+    grouped.set(key, row);
+  }
+  const rows = Array.from(grouped.values()).sort((first, second) => second.leads - first.leads);
+  const totalLeads = rows.reduce((sum, row) => sum + row.leads, 0);
+  const totalContacted = rows.reduce((sum, row) => sum + row.contacted, 0);
+  const totalScheduled = rows.reduce((sum, row) => sum + row.scheduled, 0);
+  const totalConverted = rows.reduce((sum, row) => sum + row.converted, 0);
+  return { rows, totals: { leads: totalLeads, contacted: totalContacted, scheduled: totalScheduled, converted: totalConverted, conversionRate: totalLeads ? Math.round((totalConverted / totalLeads) * 1000) / 10 : 0 } };
 }
 
 export async function listPdvs(includeInactive = false) {
