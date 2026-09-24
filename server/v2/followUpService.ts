@@ -48,6 +48,62 @@ async function scopedPdvs(db: V2Database, context: PartnerContext) {
   ).map(row => row.pdvId);
 }
 
+/**
+ * Returns only the filter values that are already inside the caller's
+ * operational scope. This keeps the UI convenient without making filter IDs
+ * an authorization mechanism.
+ */
+export async function listFollowUpFilters(context: PartnerContext) {
+  const db = await getV2Db();
+  const scope = await scopedPdvs(db, context);
+  if (scope && !scope.length) return { pdvs: [], owners: [] };
+
+  const pdvConditions = [
+    eq(pdvs.partnerId, context.partnerId),
+    eq(pdvs.isActive, true),
+  ];
+  if (scope) pdvConditions.push(inArray(pdvs.id, scope));
+  const accessiblePdvs = await db
+    .select({ id: pdvs.id, name: pdvs.name })
+    .from(pdvs)
+    .where(and(...pdvConditions))
+    .orderBy(asc(pdvs.name));
+  const accessiblePdvIds = accessiblePdvs.map(pdv => pdv.id);
+  if (!accessiblePdvIds.length)
+    return { pdvs: accessiblePdvs, owners: [] };
+
+  const ownerRows = await db
+    .select({
+      id: userPartners.id,
+      name: users.name,
+      role: userPartners.role,
+    })
+    .from(userPartners)
+    .innerJoin(users, eq(users.id, userPartners.userId))
+    .innerJoin(
+      userPdvAssignments,
+      and(
+        eq(userPdvAssignments.membershipId, userPartners.id),
+        eq(userPdvAssignments.partnerId, userPartners.partnerId)
+      )
+    )
+    .where(
+      and(
+        eq(userPartners.partnerId, context.partnerId),
+        eq(userPartners.isActive, true),
+        eq(users.isActive, true),
+        eq(userPdvAssignments.isActive, true),
+        inArray(userPdvAssignments.pdvId, accessiblePdvIds)
+      )
+    )
+    .orderBy(asc(users.name), asc(userPartners.id));
+  const owners = Array.from(
+    new Map(ownerRows.map(owner => [owner.id, owner])).values()
+  );
+
+  return { pdvs: accessiblePdvs, owners };
+}
+
 async function loadLead(
   db: V2Database,
   context: PartnerContext,
@@ -518,6 +574,7 @@ export async function listFollowUps(
     pdvId: leads.pdvId,
     pdvName: pdvs.name,
     campaignName: campaigns.name,
+    ownerName: users.name,
   };
   const [items, totals] = await Promise.all([
     db
@@ -526,6 +583,14 @@ export async function listFollowUps(
       .innerJoin(leads, eq(leads.id, followUps.leadId))
       .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
       .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
+      .innerJoin(
+        userPartners,
+        and(
+          eq(userPartners.id, followUps.ownerMembershipId),
+          eq(userPartners.partnerId, followUps.partnerId)
+        )
+      )
+      .innerJoin(users, eq(users.id, userPartners.userId))
       .where(where)
       .orderBy(asc(followUps.dueAt), asc(followUps.id))
       .limit(pageSize)

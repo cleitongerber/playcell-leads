@@ -33,6 +33,7 @@ import {
   completeFollowUp,
   createFollowUp,
   followUpAlerts,
+  listFollowUpFilters,
   listFollowUps,
   rescheduleFollowUp,
 } from "./followUpService";
@@ -447,6 +448,9 @@ export const v2FoundationRouter = v2Router({
   }),
   followUps: v2Router({
     alerts: v2PartnerProcedure.query(({ ctx }) => followUpAlerts(ctx.partner)),
+    filters: v2PartnerProcedure.query(({ ctx }) =>
+      listFollowUpFilters(ctx.partner)
+    ),
     list: v2PartnerProcedure
       .input(
         z.object({

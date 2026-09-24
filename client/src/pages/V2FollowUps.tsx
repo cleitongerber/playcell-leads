@@ -2,6 +2,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { v2trpc } from "@/lib/v2trpc";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -16,6 +23,12 @@ const viewLabels: Record<FollowUpView, string> = {
   completed: "Concluídos",
 };
 
+const membershipRoleLabels: Record<string, string> = {
+  partner_admin: "Administrador",
+  manager: "Gestor",
+  seller: "Vendedor",
+};
+
 function asDateTimeLocal(value: Date) {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 16);
@@ -28,6 +41,10 @@ export default function V2FollowUps() {
   const [ownerMembershipId, setOwnerMembershipId] = useState("");
   const [reschedule, setReschedule] = useState<Record<number, string>>({});
   const access = v2trpc.access.context.useQuery();
+  const canFilterTeam = Boolean(access.data && access.data.role !== "seller");
+  const filterOptions = v2trpc.followUps.filters.useQuery(undefined, {
+    enabled: canFilterTeam,
+  });
   const utils = v2trpc.useUtils();
   const alerts = v2trpc.followUps.alerts.useQuery();
   const list = v2trpc.followUps.list.useQuery({
@@ -59,7 +76,6 @@ export default function V2FollowUps() {
     },
     onError: error => toast.error(error.message),
   });
-  const canFilterTeam = access.data?.role !== "seller";
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
@@ -125,24 +141,44 @@ export default function V2FollowUps() {
           </div>
           {canFilterTeam && (
             <div className="flex flex-1 flex-col gap-2 sm:flex-row">
-              <Input
-                inputMode="numeric"
-                value={pdvId}
-                onChange={event => {
-                  setPdvId(event.target.value);
+              <Select
+                value={pdvId || "all"}
+                onValueChange={value => {
+                  setPdvId(value === "all" ? "" : value);
                   setPage(1);
                 }}
-                placeholder="Filtrar por ID do PDV"
-              />
-              <Input
-                inputMode="numeric"
-                value={ownerMembershipId}
-                onChange={event => {
-                  setOwnerMembershipId(event.target.value);
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Todos os PDVs" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os PDVs</SelectItem>
+                  {filterOptions.data?.pdvs.map(pdv => (
+                    <SelectItem key={pdv.id} value={String(pdv.id)}>
+                      {pdv.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={ownerMembershipId || "all"}
+                onValueChange={value => {
+                  setOwnerMembershipId(value === "all" ? "" : value);
                   setPage(1);
                 }}
-                placeholder="Filtrar por ID do responsável"
-              />
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Todos os responsáveis" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os responsáveis</SelectItem>
+                  {filterOptions.data?.owners.map(owner => (
+                    <SelectItem key={owner.id} value={String(owner.id)}>
+                      {owner.name} · {membershipRoleLabels[owner.role] ?? "Usuário"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
         </CardContent>
@@ -169,6 +205,9 @@ export default function V2FollowUps() {
                     <p className="text-sm text-muted-foreground">
                       {item.campaignName} · {item.pdvName} ·{" "}
                       {item.leadPhone || "Sem telefone"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Responsável: {item.ownerName}
                     </p>
                     {item.note && <p className="mt-2 text-sm">{item.note}</p>}
                   </div>
