@@ -1,0 +1,268 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { v2trpc } from "@/lib/v2trpc";
+import { useState } from "react";
+import { toast } from "sonner";
+import { Link } from "wouter";
+
+type FollowUpView = "overdue" | "today" | "upcoming" | "completed";
+
+const viewLabels: Record<FollowUpView, string> = {
+  overdue: "Vencidos",
+  today: "Hoje",
+  upcoming: "Próximos",
+  completed: "Concluídos",
+};
+
+function asDateTimeLocal(value: Date) {
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+export default function V2FollowUps() {
+  const [view, setView] = useState<FollowUpView>("overdue");
+  const [page, setPage] = useState(1);
+  const [pdvId, setPdvId] = useState("");
+  const [ownerMembershipId, setOwnerMembershipId] = useState("");
+  const [reschedule, setReschedule] = useState<Record<number, string>>({});
+  const access = v2trpc.access.context.useQuery();
+  const utils = v2trpc.useUtils();
+  const alerts = v2trpc.followUps.alerts.useQuery();
+  const list = v2trpc.followUps.list.useQuery({
+    view,
+    page,
+    pageSize: 25,
+    pdvId: pdvId ? Number(pdvId) : undefined,
+    ownerMembershipId: ownerMembershipId
+      ? Number(ownerMembershipId)
+      : undefined,
+  });
+  const refresh = () => {
+    utils.followUps.alerts.invalidate();
+    utils.followUps.list.invalidate();
+    utils.leads.get.invalidate();
+  };
+  const complete = v2trpc.followUps.complete.useMutation({
+    onSuccess: refresh,
+    onError: error => toast.error(error.message),
+  });
+  const cancel = v2trpc.followUps.cancel.useMutation({
+    onSuccess: refresh,
+    onError: error => toast.error(error.message),
+  });
+  const rescheduleFollowUp = v2trpc.followUps.reschedule.useMutation({
+    onSuccess: () => {
+      setReschedule({});
+      refresh();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const canFilterTeam = access.data?.role !== "seller";
+
+  return (
+    <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
+      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
+            V2 / Operação
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold">Follow-ups</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Agenda do parceiro em {alerts.data?.timezone ?? "…"}. Vencimento é
+            calculado no servidor, não no navegador.
+          </p>
+        </div>
+        <Link href="/v2/leads">
+          <Button variant="outline">Leads</Button>
+        </Link>
+      </header>
+
+      <section className="grid gap-3 sm:grid-cols-3">
+        <Card className={alerts.data?.overdue ? "border-destructive" : ""}>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Vencidos</p>
+            <p className="text-2xl font-semibold">
+              {alerts.data?.overdue ?? 0}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Para hoje</p>
+            <p className="text-2xl font-semibold">{alerts.data?.today ?? 0}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Próxima pendência</p>
+            <p className="text-sm font-medium">
+              {alerts.data?.nextDueAt
+                ? new Date(alerts.data.nextDueAt).toLocaleString("pt-BR")
+                : "Nenhuma"}
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-4 lg:flex-row">
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(viewLabels) as FollowUpView[]).map(option => (
+              <Button
+                key={option}
+                size="sm"
+                variant={view === option ? "default" : "outline"}
+                onClick={() => {
+                  setView(option);
+                  setPage(1);
+                }}
+              >
+                {viewLabels[option]}
+              </Button>
+            ))}
+          </div>
+          {canFilterTeam && (
+            <div className="flex flex-1 flex-col gap-2 sm:flex-row">
+              <Input
+                inputMode="numeric"
+                value={pdvId}
+                onChange={event => {
+                  setPdvId(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Filtrar por ID do PDV"
+              />
+              <Input
+                inputMode="numeric"
+                value={ownerMembershipId}
+                onChange={event => {
+                  setOwnerMembershipId(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Filtrar por ID do responsável"
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{viewLabels[view]}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {list.data?.items.map(item => {
+            const proposedAt =
+              reschedule[item.id] ?? asDateTimeLocal(item.dueAt);
+            const isPending = item.status === "pending";
+            return (
+              <article key={item.id} className="rounded-lg border p-4">
+                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
+                  <div>
+                    <Link href={`/v2/leads/${item.leadId}`}>
+                      <span className="cursor-pointer font-medium hover:underline">
+                        {item.leadName || "Lead sem nome"}
+                      </span>
+                    </Link>
+                    <p className="text-sm text-muted-foreground">
+                      {item.campaignName} · {item.pdvName} ·{" "}
+                      {item.leadPhone || "Sem telefone"}
+                    </p>
+                    {item.note && <p className="mt-2 text-sm">{item.note}</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        item.derivedStatus === "overdue"
+                          ? "destructive"
+                          : "outline"
+                      }
+                    >
+                      {item.derivedStatus === "overdue"
+                        ? "Vencido"
+                        : item.status}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {new Date(item.dueAt).toLocaleString("pt-BR")}
+                    </span>
+                  </div>
+                </div>
+                {isPending && (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Button
+                      size="sm"
+                      onClick={() => complete.mutate({ id: item.id })}
+                    >
+                      Concluir
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => cancel.mutate({ id: item.id })}
+                    >
+                      Cancelar
+                    </Button>
+                    <Input
+                      className="sm:max-w-xs"
+                      type="datetime-local"
+                      value={proposedAt}
+                      onChange={event =>
+                        setReschedule(current => ({
+                          ...current,
+                          [item.id]: event.target.value,
+                        }))
+                      }
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={rescheduleFollowUp.isPending || !proposedAt}
+                      onClick={() =>
+                        rescheduleFollowUp.mutate({
+                          id: item.id,
+                          dueAt: new Date(proposedAt),
+                        })
+                      }
+                    >
+                      Reagendar
+                    </Button>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+          {!list.data?.items.length && (
+            <p className="p-8 text-center text-sm text-muted-foreground">
+              Nenhum follow-up nesta lista.
+            </p>
+          )}
+          <div className="flex items-center justify-between pt-3 text-sm text-muted-foreground">
+            <span>{list.data?.total ?? 0} resultado(s)</span>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
+                Anterior
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={
+                  !list.data || page * list.data.pageSize >= list.data.total
+                }
+                onClick={() => setPage(page + 1)}
+              >
+                Próxima
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}

@@ -1,44 +1,47 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import Leads from "@/pages/Leads";
-import ImportLeads from "@/pages/ImportLeads";
-import Team from "@/pages/Team";
-import Reports from "@/pages/Reports";
-import Pdvs from "@/pages/Pdvs";
-import Audit from "@/pages/Audit";
-import Campaigns from "@/pages/Campaigns";
-import FollowUps from "@/pages/FollowUps";
+import V2Administration from "@/pages/V2Administration";
+import V2Campaigns, { V2CampaignDetail } from "@/pages/V2Campaigns";
+import V2Leads, { V2LeadDetail } from "@/pages/V2Leads";
+import V2FollowUps from "@/pages/V2FollowUps";
+import V2Governance from "@/pages/V2Governance";
+import V2Importer from "@/pages/V2Importer";
+import V2ImportConfiguration from "@/pages/V2ImportConfiguration";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
 
 function Router() {
-  return <Switch>
-    <Route path="/" component={Home} />
-    <Route path="/leads" component={Leads} />
-    <Route path="/follow-ups" component={FollowUps} />
-    <Route path="/import" component={ImportLeads} />
-    <Route path="/team" component={Team} />
-    <Route path="/reports" component={Reports} />
-    <Route path="/pdvs" component={Pdvs} />
-    <Route path="/campaigns" component={Campaigns} />
-    <Route path="/audit" component={Audit} />
-    <Route path="/404" component={NotFound} />
-    <Route component={NotFound} />
-  </Switch>;
+  return (
+    <Switch>
+      <Route path="/" component={V2Administration} />
+      <Route path="/v2/admin" component={V2Administration} />
+      <Route path="/v2/import-settings" component={V2ImportConfiguration} />
+      <Route path="/v2/campaigns/:id/imports" component={V2Importer} />
+      <Route path="/v2/campaigns/:id" component={V2CampaignDetail} />
+      <Route path="/v2/campaigns" component={V2Campaigns} />
+      <Route path="/v2/leads/:id" component={V2LeadDetail} />
+      <Route path="/v2/leads" component={V2Leads} />
+      <Route path="/v2/follow-ups" component={V2FollowUps} />
+      <Route path="/v2/governance" component={V2Governance} />
+      <Route path="/404" component={NotFound} />
+      <Route component={NotFound} />
+    </Switch>
+  );
 }
 
 function App() {
-  return <ErrorBoundary>
-    <ThemeProvider defaultTheme="light">
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
-    </ThemeProvider>
-  </ErrorBoundary>;
+  return (
+    <ErrorBoundary>
+      <ThemeProvider defaultTheme="light">
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
+  );
 }
 
 export default App;

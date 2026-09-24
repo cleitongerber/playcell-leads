@@ -9,6 +9,8 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { bootstrapAdmin } from "../localAuth";
+import { v2FoundationRouter } from "../v2/router";
+import { createV2Context } from "../v2/context";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -32,19 +34,40 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  const v2Mode = process.env.V2_ENABLE_API === "true";
+
+  if (v2Mode && (!process.env.V2_DATABASE_URL || !process.env.V2_APP_DATABASE)) {
+    throw new Error(
+      "V2_ENABLE_API requer V2_DATABASE_URL e V2_APP_DATABASE configurados"
+    );
+  }
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  registerStorageProxy(app);
-  registerOAuthRoutes(app);
-  // tRPC API
-  app.use(
-    "/api/trpc",
-    createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })
-  );
+
+  if (v2Mode) {
+    // Cutover mode intentionally mounts only the V2 API. This prevents legacy
+    // bootstrap, OAuth, storage proxy, and V1 database routes from operating
+    // after the published service is switched to V2.
+    app.use(
+      "/api/v2/trpc",
+      createExpressMiddleware({
+        router: v2FoundationRouter,
+        createContext: createV2Context,
+      })
+    );
+  } else {
+    registerStorageProxy(app);
+    registerOAuthRoutes(app);
+    app.use(
+      "/api/trpc",
+      createExpressMiddleware({
+        router: appRouter,
+        createContext,
+      })
+    );
+  }
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
@@ -61,9 +84,13 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
-    // Database availability must not delay the web-service health check. The
-    // bootstrap is idempotent and will create the initial admin when the DB is reachable.
-    bootstrapAdmin().catch((error) => console.error("[Auth] Initial admin bootstrap failed", error));
+    if (!v2Mode) {
+      // Database availability must not delay the V1 web-service health check.
+      // V2's first Super Admin is always created by its explicit CLI command.
+      bootstrapAdmin().catch(error =>
+        console.error("[Auth] Initial admin bootstrap failed", error)
+      );
+    }
   });
 }
 

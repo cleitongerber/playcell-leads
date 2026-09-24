@@ -10,7 +10,7 @@ function getForgeConfig() {
 
   if (!forgeUrl || !forgeKey) {
     throw new Error(
-      "Storage config missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY",
+      "Storage config missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY"
     );
   }
 
@@ -28,13 +28,12 @@ function appendHashSuffix(relKey: string): string {
   return `${relKey.slice(0, lastDot)}_${hash}${relKey.slice(lastDot)}`;
 }
 
-export async function storagePut(
-  relKey: string,
+async function putStorageObject(
+  key: string,
   data: Buffer | Uint8Array | string,
-  contentType = "application/octet-stream",
+  contentType = "application/octet-stream"
 ): Promise<{ key: string; url: string }> {
   const { forgeUrl, forgeKey } = getForgeConfig();
-  const key = appendHashSuffix(normalizeKey(relKey));
 
   // 1. Get presigned PUT URL from Forge
   const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
@@ -71,7 +70,33 @@ export async function storagePut(
   return { key, url: `/manus-storage/${key}` };
 }
 
-export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
+export async function storagePut(
+  relKey: string,
+  data: Buffer | Uint8Array | string,
+  contentType = "application/octet-stream"
+): Promise<{ key: string; url: string }> {
+  return putStorageObject(
+    appendHashSuffix(normalizeKey(relKey)),
+    data,
+    contentType
+  );
+}
+
+/**
+ * V2 callers generate a high-entropy opaque key before persisting an upload
+ * intent. This keeps storage and DB reconciliation possible after a failure.
+ */
+export async function storagePutExact(
+  relKey: string,
+  data: Buffer | Uint8Array | string,
+  contentType = "application/octet-stream"
+): Promise<{ key: string; url: string }> {
+  return putStorageObject(normalizeKey(relKey), data, contentType);
+}
+
+export async function storageGet(
+  relKey: string
+): Promise<{ key: string; url: string }> {
   const key = normalizeKey(relKey);
   return { key, url: `/manus-storage/${key}` };
 }

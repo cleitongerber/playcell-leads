@@ -33,8 +33,29 @@
     {
       "idx": 4,
       "version": "5",
+      "when": 1789836500000,
+      "tag": "0004_campaigns",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
       "when": 1789837000000,
       "tag": "0004_local_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1789837500000,
+      "tag": "0005_password_reset_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1789838000000,
+      "tag": "0006_campaign_freeze",
       "breakpoints": true
     }
   ]

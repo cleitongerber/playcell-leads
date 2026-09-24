@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1790210423903,
+      "tag": "0000_v2_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1790211258578,
+      "tag": "0001_v2_pdvs_user_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1790212327675,
+      "tag": "0002_v2_campaigns",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1790213027022,
+      "tag": "0003_v2_leads_timeline",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1790243023062,
+      "tag": "0004_v2_follow_ups",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1790244613449,
+      "tag": "0005_v2_evidences_governance",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1790246287818,
+      "tag": "0006_v2_configurable_importer",
+      "breakpoints": true
+    }
+  ]
+}
