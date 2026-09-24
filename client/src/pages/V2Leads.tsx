@@ -182,30 +182,39 @@ export default function V2Leads() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {list.data?.items.map(lead => (
-            <button
-              key={lead.id}
-              className="flex w-full flex-col justify-between gap-2 rounded-lg border p-4 text-left hover:bg-muted/40 sm:flex-row sm:items-center"
-              onClick={() => navigate(`/v2/leads/${lead.id}`)}
-            >
-              <div>
-                <p className="font-medium">{lead.name || "Lead sem nome"}</p>
-                <p className="text-sm text-muted-foreground">
-                  {lead.phone || "Sem telefone"} · {lead.campaignName} ·{" "}
-                  {lead.pdvName}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">{lead.statusLabel}</Badge>
-                {lead.assignedMembershipId ? (
-                  <Badge variant="secondary">Atribuído</Badge>
-                ) : (
-                  <Badge>Disponível</Badge>
-                )}
-              </div>
-            </button>
-          ))}
-          {!list.data?.items.length && (
+          {list.isLoading ? (
+            <p className="p-8 text-center text-sm text-muted-foreground">
+              Carregando leads…
+            </p>
+          ) : list.isError ? (
+            <p className="p-8 text-center text-sm text-destructive">
+              Não foi possível carregar os leads. Tente novamente.
+            </p>
+          ) : list.data?.items.length ? (
+            list.data.items.map(lead => (
+              <button
+                key={lead.id}
+                className="flex w-full flex-col justify-between gap-2 rounded-lg border p-4 text-left hover:bg-muted/40 sm:flex-row sm:items-center"
+                onClick={() => navigate(`/v2/leads/${lead.id}`)}
+              >
+                <div>
+                  <p className="font-medium">{lead.name || "Lead sem nome"}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {lead.phone || "Sem telefone"} · {lead.campaignName} ·{" "}
+                    {lead.pdvName}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">{lead.statusLabel}</Badge>
+                  {lead.assignedMembershipId ? (
+                    <Badge variant="secondary">Atribuído</Badge>
+                  ) : (
+                    <Badge>Disponível</Badge>
+                  )}
+                </div>
+              </button>
+            ))
+          ) : (
             <p className="p-8 text-center text-sm text-muted-foreground">
               Nenhum lead encontrado.
             </p>
