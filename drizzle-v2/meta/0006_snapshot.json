@@ -3037,6 +3037,14 @@
             "normalizedPhone"
           ],
           "isUnique": false
+        },
+        "leads_id_partner_unique": {
+          "name": "leads_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
         }
       },
       "foreignKeys": {

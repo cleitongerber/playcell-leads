@@ -471,6 +471,13 @@ export const leads = mysqlTable(
       table.partnerId,
       table.normalizedPhone
     ),
+    // TiDB requires an index matching every referenced composite tenant key.
+    // `id` remains globally unique, while this index makes the tenant scope
+    // explicit and supports child-table foreign keys safely.
+    idPartnerUnique: uniqueIndex("leads_id_partner_unique").on(
+      table.id,
+      table.partnerId
+    ),
     campaignTenantReference: foreignKey({
       columns: [table.campaignId, table.partnerId],
       foreignColumns: [campaigns.id, campaigns.partnerId],

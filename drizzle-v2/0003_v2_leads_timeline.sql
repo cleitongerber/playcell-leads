@@ -74,7 +74,8 @@ CREATE TABLE `leads` (
 	`deletedAt` timestamp,
 	`createdAt` timestamp NOT NULL DEFAULT (now()),
 	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
-	CONSTRAINT `leads_id` PRIMARY KEY(`id`)
+	CONSTRAINT `leads_id` PRIMARY KEY(`id`),
+	CONSTRAINT `leads_id_partner_unique` UNIQUE(`id`,`partnerId`)
 );
 --> statement-breakpoint
 ALTER TABLE `lead_contacts` ADD CONSTRAINT `lead_contacts_lead_tenant_fk` FOREIGN KEY (`leadId`,`partnerId`) REFERENCES `leads`(`id`,`partnerId`) ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
