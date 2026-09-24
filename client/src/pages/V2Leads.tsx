@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { v2trpc } from "@/lib/v2trpc";
+import { presentTimelineEvent } from "@/lib/timelinePresentation";
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useRoute } from "wouter";
@@ -602,6 +603,10 @@ export function V2LeadDetail() {
           </CardHeader>
           <CardContent className="space-y-4">
             {detail.data?.timeline.map(event => {
+              const presentation = presentTimelineEvent(
+                event.type,
+                event.payloadJson
+              );
               const eventEvidences = detail.data.evidences.filter(
                 evidence => evidence.timelineEventId === event.id
               );
@@ -613,7 +618,7 @@ export function V2LeadDetail() {
               return (
                 <div key={event.id} className="border-l-2 pl-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium">{event.type}</p>
+                    <p className="text-sm font-medium">{presentation.title}</p>
                     {eventEvidences.length > 0 && (
                       <Badge variant="secondary">
                         {eventEvidences.length} evidência(s)
@@ -628,9 +633,9 @@ export function V2LeadDetail() {
                   <p className="text-xs text-muted-foreground">
                     {event.occurredAt.toLocaleString("pt-BR")}
                   </p>
-                  {Boolean(event.payloadJson) && (
+                  {presentation.description && (
                     <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-                      {String(JSON.stringify(event.payloadJson))}
+                      {presentation.description}
                     </p>
                   )}
                   {eventGovernance && !eventGovernance.isComplete && (
