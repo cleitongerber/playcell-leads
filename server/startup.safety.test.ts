@@ -14,6 +14,14 @@ const serverSource = readFileSync(
   fileURLToPath(new URL("./_core/index.ts", import.meta.url)),
   "utf8"
 );
+const v2ContextSource = readFileSync(
+  fileURLToPath(new URL("./v2/context.ts", import.meta.url)),
+  "utf8"
+);
+const v2RouterSource = readFileSync(
+  fileURLToPath(new URL("./v2/router.ts", import.meta.url)),
+  "utf8"
+);
 
 describe("database startup safety", () => {
   it("does not execute cleanup, DDL, or operational deletes from the connection path", () => {
@@ -40,9 +48,21 @@ describe("database startup safety", () => {
   });
 
   it("does not mount or bootstrap V1 when the explicit V2 cutover flag is on", () => {
-    expect(serverSource).toContain('const v2Mode = process.env.V2_ENABLE_API === "true"');
+    expect(serverSource).toContain(
+      'const v2Mode = process.env.V2_ENABLE_API === "true"'
+    );
     expect(serverSource).toContain("if (v2Mode) {");
-    expect(serverSource).toContain("if (!v2Mode) {");
-    expect(serverSource).toContain("V2's first Super Admin is always created by its explicit CLI command");
+    expect(serverSource).toContain("} else {");
+    expect(serverSource).toContain('import("./oauth")');
+    expect(serverSource).toContain(
+      "V1 only: V2's Super Admin remains an explicit CLI/bootstrap step."
+    );
+  });
+
+  it("does not reuse the legacy session or OAuth SDK in V2 authentication", () => {
+    expect(v2ContextSource).not.toContain("../_core/sdk");
+    expect(v2RouterSource).not.toContain("../_core/sdk");
+    expect(v2ContextSource).toContain("V2_SESSION_COOKIE_NAME");
+    expect(v2RouterSource).toContain("V2_SESSION_COOKIE_NAME");
   });
 });

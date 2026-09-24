@@ -3,12 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
-import { registerStorageProxy } from "./storageProxy";
-import { appRouter } from "../routers";
-import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { bootstrapAdmin } from "../localAuth";
 import { v2FoundationRouter } from "../v2/router";
 import { createV2Context } from "../v2/context";
 
@@ -36,9 +31,14 @@ async function startServer() {
   const server = createServer(app);
   const v2Mode = process.env.V2_ENABLE_API === "true";
 
-  if (v2Mode && (!process.env.V2_DATABASE_URL || !process.env.V2_APP_DATABASE)) {
+  if (
+    v2Mode &&
+    (!process.env.V2_DATABASE_URL ||
+      !process.env.V2_APP_DATABASE ||
+      !process.env.V2_SESSION_SECRET)
+  ) {
     throw new Error(
-      "V2_ENABLE_API requer V2_DATABASE_URL e V2_APP_DATABASE configurados"
+      "V2_ENABLE_API requer V2_DATABASE_URL, V2_APP_DATABASE e V2_SESSION_SECRET configurados"
     );
   }
 
@@ -58,6 +58,19 @@ async function startServer() {
       })
     );
   } else {
+    const [
+      { registerOAuthRoutes },
+      { registerStorageProxy },
+      { appRouter },
+      { createContext },
+      { bootstrapAdmin },
+    ] = await Promise.all([
+      import("./oauth"),
+      import("./storageProxy"),
+      import("../routers"),
+      import("./context"),
+      import("../localAuth"),
+    ]);
     registerStorageProxy(app);
     registerOAuthRoutes(app);
     app.use(
@@ -67,6 +80,12 @@ async function startServer() {
         createContext,
       })
     );
+    // V1 only: V2's Super Admin remains an explicit CLI/bootstrap step.
+    server.once("listening", () => {
+      bootstrapAdmin().catch(error =>
+        console.error("[Auth] Initial admin bootstrap failed", error)
+      );
+    });
   }
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
@@ -84,13 +103,6 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
-    if (!v2Mode) {
-      // Database availability must not delay the V1 web-service health check.
-      // V2's first Super Admin is always created by its explicit CLI command.
-      bootstrapAdmin().catch(error =>
-        console.error("[Auth] Initial admin bootstrap failed", error)
-      );
-    }
   });
 }
 

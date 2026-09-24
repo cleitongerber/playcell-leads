@@ -1,8 +1,11 @@
 import { z } from "zod";
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "../_core/cookies";
-import { sdk } from "../_core/sdk";
 import { loginV2WithPassword } from "./auth";
+import {
+  createV2SessionToken,
+  V2_SESSION_COOKIE_NAME,
+  V2_SESSION_DURATION_MS,
+} from "./session";
 import {
   createCampaign,
   getCampaignDetail,
@@ -149,18 +152,18 @@ export const v2FoundationRouter = v2Router({
       )
       .mutation(async ({ ctx, input }) => {
         const user = await loginV2WithPassword(input.email, input.password);
-        const token = await sdk.createSessionToken(user.openId, {
+        const token = await createV2SessionToken({
+          openId: user.openId,
           name: user.name,
-          expiresInMs: ONE_YEAR_MS,
         });
-        ctx.res.cookie(COOKIE_NAME, token, {
+        ctx.res.cookie(V2_SESSION_COOKIE_NAME, token, {
           ...getSessionCookieOptions(ctx.req),
-          maxAge: ONE_YEAR_MS,
+          maxAge: V2_SESSION_DURATION_MS,
         });
         return { success: true } as const;
       }),
     logout: v2PublicProcedure.mutation(({ ctx }) => {
-      ctx.res.clearCookie(COOKIE_NAME, {
+      ctx.res.clearCookie(V2_SESSION_COOKIE_NAME, {
         ...getSessionCookieOptions(ctx.req),
         maxAge: -1,
       });

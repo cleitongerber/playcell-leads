@@ -2,9 +2,8 @@ import type { CreateExpressContextOptions } from "@trpc/server/adapters/express"
 import { eq } from "drizzle-orm";
 import { users, type V2User } from "../../drizzle-v2/schema";
 import { parse as parseCookieHeader } from "cookie";
-import { COOKIE_NAME } from "@shared/const";
-import { sdk } from "../_core/sdk";
 import { getV2Db } from "./database";
+import { V2_SESSION_COOKIE_NAME, verifyV2SessionToken } from "./session";
 
 export type V2TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -20,14 +19,25 @@ function parsePartnerId(value: string | string[] | undefined) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-export async function createV2Context(opts: CreateExpressContextOptions): Promise<V2TrpcContext> {
+export async function createV2Context(
+  opts: CreateExpressContextOptions
+): Promise<V2TrpcContext> {
   let user: V2User | null = null;
   try {
-    const token = parseCookieHeader(opts.req.headers.cookie ?? "")[COOKIE_NAME];
-    const session = await sdk.verifySession(token);
+    const token = parseCookieHeader(opts.req.headers.cookie ?? "")[
+      V2_SESSION_COOKIE_NAME
+    ];
+    const session = await verifyV2SessionToken(token);
     if (session) {
       const db = await getV2Db();
-      user = (await db.select().from(users).where(eq(users.openId, session.openId)).limit(1))[0] ?? null;
+      user =
+        (
+          await db
+            .select()
+            .from(users)
+            .where(eq(users.openId, session.openId))
+            .limit(1)
+        )[0] ?? null;
     }
   } catch {
     user = null;
