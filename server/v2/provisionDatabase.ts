@@ -1,4 +1,5 @@
 import mysql from "mysql2/promise";
+import { readV2ConnectionConfig } from "./connectionConfig";
 
 export type V2DatabaseProvisionConfig = {
   sourceUrl: string;
@@ -13,24 +14,11 @@ export type V2DatabaseProvisionConfig = {
 export function readV2DatabaseProvisionConfig(
   environment: NodeJS.ProcessEnv = process.env
 ): V2DatabaseProvisionConfig {
-  const sourceUrl = environment.V2_DATABASE_URL;
-  const databaseName = environment.V2_APP_DATABASE?.trim();
-  if (!sourceUrl) throw new Error("V2_DATABASE_URL não configurada");
-  if (!databaseName || !/^[a-zA-Z0-9_]+$/.test(databaseName)) {
-    throw new Error("V2_APP_DATABASE inválida ou não configurada");
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(sourceUrl);
-  } catch {
-    throw new Error("V2_DATABASE_URL inválida");
-  }
-  if (parsed.protocol !== "mysql:") {
-    throw new Error("V2_DATABASE_URL deve utilizar o protocolo mysql");
-  }
-
-  return { sourceUrl, databaseName };
+  const connection = readV2ConnectionConfig(environment);
+  return {
+    sourceUrl: connection.sourceUrl,
+    databaseName: connection.databaseName,
+  };
 }
 
 export async function provisionV2Database(
