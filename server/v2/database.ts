@@ -7,6 +7,7 @@ export type V2Database = ReturnType<typeof drizzle<typeof schema>>;
 
 let database: V2Database | null = null;
 let initialization: Promise<void> | null = null;
+let connectionPool: mysql.Pool | null = null;
 
 async function connectV2Database() {
   // V2 never falls back to the V1 connection. This guard prevents a future
@@ -23,10 +24,23 @@ async function connectV2Database() {
 
   try {
     database = drizzle(pool, { schema, mode: "default" });
+    connectionPool = pool;
   } catch (error) {
     await pool.promise().end();
     throw error;
   }
+}
+
+/**
+ * Explicitly release the V2 pool for one-shot CLIs such as bootstrap and the
+ * optional demo seed. The HTTP server intentionally keeps its pool open.
+ */
+export async function closeV2Db() {
+  const pool = connectionPool;
+  connectionPool = null;
+  database = null;
+  initialization = null;
+  if (pool) await pool.promise().end();
 }
 
 /** Opens a connection only. Schema changes are exclusively Drizzle migrations. */
