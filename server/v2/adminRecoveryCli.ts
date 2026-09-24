@@ -8,8 +8,9 @@ import { recoverV2SuperAdmin } from "./adminRecovery";
  */
 async function main() {
   try {
-    await recoverV2SuperAdmin();
-    console.log("[V2 admin recovery] completed");
+    const result = await recoverV2SuperAdmin();
+    if (!result.verified) throw new Error("A recuperação não foi verificada.");
+    console.log("[V2 admin recovery] completed_and_verified");
   } catch (error) {
     console.error(
       "[V2 admin recovery] failed",

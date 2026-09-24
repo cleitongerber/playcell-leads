@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { users } from "../../drizzle-v2/schema";
 import { getV2Db, type V2Database } from "./database";
-import { hashV2Password } from "./password";
+import { hashV2Password, verifyV2Password } from "./password";
 import { writeV2Audit } from "./partnerService";
 
 /**
@@ -107,6 +107,32 @@ export async function recoverV2SuperAdmin(
       );
     }
 
+    // Do not report a successful recovery unless the exact secret supplied to
+    // this one-shot CLI can authenticate against the value just persisted.
+    // This remains entirely inside the process and never logs the password.
+    const repairedUser = (
+      await transactionDb
+        .select({
+          email: users.email,
+          passwordHash: users.passwordHash,
+          systemRole: users.systemRole,
+          isActive: users.isActive,
+        })
+        .from(users)
+        .where(eq(users.id, superAdminId))
+        .limit(1)
+    )[0];
+    const verified =
+      repairedUser?.email === config.email &&
+      repairedUser.systemRole === "super_admin" &&
+      repairedUser.isActive &&
+      (await verifyV2Password(config.password, repairedUser.passwordHash));
+    if (!verified) {
+      throw new Error(
+        "A senha recuperada não pôde ser validada. A transação foi revertida."
+      );
+    }
+
     // There is no authenticated actor during an emergency credential recovery.
     // The repaired user is recorded as the affected account, with the mechanism
     // clearly marked and without e-mail, password or secret values in metadata.
@@ -119,5 +145,5 @@ export async function recoverV2SuperAdmin(
     });
   });
 
-  return { updatedUserId: superAdminId };
+  return { updatedUserId: superAdminId, verified: true };
 }
