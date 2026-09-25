@@ -697,28 +697,59 @@ export async function getDashboardAnalytics(
 ) {
   const analytics = await createAnalyticsContext(context, filters);
   const { db, scope, period, now } = analytics;
+
+  // Keep the client response deliberately generic, but make a failed aggregate
+  // identifiable in the service log. This is especially important for the
+  // dashboard because it fans out into independent SQL aggregates and one
+  // failed query must not be mistaken for an authorization failure.
+  const queryStage = async <T>(stage: string, query: () => Promise<T>) => {
+    try {
+      return await query();
+    } catch (error) {
+      console.error("[v2.analytics.dashboard] aggregate failed", {
+        stage,
+        partnerId: context.partnerId,
+        membershipId: context.membershipId,
+        role: context.role,
+        error: error instanceof Error ? error.message : "unknown error",
+      });
+      throw error;
+    }
+  };
   const [cohort, previousCohort, activity, previousActivity, stocks, overview] =
     await Promise.all([
-      queryCohortMetrics(db, context, scope, filters, period),
-      queryCohortMetrics(db, context, scope, filters, {
-        start: period.previousStart,
-        end: period.previousEnd,
-      }),
-      queryPeriodActivityMetrics(db, context, scope, filters, period),
-      queryPeriodActivityMetrics(db, context, scope, filters, {
-        start: period.previousStart,
-        end: period.previousEnd,
-      }),
-      queryDashboardStocks(
-        db,
-        context,
-        scope,
-        filters,
-        period,
-        now,
-        analytics.staleLeadMinutes
+      queryStage("cohort", () =>
+        queryCohortMetrics(db, context, scope, filters, period)
       ),
-      queryCampaignAndPdvOverview(db, context, scope, filters, period, now),
+      queryStage("previous_cohort", () =>
+        queryCohortMetrics(db, context, scope, filters, {
+          start: period.previousStart,
+          end: period.previousEnd,
+        })
+      ),
+      queryStage("activity", () =>
+        queryPeriodActivityMetrics(db, context, scope, filters, period)
+      ),
+      queryStage("previous_activity", () =>
+        queryPeriodActivityMetrics(db, context, scope, filters, {
+          start: period.previousStart,
+          end: period.previousEnd,
+        })
+      ),
+      queryStage("stocks", () =>
+        queryDashboardStocks(
+          db,
+          context,
+          scope,
+          filters,
+          period,
+          now,
+          analytics.staleLeadMinutes
+        )
+      ),
+      queryStage("overview", () =>
+        queryCampaignAndPdvOverview(db, context, scope, filters, period, now)
+      ),
     ]);
   const conversionRate = safeRate(cohort.converted, cohort.received);
   const previousConversionRate = safeRate(
