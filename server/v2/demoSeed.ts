@@ -454,6 +454,13 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     role: "seller",
     pdvIds: [cacadorPdvId],
   });
+  await createPartnerUser(superAdminContext, {
+    name: "Vendedor DEMO 3",
+    email: "vendedor3.demo@playcell.example",
+    password: config.demoPassword,
+    role: "seller",
+    pdvIds: [videiraPdvId, fraiburgoPdvId],
+  });
 
   const sellerOneContext: PartnerContext = {
     partnerId,
@@ -632,6 +639,34 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     },
     receivedAt: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000),
   });
+  const distributionLeads = await Promise.all(
+    [
+      ["Cliente DEMO Base Videira 01", videiraPdvId, "(47) 90000-1101"],
+      ["Cliente DEMO Base Videira 02", videiraPdvId, "(47) 90000-1102"],
+      ["Cliente DEMO Base Videira 03", videiraPdvId, "(47) 90000-1103"],
+      ["Cliente DEMO Base Fraiburgo 01", fraiburgoPdvId, "(47) 90000-1201"],
+      ["Cliente DEMO Base Fraiburgo 02", fraiburgoPdvId, "(47) 90000-1202"],
+      ["Cliente DEMO Base Caçador 01", cacadorPdvId, "(47) 90000-1301"],
+      ["Cliente DEMO Base Caçador 02", cacadorPdvId, "(47) 90000-1302"],
+    ].map(async ([name, pdvId, phone], index) =>
+      ensureLead(db, superAdminContext, {
+        campaignId: activeCampaignId,
+        pdvId: Number(pdvId),
+        statusId: requiredStatus("new"),
+        sourceId: requiredSource("import"),
+        name: String(name),
+        phone: String(phone),
+        email: `base-${index + 1}@demo.example`,
+        customData: {
+          documento: `DEMO-DIST-${index + 1}`,
+          produto: index % 2 ? "Acessório DEMO" : "Plano DEMO",
+          demoSeed: true,
+          distributionSeed: true,
+        },
+        receivedAt: new Date(now.getTime() - (index + 1) * 60 * 1000),
+      })
+    )
+  );
 
   if (overdue.created) {
     await assumeLead(sellerOneContext, overdue.id);
@@ -719,7 +754,14 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     partnerCode: DEMO_PARTNER_CODE,
     campaignId: activeCampaignId,
     templateVersionId,
-    createdLeads: [available, overdue, upcoming, today, completed].filter(
+    createdLeads: [
+      available,
+      overdue,
+      upcoming,
+      today,
+      completed,
+      ...distributionLeads,
+    ].filter(
       lead => lead.created
     ).length,
   };

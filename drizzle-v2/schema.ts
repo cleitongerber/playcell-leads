@@ -41,6 +41,10 @@ export const leadTimelineType = [
   "import_updated",
   "appointment",
   "evidence",
+  "lead_distributed",
+  "lead_reassigned",
+  "lead_returned_to_queue",
+  "follow_up_owner_changed",
 ] as const;
 export const timelineVisibility = ["partner", "restricted"] as const;
 export const followUpStatus = ["pending", "completed", "cancelled"] as const;
@@ -52,6 +56,14 @@ export const evidenceStorageStatus = [
   "available",
   "failed",
 ] as const;
+export const leadDistributionBatchType = [
+  "assign",
+  "reassign",
+  "return_to_queue",
+  "balanced",
+] as const;
+export const leadDistributionBatchStrategy = ["manual", "balanced"] as const;
+export const leadDistributionBatchStatus = ["processing", "completed"] as const;
 export const customFieldEntityType = ["lead"] as const;
 export const customFieldType = [
   "text",
@@ -467,6 +479,25 @@ export const leads = mysqlTable(
       table.deletedAt,
       table.updatedAt
     ),
+    partnerDistributionFilterIdx: index(
+      "leads_partner_distribution_filter_idx"
+    ).on(
+      table.partnerId,
+      table.campaignId,
+      table.pdvId,
+      table.statusId,
+      table.assignedMembershipId,
+      table.deletedAt,
+      table.receivedAt,
+      table.id
+    ),
+    partnerCampaignActivityIdx: index("leads_partner_campaign_activity_idx").on(
+      table.partnerId,
+      table.campaignId,
+      table.deletedAt,
+      table.lastActivityAt,
+      table.id
+    ),
     partnerPhoneIdx: index("leads_partner_normalized_phone_idx").on(
       table.partnerId,
       table.normalizedPhone
@@ -502,6 +533,66 @@ export const leads = mysqlTable(
       columns: [table.assignedMembershipId, table.partnerId],
       foreignColumns: [userPartners.id, userPartners.partnerId],
       name: "leads_assignee_tenant_fk",
+    }).onDelete("restrict"),
+  })
+);
+
+/**
+ * One record per administrative operation. It is both an idempotency boundary
+ * for double submits and a concise audit handle for high-volume work.
+ */
+export const leadDistributionBatches = mysqlTable(
+  "lead_distribution_batches",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    partnerId: int("partnerId").notNull(),
+    campaignId: int("campaignId").notNull(),
+    actorUserId: int("actorUserId").notNull(),
+    actorMembershipId: int("actorMembershipId"),
+    requestKey: varchar("requestKey", { length: 96 }).notNull(),
+    type: mysqlEnum("type", leadDistributionBatchType).notNull(),
+    strategy: mysqlEnum("strategy", leadDistributionBatchStrategy).notNull(),
+    status: mysqlEnum("status", leadDistributionBatchStatus)
+      .notNull()
+      .default("processing"),
+    requestedCount: int("requestedCount").notNull().default(0),
+    processedCount: int("processedCount").notNull().default(0),
+    successCount: int("successCount").notNull().default(0),
+    skippedCount: int("skippedCount").notNull().default(0),
+    failedCount: int("failedCount").notNull().default(0),
+    metadataJson: json("metadataJson"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    completedAt: timestamp("completedAt"),
+  },
+  table => ({
+    partnerActorRequestUnique: uniqueIndex(
+      "lead_distribution_batches_partner_actor_request_unique"
+    ).on(table.partnerId, table.actorUserId, table.requestKey),
+    partnerCampaignCreatedIdx: index(
+      "lead_distribution_batches_partner_campaign_created_idx"
+    ).on(table.partnerId, table.campaignId, table.createdAt),
+    partnerStatusCreatedIdx: index(
+      "lead_distribution_batches_partner_status_created_idx"
+    ).on(table.partnerId, table.status, table.createdAt),
+    partnerReference: foreignKey({
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+      name: "lead_distribution_batches_partner_fk",
+    }).onDelete("restrict"),
+    campaignTenantReference: foreignKey({
+      columns: [table.campaignId, table.partnerId],
+      foreignColumns: [campaigns.id, campaigns.partnerId],
+      name: "lead_distribution_batches_campaign_tenant_fk",
+    }).onDelete("restrict"),
+    actorUserReference: foreignKey({
+      columns: [table.actorUserId],
+      foreignColumns: [users.id],
+      name: "lead_distribution_batches_actor_user_fk",
+    }).onDelete("restrict"),
+    actorMembershipTenantReference: foreignKey({
+      columns: [table.actorMembershipId, table.partnerId],
+      foreignColumns: [userPartners.id, userPartners.partnerId],
+      name: "lead_distribution_batches_actor_membership_tenant_fk",
     }).onDelete("restrict"),
   })
 );
@@ -1220,6 +1311,8 @@ export type V2Campaign = typeof campaigns.$inferSelect;
 export type CampaignStatus = (typeof campaignStatus)[number];
 export type LeadStatusCategory = (typeof leadStatusCategory)[number];
 export type LeadTimelineType = (typeof leadTimelineType)[number];
+export type LeadDistributionBatchType =
+  (typeof leadDistributionBatchType)[number];
 export type FollowUpStatus = (typeof followUpStatus)[number];
 export type GovernanceRuleMode = (typeof governanceRuleMode)[number];
 export type GovernanceRuleSource = (typeof governanceRuleSource)[number];

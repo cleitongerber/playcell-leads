@@ -1,0 +1,4315 @@
+{
+  "version": "5",
+  "dialect": "mysql",
+  "id": "adfe47ec-fde5-4656-bec8-9410d80e9022",
+  "prevId": "216d5fe8-de9f-4233-a184-1fb33ee8f557",
+  "tables": {
+    "audit_logs": {
+      "name": "audit_logs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actorUserId": {
+          "name": "actorUserId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actorMembershipId": {
+          "name": "actorMembershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "action": {
+          "name": "action",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entityType": {
+          "name": "entityType",
+          "type": "varchar(80)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entityId": {
+          "name": "entityId",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "audit_logs_partner_entity_created_idx": {
+          "name": "audit_logs_partner_entity_created_idx",
+          "columns": [
+            "partnerId",
+            "entityType",
+            "entityId",
+            "createdAt"
+          ],
+          "isUnique": false
+        },
+        "audit_logs_actor_created_idx": {
+          "name": "audit_logs_actor_created_idx",
+          "columns": [
+            "actorUserId",
+            "createdAt"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "audit_logs_partner_fk": {
+          "name": "audit_logs_partner_fk",
+          "tableFrom": "audit_logs",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "audit_logs_actor_user_fk": {
+          "name": "audit_logs_actor_user_fk",
+          "tableFrom": "audit_logs",
+          "tableTo": "users",
+          "columnsFrom": [
+            "actorUserId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "audit_logs_actor_membership_fk": {
+          "name": "audit_logs_actor_membership_fk",
+          "tableFrom": "audit_logs",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "actorMembershipId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "audit_logs_id": {
+          "name": "audit_logs_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "campaign_governance_overrides": {
+      "name": "campaign_governance_overrides",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "campaignId": {
+          "name": "campaignId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mode": {
+          "name": "mode",
+          "type": "enum('inherit','override')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'inherit'"
+        },
+        "evidenceRequired": {
+          "name": "evidenceRequired",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "noteRequired": {
+          "name": "noteRequired",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "followUpRequired": {
+          "name": "followUpRequired",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "allowedChannels": {
+          "name": "allowedChannels",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "allowedOutcomes": {
+          "name": "allowedOutcomes",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "allowedEvidenceMimeTypes": {
+          "name": "allowedEvidenceMimeTypes",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "maxEvidenceSizeBytes": {
+          "name": "maxEvidenceSizeBytes",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 5242880
+        },
+        "retentionDays": {
+          "name": "retentionDays",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "campaign_governance_overrides_campaign_unique": {
+          "name": "campaign_governance_overrides_campaign_unique",
+          "columns": [
+            "campaignId"
+          ],
+          "isUnique": true
+        },
+        "campaign_governance_overrides_partner_campaign_idx": {
+          "name": "campaign_governance_overrides_partner_campaign_idx",
+          "columns": [
+            "partnerId",
+            "campaignId",
+            "mode"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "campaign_governance_overrides_campaign_tenant_fk": {
+          "name": "campaign_governance_overrides_campaign_tenant_fk",
+          "tableFrom": "campaign_governance_overrides",
+          "tableTo": "campaigns",
+          "columnsFrom": [
+            "campaignId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "campaign_governance_overrides_id": {
+          "name": "campaign_governance_overrides_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "campaign_import_policies": {
+      "name": "campaign_import_policies",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "campaignId": {
+          "name": "campaignId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "policy": {
+          "name": "policy",
+          "type": "enum('reject','allow','update_safe_fields')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'reject'"
+        },
+        "matchStrategy": {
+          "name": "matchStrategy",
+          "type": "enum('phone','email','phone_or_email','phone_and_email')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'phone_or_email'"
+        },
+        "safeUpdateFields": {
+          "name": "safeUpdateFields",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "campaign_import_policies_campaign_unique": {
+          "name": "campaign_import_policies_campaign_unique",
+          "columns": [
+            "campaignId"
+          ],
+          "isUnique": true
+        },
+        "campaign_import_policies_partner_campaign_idx": {
+          "name": "campaign_import_policies_partner_campaign_idx",
+          "columns": [
+            "partnerId",
+            "campaignId"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "campaign_import_policies_campaign_tenant_fk": {
+          "name": "campaign_import_policies_campaign_tenant_fk",
+          "tableFrom": "campaign_import_policies",
+          "tableTo": "campaigns",
+          "columnsFrom": [
+            "campaignId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "campaign_import_policies_id": {
+          "name": "campaign_import_policies_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "campaign_pdvs": {
+      "name": "campaign_pdvs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "campaignId": {
+          "name": "campaignId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pdvId": {
+          "name": "pdvId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "campaign_pdvs_campaign_pdv_unique": {
+          "name": "campaign_pdvs_campaign_pdv_unique",
+          "columns": [
+            "campaignId",
+            "pdvId"
+          ],
+          "isUnique": true
+        },
+        "campaign_pdvs_campaign_active_idx": {
+          "name": "campaign_pdvs_campaign_active_idx",
+          "columns": [
+            "partnerId",
+            "campaignId",
+            "isActive"
+          ],
+          "isUnique": false
+        },
+        "campaign_pdvs_pdv_active_idx": {
+          "name": "campaign_pdvs_pdv_active_idx",
+          "columns": [
+            "partnerId",
+            "pdvId",
+            "isActive"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "campaign_pdvs_campaign_tenant_fk": {
+          "name": "campaign_pdvs_campaign_tenant_fk",
+          "tableFrom": "campaign_pdvs",
+          "tableTo": "campaigns",
+          "columnsFrom": [
+            "campaignId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "campaign_pdvs_pdv_tenant_fk": {
+          "name": "campaign_pdvs_pdv_tenant_fk",
+          "tableFrom": "campaign_pdvs",
+          "tableTo": "pdvs",
+          "columnsFrom": [
+            "pdvId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "campaign_pdvs_id": {
+          "name": "campaign_pdvs_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "campaigns": {
+      "name": "campaigns",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code": {
+          "name": "code",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "enum('draft','active','closed','archived')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'draft'"
+        },
+        "isFrozen": {
+          "name": "isFrozen",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "startsAt": {
+          "name": "startsAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "endsAt": {
+          "name": "endsAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "archivedAt": {
+          "name": "archivedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "campaigns_partner_code_unique": {
+          "name": "campaigns_partner_code_unique",
+          "columns": [
+            "partnerId",
+            "code"
+          ],
+          "isUnique": true
+        },
+        "campaigns_id_partner_unique": {
+          "name": "campaigns_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
+        },
+        "campaigns_partner_status_idx": {
+          "name": "campaigns_partner_status_idx",
+          "columns": [
+            "partnerId",
+            "status",
+            "isFrozen"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "campaigns_partner_fk": {
+          "name": "campaigns_partner_fk",
+          "tableFrom": "campaigns",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "campaigns_id": {
+          "name": "campaigns_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "custom_field_definitions": {
+      "name": "custom_field_definitions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entityType": {
+          "name": "entityType",
+          "type": "enum('lead')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'lead'"
+        },
+        "key": {
+          "name": "key",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fieldType": {
+          "name": "fieldType",
+          "type": "enum('text','number','date','boolean','select')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "optionsJson": {
+          "name": "optionsJson",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "isRequired": {
+          "name": "isRequired",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "sortOrder": {
+          "name": "sortOrder",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "custom_field_definitions_partner_entity_key_unique": {
+          "name": "custom_field_definitions_partner_entity_key_unique",
+          "columns": [
+            "partnerId",
+            "entityType",
+            "key"
+          ],
+          "isUnique": true
+        },
+        "custom_field_definitions_id_partner_unique": {
+          "name": "custom_field_definitions_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
+        },
+        "custom_field_definitions_partner_active_order_idx": {
+          "name": "custom_field_definitions_partner_active_order_idx",
+          "columns": [
+            "partnerId",
+            "entityType",
+            "isActive",
+            "sortOrder"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "custom_field_definitions_partner_fk": {
+          "name": "custom_field_definitions_partner_fk",
+          "tableFrom": "custom_field_definitions",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "custom_field_definitions_id": {
+          "name": "custom_field_definitions_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "follow_ups": {
+      "name": "follow_ups",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "leadId": {
+          "name": "leadId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ownerMembershipId": {
+          "name": "ownerMembershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rescheduledFromId": {
+          "name": "rescheduledFromId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dueAt": {
+          "name": "dueAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "enum('pending','completed','cancelled')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "completedAt": {
+          "name": "completedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cancelledAt": {
+          "name": "cancelledAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "follow_ups_partner_owner_status_due_idx": {
+          "name": "follow_ups_partner_owner_status_due_idx",
+          "columns": [
+            "partnerId",
+            "ownerMembershipId",
+            "status",
+            "dueAt"
+          ],
+          "isUnique": false
+        },
+        "follow_ups_partner_lead_status_due_idx": {
+          "name": "follow_ups_partner_lead_status_due_idx",
+          "columns": [
+            "partnerId",
+            "leadId",
+            "status",
+            "dueAt"
+          ],
+          "isUnique": false
+        },
+        "follow_ups_partner_status_due_idx": {
+          "name": "follow_ups_partner_status_due_idx",
+          "columns": [
+            "partnerId",
+            "status",
+            "dueAt"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "follow_ups_lead_tenant_fk": {
+          "name": "follow_ups_lead_tenant_fk",
+          "tableFrom": "follow_ups",
+          "tableTo": "leads",
+          "columnsFrom": [
+            "leadId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "follow_ups_owner_tenant_fk": {
+          "name": "follow_ups_owner_tenant_fk",
+          "tableFrom": "follow_ups",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "ownerMembershipId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "follow_ups_rescheduled_from_fk": {
+          "name": "follow_ups_rescheduled_from_fk",
+          "tableFrom": "follow_ups",
+          "tableTo": "follow_ups",
+          "columnsFrom": [
+            "rescheduledFromId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "follow_ups_id": {
+          "name": "follow_ups_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "import_template_fields": {
+      "name": "import_template_fields",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "templateVersionId": {
+          "name": "templateVersionId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sourceHeader": {
+          "name": "sourceHeader",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "targetKind": {
+          "name": "targetKind",
+          "type": "enum('core','custom')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "targetKey": {
+          "name": "targetKey",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "valueType": {
+          "name": "valueType",
+          "type": "enum('text','number','date','boolean')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'text'"
+        },
+        "isRequired": {
+          "name": "isRequired",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "transformKey": {
+          "name": "transformKey",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sortOrder": {
+          "name": "sortOrder",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "import_template_fields_version_header_unique": {
+          "name": "import_template_fields_version_header_unique",
+          "columns": [
+            "templateVersionId",
+            "sourceHeader"
+          ],
+          "isUnique": true
+        },
+        "import_template_fields_version_order_idx": {
+          "name": "import_template_fields_version_order_idx",
+          "columns": [
+            "partnerId",
+            "templateVersionId",
+            "sortOrder"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "import_template_fields_version_tenant_fk": {
+          "name": "import_template_fields_version_tenant_fk",
+          "tableFrom": "import_template_fields",
+          "tableTo": "import_template_versions",
+          "columnsFrom": [
+            "templateVersionId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "import_template_fields_id": {
+          "name": "import_template_fields_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "import_template_versions": {
+      "name": "import_template_versions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "templateId": {
+          "name": "templateId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "versionNumber": {
+          "name": "versionNumber",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mappingFingerprint": {
+          "name": "mappingFingerprint",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "createdByMembershipId": {
+          "name": "createdByMembershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "import_template_versions_template_version_unique": {
+          "name": "import_template_versions_template_version_unique",
+          "columns": [
+            "templateId",
+            "versionNumber"
+          ],
+          "isUnique": true
+        },
+        "import_template_versions_id_partner_unique": {
+          "name": "import_template_versions_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
+        },
+        "import_template_versions_partner_template_idx": {
+          "name": "import_template_versions_partner_template_idx",
+          "columns": [
+            "partnerId",
+            "templateId",
+            "versionNumber"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "import_template_versions_template_tenant_fk": {
+          "name": "import_template_versions_template_tenant_fk",
+          "tableFrom": "import_template_versions",
+          "tableTo": "import_templates",
+          "columnsFrom": [
+            "templateId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "import_template_versions_creator_tenant_fk": {
+          "name": "import_template_versions_creator_tenant_fk",
+          "tableFrom": "import_template_versions",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "createdByMembershipId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "import_template_versions_id": {
+          "name": "import_template_versions_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "import_templates": {
+      "name": "import_templates",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entityType": {
+          "name": "entityType",
+          "type": "enum('lead')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'lead'"
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "createdByMembershipId": {
+          "name": "createdByMembershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "import_templates_partner_name_unique": {
+          "name": "import_templates_partner_name_unique",
+          "columns": [
+            "partnerId",
+            "name"
+          ],
+          "isUnique": true
+        },
+        "import_templates_id_partner_unique": {
+          "name": "import_templates_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
+        },
+        "import_templates_partner_active_idx": {
+          "name": "import_templates_partner_active_idx",
+          "columns": [
+            "partnerId",
+            "isActive"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "import_templates_partner_fk": {
+          "name": "import_templates_partner_fk",
+          "tableFrom": "import_templates",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "import_templates_creator_tenant_fk": {
+          "name": "import_templates_creator_tenant_fk",
+          "tableFrom": "import_templates",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "createdByMembershipId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "import_templates_id": {
+          "name": "import_templates_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "lead_contacts": {
+      "name": "lead_contacts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "leadId": {
+          "name": "leadId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actorMembershipId": {
+          "name": "actorMembershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel": {
+          "name": "channel",
+          "type": "varchar(48)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "occurredAt": {
+          "name": "occurredAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "lead_contacts_lead_occurred_idx": {
+          "name": "lead_contacts_lead_occurred_idx",
+          "columns": [
+            "partnerId",
+            "leadId",
+            "occurredAt"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "lead_contacts_lead_tenant_fk": {
+          "name": "lead_contacts_lead_tenant_fk",
+          "tableFrom": "lead_contacts",
+          "tableTo": "leads",
+          "columnsFrom": [
+            "leadId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_contacts_actor_tenant_fk": {
+          "name": "lead_contacts_actor_tenant_fk",
+          "tableFrom": "lead_contacts",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "actorMembershipId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lead_contacts_id": {
+          "name": "lead_contacts_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "lead_distribution_batches": {
+      "name": "lead_distribution_batches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "campaignId": {
+          "name": "campaignId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actorUserId": {
+          "name": "actorUserId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actorMembershipId": {
+          "name": "actorMembershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "requestKey": {
+          "name": "requestKey",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "enum('assign','reassign','return_to_queue','balanced')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "strategy": {
+          "name": "strategy",
+          "type": "enum('manual','balanced')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "enum('processing','completed')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'processing'"
+        },
+        "requestedCount": {
+          "name": "requestedCount",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "processedCount": {
+          "name": "processedCount",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "successCount": {
+          "name": "successCount",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "skippedCount": {
+          "name": "skippedCount",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "failedCount": {
+          "name": "failedCount",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "metadataJson": {
+          "name": "metadataJson",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "completedAt": {
+          "name": "completedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lead_distribution_batches_partner_actor_request_unique": {
+          "name": "lead_distribution_batches_partner_actor_request_unique",
+          "columns": [
+            "partnerId",
+            "actorUserId",
+            "requestKey"
+          ],
+          "isUnique": true
+        },
+        "lead_distribution_batches_partner_campaign_created_idx": {
+          "name": "lead_distribution_batches_partner_campaign_created_idx",
+          "columns": [
+            "partnerId",
+            "campaignId",
+            "createdAt"
+          ],
+          "isUnique": false
+        },
+        "lead_distribution_batches_partner_status_created_idx": {
+          "name": "lead_distribution_batches_partner_status_created_idx",
+          "columns": [
+            "partnerId",
+            "status",
+            "createdAt"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "lead_distribution_batches_partner_fk": {
+          "name": "lead_distribution_batches_partner_fk",
+          "tableFrom": "lead_distribution_batches",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_distribution_batches_campaign_tenant_fk": {
+          "name": "lead_distribution_batches_campaign_tenant_fk",
+          "tableFrom": "lead_distribution_batches",
+          "tableTo": "campaigns",
+          "columnsFrom": [
+            "campaignId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_distribution_batches_actor_user_fk": {
+          "name": "lead_distribution_batches_actor_user_fk",
+          "tableFrom": "lead_distribution_batches",
+          "tableTo": "users",
+          "columnsFrom": [
+            "actorUserId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_distribution_batches_actor_membership_tenant_fk": {
+          "name": "lead_distribution_batches_actor_membership_tenant_fk",
+          "tableFrom": "lead_distribution_batches",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "actorMembershipId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lead_distribution_batches_id": {
+          "name": "lead_distribution_batches_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "lead_evidences": {
+      "name": "lead_evidences",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "leadId": {
+          "name": "leadId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "timelineEventId": {
+          "name": "timelineEventId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "uploadedByMembershipId": {
+          "name": "uploadedByMembershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "storageProvider": {
+          "name": "storageProvider",
+          "type": "enum('forge_s3','s3')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'forge_s3'"
+        },
+        "storageKey": {
+          "name": "storageKey",
+          "type": "varchar(512)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "storageStatus": {
+          "name": "storageStatus",
+          "type": "enum('uploading','available','failed')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'uploading'"
+        },
+        "fileName": {
+          "name": "fileName",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mimeType": {
+          "name": "mimeType",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sizeBytes": {
+          "name": "sizeBytes",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "checksum": {
+          "name": "checksum",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "deletedAt": {
+          "name": "deletedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lead_evidences_storage_key_unique": {
+          "name": "lead_evidences_storage_key_unique",
+          "columns": [
+            "storageKey"
+          ],
+          "isUnique": true
+        },
+        "lead_evidences_partner_event_active_idx": {
+          "name": "lead_evidences_partner_event_active_idx",
+          "columns": [
+            "partnerId",
+            "timelineEventId",
+            "deletedAt",
+            "storageStatus"
+          ],
+          "isUnique": false
+        },
+        "lead_evidences_partner_lead_created_idx": {
+          "name": "lead_evidences_partner_lead_created_idx",
+          "columns": [
+            "partnerId",
+            "leadId",
+            "deletedAt",
+            "createdAt"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "lead_evidences_lead_tenant_fk": {
+          "name": "lead_evidences_lead_tenant_fk",
+          "tableFrom": "lead_evidences",
+          "tableTo": "leads",
+          "columnsFrom": [
+            "leadId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_evidences_timeline_lead_tenant_fk": {
+          "name": "lead_evidences_timeline_lead_tenant_fk",
+          "tableFrom": "lead_evidences",
+          "tableTo": "lead_timeline_events",
+          "columnsFrom": [
+            "timelineEventId",
+            "partnerId",
+            "leadId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId",
+            "leadId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_evidences_uploader_tenant_fk": {
+          "name": "lead_evidences_uploader_tenant_fk",
+          "tableFrom": "lead_evidences",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "uploadedByMembershipId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lead_evidences_id": {
+          "name": "lead_evidences_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "lead_import_batches": {
+      "name": "lead_import_batches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "campaignId": {
+          "name": "campaignId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "templateVersionId": {
+          "name": "templateVersionId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "importedByMembershipId": {
+          "name": "importedByMembershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "targetPdvId": {
+          "name": "targetPdvId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fileName": {
+          "name": "fileName",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fileSizeBytes": {
+          "name": "fileSizeBytes",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fileChecksum": {
+          "name": "fileChecksum",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "delimiter": {
+          "name": "delimiter",
+          "type": "varchar(1)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "headersJson": {
+          "name": "headersJson",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "duplicatePolicy": {
+          "name": "duplicatePolicy",
+          "type": "enum('reject','allow','update_safe_fields')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'reject'"
+        },
+        "duplicateMatchStrategy": {
+          "name": "duplicateMatchStrategy",
+          "type": "enum('phone','email','phone_or_email','phone_and_email')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'phone_or_email'"
+        },
+        "safeUpdateFields": {
+          "name": "safeUpdateFields",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "totalRows": {
+          "name": "totalRows",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "validRows": {
+          "name": "validRows",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "invalidRows": {
+          "name": "invalidRows",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "importedRows": {
+          "name": "importedRows",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "duplicateRows": {
+          "name": "duplicateRows",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "rejectedRows": {
+          "name": "rejectedRows",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "updatedRows": {
+          "name": "updatedRows",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "status": {
+          "name": "status",
+          "type": "enum('draft','validated','processing','completed','failed')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'draft'"
+        },
+        "errorSummary": {
+          "name": "errorSummary",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "confirmedAt": {
+          "name": "confirmedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "startedAt": {
+          "name": "startedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "completedAt": {
+          "name": "completedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "lead_import_batches_partner_campaign_created_idx": {
+          "name": "lead_import_batches_partner_campaign_created_idx",
+          "columns": [
+            "partnerId",
+            "campaignId",
+            "createdAt"
+          ],
+          "isUnique": false
+        },
+        "lead_import_batches_partner_status_idx": {
+          "name": "lead_import_batches_partner_status_idx",
+          "columns": [
+            "partnerId",
+            "status",
+            "createdAt"
+          ],
+          "isUnique": false
+        },
+        "lead_import_batches_id_partner_unique": {
+          "name": "lead_import_batches_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "lead_import_batches_campaign_tenant_fk": {
+          "name": "lead_import_batches_campaign_tenant_fk",
+          "tableFrom": "lead_import_batches",
+          "tableTo": "campaigns",
+          "columnsFrom": [
+            "campaignId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_import_batches_template_version_tenant_fk": {
+          "name": "lead_import_batches_template_version_tenant_fk",
+          "tableFrom": "lead_import_batches",
+          "tableTo": "import_template_versions",
+          "columnsFrom": [
+            "templateVersionId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_import_batches_importer_tenant_fk": {
+          "name": "lead_import_batches_importer_tenant_fk",
+          "tableFrom": "lead_import_batches",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "importedByMembershipId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_import_batches_target_pdv_tenant_fk": {
+          "name": "lead_import_batches_target_pdv_tenant_fk",
+          "tableFrom": "lead_import_batches",
+          "tableTo": "pdvs",
+          "columnsFrom": [
+            "targetPdvId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lead_import_batches_id": {
+          "name": "lead_import_batches_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "lead_import_issues": {
+      "name": "lead_import_issues",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "batchId": {
+          "name": "batchId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rowNumber": {
+          "name": "rowNumber",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code": {
+          "name": "code",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fieldKey": {
+          "name": "fieldKey",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "details": {
+          "name": "details",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "lead_import_issues_batch_row_idx": {
+          "name": "lead_import_issues_batch_row_idx",
+          "columns": [
+            "partnerId",
+            "batchId",
+            "rowNumber",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "lead_import_issues_batch_tenant_fk": {
+          "name": "lead_import_issues_batch_tenant_fk",
+          "tableFrom": "lead_import_issues",
+          "tableTo": "lead_import_batches",
+          "columnsFrom": [
+            "batchId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lead_import_issues_id": {
+          "name": "lead_import_issues_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "lead_import_rows": {
+      "name": "lead_import_rows",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "batchId": {
+          "name": "batchId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rowNumber": {
+          "name": "rowNumber",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sourceRowJson": {
+          "name": "sourceRowJson",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mappedDataJson": {
+          "name": "mappedDataJson",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "targetPdvId": {
+          "name": "targetPdvId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "normalizedPhone": {
+          "name": "normalizedPhone",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "normalizedEmail": {
+          "name": "normalizedEmail",
+          "type": "varchar(320)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "duplicateLeadId": {
+          "name": "duplicateLeadId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "enum('staged','valid','invalid','duplicate','imported','updated','rejected')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'staged'"
+        },
+        "processedAt": {
+          "name": "processedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "lead_import_rows_batch_row_unique": {
+          "name": "lead_import_rows_batch_row_unique",
+          "columns": [
+            "batchId",
+            "rowNumber"
+          ],
+          "isUnique": true
+        },
+        "lead_import_rows_batch_status_row_idx": {
+          "name": "lead_import_rows_batch_status_row_idx",
+          "columns": [
+            "partnerId",
+            "batchId",
+            "status",
+            "rowNumber"
+          ],
+          "isUnique": false
+        },
+        "lead_import_rows_partner_duplicate_idx": {
+          "name": "lead_import_rows_partner_duplicate_idx",
+          "columns": [
+            "partnerId",
+            "duplicateLeadId"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "lead_import_rows_batch_tenant_fk": {
+          "name": "lead_import_rows_batch_tenant_fk",
+          "tableFrom": "lead_import_rows",
+          "tableTo": "lead_import_batches",
+          "columnsFrom": [
+            "batchId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_import_rows_target_pdv_tenant_fk": {
+          "name": "lead_import_rows_target_pdv_tenant_fk",
+          "tableFrom": "lead_import_rows",
+          "tableTo": "pdvs",
+          "columnsFrom": [
+            "targetPdvId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_import_rows_duplicate_lead_tenant_fk": {
+          "name": "lead_import_rows_duplicate_lead_tenant_fk",
+          "tableFrom": "lead_import_rows",
+          "tableTo": "leads",
+          "columnsFrom": [
+            "duplicateLeadId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lead_import_rows_id": {
+          "name": "lead_import_rows_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "lead_sources": {
+      "name": "lead_sources",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code": {
+          "name": "code",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "lead_sources_partner_code_unique": {
+          "name": "lead_sources_partner_code_unique",
+          "columns": [
+            "partnerId",
+            "code"
+          ],
+          "isUnique": true
+        },
+        "lead_sources_id_partner_unique": {
+          "name": "lead_sources_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
+        },
+        "lead_sources_partner_active_idx": {
+          "name": "lead_sources_partner_active_idx",
+          "columns": [
+            "partnerId",
+            "isActive"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "lead_sources_partner_fk": {
+          "name": "lead_sources_partner_fk",
+          "tableFrom": "lead_sources",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lead_sources_id": {
+          "name": "lead_sources_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "lead_statuses": {
+      "name": "lead_statuses",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code": {
+          "name": "code",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category": {
+          "name": "category",
+          "type": "enum('open','in_progress','completed','discarded')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sortOrder": {
+          "name": "sortOrder",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "isTerminal": {
+          "name": "isTerminal",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "lead_statuses_partner_code_unique": {
+          "name": "lead_statuses_partner_code_unique",
+          "columns": [
+            "partnerId",
+            "code"
+          ],
+          "isUnique": true
+        },
+        "lead_statuses_id_partner_unique": {
+          "name": "lead_statuses_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
+        },
+        "lead_statuses_partner_order_idx": {
+          "name": "lead_statuses_partner_order_idx",
+          "columns": [
+            "partnerId",
+            "sortOrder",
+            "isActive"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "lead_statuses_partner_fk": {
+          "name": "lead_statuses_partner_fk",
+          "tableFrom": "lead_statuses",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lead_statuses_id": {
+          "name": "lead_statuses_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "lead_timeline_events": {
+      "name": "lead_timeline_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "leadId": {
+          "name": "leadId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actorMembershipId": {
+          "name": "actorMembershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "enum('lead_created','assigned','assignee_changed','status_changed','contact','note','follow_up_created','follow_up_completed','follow_up_cancelled','follow_up_rescheduled','lead_imported','import_updated','appointment','evidence','lead_distributed','lead_reassigned','lead_returned_to_queue','follow_up_owner_changed')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "occurredAt": {
+          "name": "occurredAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "payloadJson": {
+          "name": "payloadJson",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "visibility": {
+          "name": "visibility",
+          "type": "enum('partner','restricted')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'partner'"
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "lead_timeline_events_lead_chronological_idx": {
+          "name": "lead_timeline_events_lead_chronological_idx",
+          "columns": [
+            "partnerId",
+            "leadId",
+            "occurredAt",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "lead_timeline_events_id_partner_lead_unique": {
+          "name": "lead_timeline_events_id_partner_lead_unique",
+          "columns": [
+            "id",
+            "partnerId",
+            "leadId"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "lead_timeline_events_lead_tenant_fk": {
+          "name": "lead_timeline_events_lead_tenant_fk",
+          "tableFrom": "lead_timeline_events",
+          "tableTo": "leads",
+          "columnsFrom": [
+            "leadId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_timeline_events_actor_tenant_fk": {
+          "name": "lead_timeline_events_actor_tenant_fk",
+          "tableFrom": "lead_timeline_events",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "actorMembershipId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lead_timeline_events_id": {
+          "name": "lead_timeline_events_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "lead_treatment_governance": {
+      "name": "lead_treatment_governance",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "leadId": {
+          "name": "leadId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "timelineEventId": {
+          "name": "timelineEventId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ruleSource": {
+          "name": "ruleSource",
+          "type": "enum('partner','campaign')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "appliedRuleJson": {
+          "name": "appliedRuleJson",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "noteSatisfied": {
+          "name": "noteSatisfied",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "followUpSatisfied": {
+          "name": "followUpSatisfied",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "evidenceSatisfied": {
+          "name": "evidenceSatisfied",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "isComplete": {
+          "name": "isComplete",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "completedAt": {
+          "name": "completedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "lead_treatment_governance_partner_event_unique": {
+          "name": "lead_treatment_governance_partner_event_unique",
+          "columns": [
+            "partnerId",
+            "timelineEventId"
+          ],
+          "isUnique": true
+        },
+        "lead_treatment_governance_lead_completion_idx": {
+          "name": "lead_treatment_governance_lead_completion_idx",
+          "columns": [
+            "partnerId",
+            "leadId",
+            "isComplete",
+            "createdAt"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "lead_treatment_governance_lead_tenant_fk": {
+          "name": "lead_treatment_governance_lead_tenant_fk",
+          "tableFrom": "lead_treatment_governance",
+          "tableTo": "leads",
+          "columnsFrom": [
+            "leadId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lead_treatment_governance_timeline_lead_tenant_fk": {
+          "name": "lead_treatment_governance_timeline_lead_tenant_fk",
+          "tableFrom": "lead_treatment_governance",
+          "tableTo": "lead_timeline_events",
+          "columnsFrom": [
+            "timelineEventId",
+            "partnerId",
+            "leadId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId",
+            "leadId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lead_treatment_governance_id": {
+          "name": "lead_treatment_governance_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "leads": {
+      "name": "leads",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "campaignId": {
+          "name": "campaignId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pdvId": {
+          "name": "pdvId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "statusId": {
+          "name": "statusId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sourceId": {
+          "name": "sourceId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "assignedMembershipId": {
+          "name": "assignedMembershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "normalizedPhone": {
+          "name": "normalizedPhone",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar(320)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "customData": {
+          "name": "customData",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "receivedAt": {
+          "name": "receivedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "assignedAt": {
+          "name": "assignedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "firstContactAt": {
+          "name": "firstContactAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lastActivityAt": {
+          "name": "lastActivityAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "nextFollowUpAt": {
+          "name": "nextFollowUpAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deletedAt": {
+          "name": "deletedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "leads_partner_campaign_idx": {
+          "name": "leads_partner_campaign_idx",
+          "columns": [
+            "partnerId",
+            "campaignId",
+            "deletedAt",
+            "createdAt"
+          ],
+          "isUnique": false
+        },
+        "leads_partner_pdv_queue_idx": {
+          "name": "leads_partner_pdv_queue_idx",
+          "columns": [
+            "partnerId",
+            "pdvId",
+            "assignedMembershipId",
+            "deletedAt"
+          ],
+          "isUnique": false
+        },
+        "leads_partner_assignee_idx": {
+          "name": "leads_partner_assignee_idx",
+          "columns": [
+            "partnerId",
+            "assignedMembershipId",
+            "deletedAt",
+            "updatedAt"
+          ],
+          "isUnique": false
+        },
+        "leads_partner_distribution_filter_idx": {
+          "name": "leads_partner_distribution_filter_idx",
+          "columns": [
+            "partnerId",
+            "campaignId",
+            "pdvId",
+            "statusId",
+            "assignedMembershipId",
+            "deletedAt",
+            "receivedAt",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "leads_partner_campaign_activity_idx": {
+          "name": "leads_partner_campaign_activity_idx",
+          "columns": [
+            "partnerId",
+            "campaignId",
+            "deletedAt",
+            "lastActivityAt",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "leads_partner_normalized_phone_idx": {
+          "name": "leads_partner_normalized_phone_idx",
+          "columns": [
+            "partnerId",
+            "normalizedPhone"
+          ],
+          "isUnique": false
+        },
+        "leads_id_partner_unique": {
+          "name": "leads_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "leads_campaign_tenant_fk": {
+          "name": "leads_campaign_tenant_fk",
+          "tableFrom": "leads",
+          "tableTo": "campaigns",
+          "columnsFrom": [
+            "campaignId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "leads_pdv_tenant_fk": {
+          "name": "leads_pdv_tenant_fk",
+          "tableFrom": "leads",
+          "tableTo": "pdvs",
+          "columnsFrom": [
+            "pdvId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "leads_status_tenant_fk": {
+          "name": "leads_status_tenant_fk",
+          "tableFrom": "leads",
+          "tableTo": "lead_statuses",
+          "columnsFrom": [
+            "statusId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "leads_source_tenant_fk": {
+          "name": "leads_source_tenant_fk",
+          "tableFrom": "leads",
+          "tableTo": "lead_sources",
+          "columnsFrom": [
+            "sourceId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "leads_assignee_tenant_fk": {
+          "name": "leads_assignee_tenant_fk",
+          "tableFrom": "leads",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "assignedMembershipId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "leads_id": {
+          "name": "leads_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "partner_governance_rules": {
+      "name": "partner_governance_rules",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "evidenceRequired": {
+          "name": "evidenceRequired",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "noteRequired": {
+          "name": "noteRequired",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "followUpRequired": {
+          "name": "followUpRequired",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "allowedChannels": {
+          "name": "allowedChannels",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "allowedOutcomes": {
+          "name": "allowedOutcomes",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "allowedEvidenceMimeTypes": {
+          "name": "allowedEvidenceMimeTypes",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "maxEvidenceSizeBytes": {
+          "name": "maxEvidenceSizeBytes",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 5242880
+        },
+        "retentionDays": {
+          "name": "retentionDays",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "partner_governance_rules_partner_unique": {
+          "name": "partner_governance_rules_partner_unique",
+          "columns": [
+            "partnerId"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "partner_governance_rules_partner_fk": {
+          "name": "partner_governance_rules_partner_fk",
+          "tableFrom": "partner_governance_rules",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "partner_governance_rules_id": {
+          "name": "partner_governance_rules_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "partner_import_policies": {
+      "name": "partner_import_policies",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "policy": {
+          "name": "policy",
+          "type": "enum('reject','allow','update_safe_fields')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'reject'"
+        },
+        "matchStrategy": {
+          "name": "matchStrategy",
+          "type": "enum('phone','email','phone_or_email','phone_and_email')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'phone_or_email'"
+        },
+        "safeUpdateFields": {
+          "name": "safeUpdateFields",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "partner_import_policies_partner_unique": {
+          "name": "partner_import_policies_partner_unique",
+          "columns": [
+            "partnerId"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "partner_import_policies_partner_fk": {
+          "name": "partner_import_policies_partner_fk",
+          "tableFrom": "partner_import_policies",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "partner_import_policies_id": {
+          "name": "partner_import_policies_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "partner_settings": {
+      "name": "partner_settings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'America/Sao_Paulo'"
+        },
+        "claimSlaMinutes": {
+          "name": "claimSlaMinutes",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 5
+        },
+        "firstContactSlaMinutes": {
+          "name": "firstContactSlaMinutes",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 15
+        },
+        "staleLeadMinutes": {
+          "name": "staleLeadMinutes",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1440
+        },
+        "notificationSettings": {
+          "name": "notificationSettings",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "partner_settings_partner_unique": {
+          "name": "partner_settings_partner_unique",
+          "columns": [
+            "partnerId"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "partner_settings_partner_fk": {
+          "name": "partner_settings_partner_fk",
+          "tableFrom": "partner_settings",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "partner_settings_id": {
+          "name": "partner_settings_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "partners": {
+      "name": "partners",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "code": {
+          "name": "code",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "partners_code_unique": {
+          "name": "partners_code_unique",
+          "columns": [
+            "code"
+          ],
+          "isUnique": true
+        },
+        "partners_active_idx": {
+          "name": "partners_active_idx",
+          "columns": [
+            "isActive"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "partners_id": {
+          "name": "partners_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "pdvs": {
+      "name": "pdvs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code": {
+          "name": "code",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "city": {
+          "name": "city",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "region": {
+          "name": "region",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "pdvs_partner_code_unique": {
+          "name": "pdvs_partner_code_unique",
+          "columns": [
+            "partnerId",
+            "code"
+          ],
+          "isUnique": true
+        },
+        "pdvs_id_partner_unique": {
+          "name": "pdvs_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
+        },
+        "pdvs_partner_active_idx": {
+          "name": "pdvs_partner_active_idx",
+          "columns": [
+            "partnerId",
+            "isActive"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "pdvs_partner_fk": {
+          "name": "pdvs_partner_fk",
+          "tableFrom": "pdvs",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "pdvs_id": {
+          "name": "pdvs_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "user_partners": {
+      "name": "user_partners",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "userId": {
+          "name": "userId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "enum('partner_admin','manager','seller')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "user_partners_user_partner_unique": {
+          "name": "user_partners_user_partner_unique",
+          "columns": [
+            "userId",
+            "partnerId"
+          ],
+          "isUnique": true
+        },
+        "user_partners_id_partner_unique": {
+          "name": "user_partners_id_partner_unique",
+          "columns": [
+            "id",
+            "partnerId"
+          ],
+          "isUnique": true
+        },
+        "user_partners_partner_role_active_idx": {
+          "name": "user_partners_partner_role_active_idx",
+          "columns": [
+            "partnerId",
+            "role",
+            "isActive"
+          ],
+          "isUnique": false
+        },
+        "user_partners_user_active_idx": {
+          "name": "user_partners_user_active_idx",
+          "columns": [
+            "userId",
+            "isActive"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "user_partners_user_fk": {
+          "name": "user_partners_user_fk",
+          "tableFrom": "user_partners",
+          "tableTo": "users",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "user_partners_partner_fk": {
+          "name": "user_partners_partner_fk",
+          "tableFrom": "user_partners",
+          "tableTo": "partners",
+          "columnsFrom": [
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "user_partners_id": {
+          "name": "user_partners_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "user_pdv_assignments": {
+      "name": "user_pdv_assignments",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partnerId": {
+          "name": "partnerId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "membershipId": {
+          "name": "membershipId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pdvId": {
+          "name": "pdvId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "user_pdv_assignments_membership_pdv_unique": {
+          "name": "user_pdv_assignments_membership_pdv_unique",
+          "columns": [
+            "membershipId",
+            "pdvId"
+          ],
+          "isUnique": true
+        },
+        "user_pdv_assignments_membership_active_idx": {
+          "name": "user_pdv_assignments_membership_active_idx",
+          "columns": [
+            "membershipId",
+            "isActive"
+          ],
+          "isUnique": false
+        },
+        "user_pdv_assignments_pdv_active_idx": {
+          "name": "user_pdv_assignments_pdv_active_idx",
+          "columns": [
+            "partnerId",
+            "pdvId",
+            "isActive"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "user_pdv_assignments_membership_tenant_fk": {
+          "name": "user_pdv_assignments_membership_tenant_fk",
+          "tableFrom": "user_pdv_assignments",
+          "tableTo": "user_partners",
+          "columnsFrom": [
+            "membershipId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "user_pdv_assignments_pdv_tenant_fk": {
+          "name": "user_pdv_assignments_pdv_tenant_fk",
+          "tableFrom": "user_pdv_assignments",
+          "tableTo": "pdvs",
+          "columnsFrom": [
+            "pdvId",
+            "partnerId"
+          ],
+          "columnsTo": [
+            "id",
+            "partnerId"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "user_pdv_assignments_id": {
+          "name": "user_pdv_assignments_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "users": {
+      "name": "users",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "openId": {
+          "name": "openId",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar(320)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "passwordHash": {
+          "name": "passwordHash",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "loginMethod": {
+          "name": "loginMethod",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'password'"
+        },
+        "systemRole": {
+          "name": "systemRole",
+          "type": "enum('none','super_admin')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'none'"
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "lastSignedInAt": {
+          "name": "lastSignedInAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "onUpdate": true,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "users_open_id_unique": {
+          "name": "users_open_id_unique",
+          "columns": [
+            "openId"
+          ],
+          "isUnique": true
+        },
+        "users_email_unique": {
+          "name": "users_email_unique",
+          "columns": [
+            "email"
+          ],
+          "isUnique": true
+        },
+        "users_active_idx": {
+          "name": "users_active_idx",
+          "columns": [
+            "isActive"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "users_id": {
+          "name": "users_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    }
+  },
+  "views": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "tables": {},
+    "indexes": {}
+  }
+}

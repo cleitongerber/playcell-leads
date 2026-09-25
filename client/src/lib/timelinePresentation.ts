@@ -78,6 +78,38 @@ export function presentTimelineEvent(
         title: "Responsável alterado",
         description: textOf(data.reason) ?? "A responsabilidade pelo lead foi transferida.",
       };
+    case "lead_distributed":
+      return {
+        title: "Lead distribuído",
+        description:
+          textOf(data.reason) ??
+          "O lead foi atribuído à carteira de um vendedor.",
+      };
+    case "lead_reassigned":
+      return {
+        title: "Lead redistribuído",
+        description:
+          textOf(data.reason) ??
+          "A responsabilidade operacional foi transferida para outro vendedor.",
+      };
+    case "lead_returned_to_queue":
+      return {
+        title: "Lead devolvido à fila",
+        description:
+          textOf(data.reason) ??
+          "O responsável foi removido e o lead voltou à fila disponível.",
+      };
+    case "follow_up_owner_changed": {
+      const followUpIds = Array.isArray(data.followUpIds)
+        ? data.followUpIds.filter(item => typeof item === "number")
+        : [];
+      return {
+        title: "Responsabilidade de follow-up transferida",
+        description: followUpIds.length
+          ? `${followUpIds.length} follow-up(s) pendente(s) foram transferidos junto com a carteira.`
+          : "Os follow-ups pendentes foram transferidos junto com a carteira.",
+      };
+    }
     case "status_changed": {
       const status = labelFromCode(data.statusCode);
       return {

@@ -28,6 +28,7 @@ import {
 } from "../../drizzle-v2/schema";
 import { requirePartnerRole, type PartnerContext } from "./access";
 import { getV2Db, type V2Database } from "./database";
+import { transferLeadResponsibility } from "./distributionService";
 import {
   assertContactGovernance,
   evaluateTreatmentGovernance,
@@ -632,27 +633,13 @@ export async function assumeLead(context: PartnerContext, leadId: number) {
       lead.campaignId,
       lead.pdvId
     );
-    const assignedStatus = (
-      await transactionDb
-        .select({ id: leadStatuses.id })
-        .from(leadStatuses)
-        .where(
-          and(
-            eq(leadStatuses.partnerId, context.partnerId),
-            eq(leadStatuses.code, "assigned"),
-            eq(leadStatuses.isActive, true)
-          )
-        )
-        .limit(1)
-    )[0];
-    if (!assignedStatus)
-      throw new Error("Configuração de status inicial ausente");
+    // Claiming a queue item changes responsibility only. Its commercial
+    // status remains independent from the seller's portfolio ownership.
     const result = await tx
       .update(leads)
       .set({
         assignedMembershipId: context.membershipId,
         assignedAt: new Date(),
-        statusId: assignedStatus.id,
         lastActivityAt: new Date(),
         updatedAt: new Date(),
       })
@@ -677,8 +664,6 @@ export async function assumeLead(context: PartnerContext, leadId: number) {
       payload: {
         previousMembershipId: null,
         membershipId: context.membershipId,
-        previousStatusId: lead.statusId,
-        statusId: assignedStatus.id,
       },
     });
     return { leadId, membershipId: context.membershipId };
@@ -691,70 +676,10 @@ export async function transferLead(
   nextMembershipId: number,
   reason?: string | null
 ) {
-  requirePartnerRole(context, ["super_admin", "partner_admin", "manager"]);
-  const db = await getV2Db();
-  return db.transaction(async tx => {
-    const transactionDb = tx as unknown as V2Database;
-    const lead = await getLeadInPartner(transactionDb, context, leadId);
-    await assertLeadVisible(transactionDb, context, lead, true);
-    await assertCampaignOperational(
-      transactionDb,
-      context,
-      lead.campaignId,
-      lead.pdvId
-    );
-    const next = (
-      await transactionDb
-        .select()
-        .from(userPartners)
-        .where(
-          and(
-            eq(userPartners.id, nextMembershipId),
-            eq(userPartners.partnerId, context.partnerId),
-            eq(userPartners.isActive, true)
-          )
-        )
-        .limit(1)
-    )[0];
-    if (!next || !["seller", "manager"].includes(next.role))
-      throw new Error("Responsável inválido para o parceiro atual");
-    const nextScope = (
-      await transactionDb
-        .select({ id: userPdvAssignments.id })
-        .from(userPdvAssignments)
-        .where(
-          and(
-            eq(userPdvAssignments.partnerId, context.partnerId),
-            eq(userPdvAssignments.membershipId, nextMembershipId),
-            eq(userPdvAssignments.pdvId, lead.pdvId),
-            eq(userPdvAssignments.isActive, true)
-          )
-        )
-        .limit(1)
-    )[0];
-    if (!nextScope)
-      throw new Error("O novo responsável não possui acesso ao PDV do lead");
-    await tx
-      .update(leads)
-      .set({
-        assignedMembershipId: nextMembershipId,
-        assignedAt: new Date(),
-        lastActivityAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(leads.id, leadId));
-    await writeTimeline(transactionDb, {
-      partnerId: context.partnerId,
-      leadId,
-      actorMembershipId: context.membershipId,
-      type: "assignee_changed",
-      payload: {
-        previousMembershipId: lead.assignedMembershipId,
-        nextMembershipId,
-        reason: reason?.trim() || null,
-      },
-    });
-  });
+  // Keep the former domain entry point safe for any internal caller. The
+  // distribution service performs tenant/scope validation, conditional owner
+  // updates, follow-up transfer and the individual historical events.
+  return transferLeadResponsibility(context, leadId, nextMembershipId, reason);
 }
 
 export async function changeLeadStatus(

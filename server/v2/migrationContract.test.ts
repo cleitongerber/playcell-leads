@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getTableConfig } from "drizzle-orm/mysql-core";
 import { describe, expect, it } from "vitest";
-import { leads } from "../../drizzle-v2/schema";
+import {
+  leadDistributionBatches,
+  leadTimelineEvents,
+  leads,
+} from "../../drizzle-v2/schema";
 
 describe("V2 migration tenant-key contract", () => {
   it("defines the composite lead key required by TiDB before adding child FKs", () => {
@@ -29,5 +33,34 @@ describe("V2 migration tenant-key contract", () => {
       "id",
       "partnerId",
     ]);
+  });
+
+  it("adds the distribution batch and tenant-scoped performance indexes incrementally", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle-v2/0008_v2_lead_distribution.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("CREATE TABLE `lead_distribution_batches`");
+    expect(migration).toContain("lead_distribution_batches_partner_actor_request_unique");
+    expect(migration).toContain("leads_partner_distribution_filter_idx");
+    expect(migration).toContain("lead_reassigned");
+    expect(migration).toContain("follow_up_owner_changed");
+
+    const leadIndexes = getTableConfig(leads).indexes.map(
+      index => index.config.name
+    );
+    expect(leadIndexes).toContain("leads_partner_distribution_filter_idx");
+    expect(leadIndexes).toContain("leads_partner_campaign_activity_idx");
+    expect(
+      getTableConfig(leadDistributionBatches).indexes.some(
+        index =>
+          index.config.name ===
+          "lead_distribution_batches_partner_actor_request_unique"
+      )
+    ).toBe(true);
+    const timelineType = getTableConfig(leadTimelineEvents).columns.find(
+      column => column.name === "type"
+    );
+    expect(timelineType?.enumValues).toContain("lead_returned_to_queue");
   });
 });

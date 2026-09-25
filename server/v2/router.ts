@@ -26,8 +26,13 @@ import {
   recordLeadContact,
   saveLeadSource,
   saveLeadStatus,
-  transferLead,
 } from "./leadService";
+import {
+  distributeLeads,
+  listLeadManagementFilters,
+  listManagedLeads,
+  transferLeadResponsibility,
+} from "./distributionService";
 import {
   cancelFollowUp,
   completeFollowUp,
@@ -136,6 +141,32 @@ const importPolicyInput = z.object({
     .nullable()
     .optional(),
 });
+
+const leadManagementFiltersInput = z.object({
+  campaignId: z.number().int().positive(),
+  pdvId: z.number().int().positive().optional(),
+  statusId: z.number().int().positive().optional(),
+  sourceId: z.number().int().positive().optional(),
+  assignedMembershipId: z.number().int().positive().optional(),
+  assignment: z.enum(["all", "assigned", "unassigned"]).optional(),
+  receivedFrom: z.coerce.date().optional(),
+  receivedTo: z.coerce.date().optional(),
+  search: z.string().max(200).optional(),
+  customFieldKey: z.string().max(96).optional(),
+  customFieldValue: z.string().max(500).optional(),
+});
+
+const leadDistributionSelectionInput = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("ids"),
+    campaignId: z.number().int().positive(),
+    leadIds: z.array(z.number().int().positive()).min(1).max(20_000),
+  }),
+  z.object({
+    mode: z.literal("filtered"),
+    filters: leadManagementFiltersInput,
+  }),
+]);
 
 /**
  * V2 foundation router. It is intentionally exported separately until the V2
@@ -377,6 +408,19 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .query(({ ctx, input }) => listLeads(ctx.partner, input)),
+    managementFilters: v2ManagerProcedure
+      .input(z.object({ campaignId: z.number().int().positive() }))
+      .query(({ ctx, input }) =>
+        listLeadManagementFilters(ctx.partner, input.campaignId)
+      ),
+    managementList: v2ManagerProcedure
+      .input(
+        leadManagementFiltersInput.extend({
+          page: z.number().int().min(1).default(1),
+          pageSize: z.number().int().min(1).max(100).default(25),
+        })
+      )
+      .query(({ ctx, input }) => listManagedLeads(ctx.partner, input)),
     get: v2PartnerProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .query(({ ctx, input }) => getLeadDetail(ctx.partner, input.id)),
@@ -407,8 +451,24 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .mutation(({ ctx, input }) =>
-        transferLead(ctx.partner, input.id, input.membershipId, input.reason)
+        transferLeadResponsibility(
+          ctx.partner,
+          input.id,
+          input.membershipId,
+          input.reason
+        )
       ),
+    distribute: v2ManagerProcedure
+      .input(
+        z.object({
+          type: z.enum(["assign", "reassign", "return_to_queue", "balanced"]),
+          selection: leadDistributionSelectionInput,
+          membershipId: z.number().int().positive().optional(),
+          reason: z.string().max(1_000).nullable().optional(),
+          requestKey: z.string().min(8).max(96),
+        })
+      )
+      .mutation(({ ctx, input }) => distributeLeads(ctx.partner, input)),
     changeStatus: v2PartnerProcedure
       .input(
         z.object({

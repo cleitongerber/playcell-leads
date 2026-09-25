@@ -11,6 +11,7 @@ import {
   governanceRuleToForm,
   type GovernanceRuleFormValue,
 } from "@/components/v2/GovernanceRuleEditor";
+import { CampaignLeadManagement } from "@/components/v2/CampaignLeadManagement";
 import { v2trpc } from "@/lib/v2trpc";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -258,6 +259,7 @@ export function V2CampaignDetail() {
     access.data?.role === "super_admin" ||
     access.data?.role === "partner_admin" ||
     access.data?.role === "manager";
+  const canDistribute = canImport;
   const campaignGovernance = v2trpc.governance.campaign.useQuery(
     { campaignId: id },
     { enabled: canManage && Number.isInteger(id) && id > 0 }
@@ -513,6 +515,16 @@ export function V2CampaignDetail() {
           )}
         </CardContent>
       </Card>
+      {canDistribute && (
+        <CampaignLeadManagement
+          campaign={{
+            id: campaign.id,
+            name: campaign.name,
+            status: campaign.status,
+            isFrozen: campaign.isFrozen,
+          }}
+        />
+      )}
       {canManage && (
         <Card>
           <CardHeader>

@@ -34,6 +34,28 @@ describe("V2 timeline presentation", () => {
     });
   });
 
+  it("presents distribution and transferred follow-ups without exposing memberships", () => {
+    expect(
+      presentTimelineEvent("lead_reassigned", {
+        previousMembershipId: 10,
+        nextMembershipId: 11,
+        reason: "Cobertura de férias",
+      })
+    ).toEqual({
+      title: "Lead redistribuído",
+      description: "Cobertura de férias",
+    });
+    expect(
+      presentTimelineEvent("follow_up_owner_changed", {
+        followUpIds: [1, 2],
+      })
+    ).toEqual({
+      title: "Responsabilidade de follow-up transferida",
+      description:
+        "2 follow-up(s) pendente(s) foram transferidos junto com a carteira.",
+    });
+  });
+
   it("keeps an unknown future event safe and readable", () => {
     expect(presentTimelineEvent("future_event", { internalId: 9 })).toEqual({
       title: "Evento registrado",
