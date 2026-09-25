@@ -285,57 +285,6 @@ async function createAnalyticsContext(
   };
 }
 
-function contactExistsBefore(end: Date) {
-  const contact = alias(leadContacts, "analytics_cohort_contact");
-  return sql`exists (
-    select 1 from ${contact}
-    where ${contact.partnerId} = ${leads.partnerId}
-      and ${contact.leadId} = ${leads.id}
-      and ${contact.occurredAt} < ${end}
-  )`;
-}
-
-function assignmentExistsBefore(end: Date) {
-  const event = alias(leadTimelineEvents, "analytics_assignment_event");
-  return sql`exists (
-    select 1 from ${event}
-    where ${event.partnerId} = ${leads.partnerId}
-      and ${event.leadId} = ${leads.id}
-      and ${event.type} in ('assigned', 'lead_distributed', 'lead_reassigned')
-      and ${event.occurredAt} < ${end}
-  )`;
-}
-
-function statusTransitionExists(
-  category: "completed" | "terminal",
-  start: Date | null,
-  end: Date
-) {
-  const event = alias(leadTimelineEvents, `analytics_status_event_${category}`);
-  const targetStatus = alias(
-    leadStatuses,
-    `analytics_target_status_${category}`
-  );
-  const periodCondition = start
-    ? sql`${event.occurredAt} >= ${start} and ${event.occurredAt} < ${end}`
-    : sql`${event.occurredAt} < ${end}`;
-  const categoryCondition =
-    category === "completed"
-      ? sql`${targetStatus.category} = 'completed' and ${targetStatus.isTerminal} = true`
-      : sql`${targetStatus.isTerminal} = true`;
-  return sql`exists (
-    select 1 from ${event}
-    inner join ${targetStatus}
-      on ${targetStatus.id} = cast(json_unquote(json_extract(${event.payloadJson}, '$.statusId')) as unsigned)
-      and ${targetStatus.partnerId} = ${event.partnerId}
-    where ${event.partnerId} = ${leads.partnerId}
-      and ${event.leadId} = ${leads.id}
-      and ${event.type} = 'status_changed'
-      and ${periodCondition}
-      and ${categoryCondition}
-  )`;
-}
-
 async function queryCohortMetrics(
   db: V2Database,
   context: PartnerContext,
@@ -348,27 +297,140 @@ async function queryCohortMetrics(
     gte(leads.receivedAt, period.start),
     lt(leads.receivedAt, period.end),
   ];
-  const contactExists = contactExistsBefore(period.end);
-  const assignedExists = assignmentExistsBefore(period.end);
-  const completedExists = statusTransitionExists("terminal", null, period.end);
-  const convertedExists = statusTransitionExists("completed", null, period.end);
-  const result = await db
-    .select({
-      received: count(),
-      assigned: sql<number>`coalesce(sum(case when ${assignedExists} then 1 else 0 end), 0)`,
-      treated: sql<number>`coalesce(sum(case when ${contactExists} then 1 else 0 end), 0)`,
-      completed: sql<number>`coalesce(sum(case when ${completedExists} then 1 else 0 end), 0)`,
-      converted: sql<number>`coalesce(sum(case when ${convertedExists} then 1 else 0 end), 0)`,
-    })
-    .from(leads)
-    .where(and(...conditions));
-  const row = result[0];
+  const assignmentEvent = alias(
+    leadTimelineEvents,
+    "analytics_cohort_assignment_event"
+  );
+  const contact = alias(leadContacts, "analytics_cohort_contact");
+  const terminalEvent = alias(
+    leadTimelineEvents,
+    "analytics_cohort_terminal_event"
+  );
+  const terminalStatus = alias(
+    leadStatuses,
+    "analytics_cohort_terminal_status"
+  );
+  const conversionEvent = alias(
+    leadTimelineEvents,
+    "analytics_cohort_conversion_event"
+  );
+  const conversionStatus = alias(
+    leadStatuses,
+    "analytics_cohort_conversion_status"
+  );
+
+  // TiDB rejects a correlated EXISTS nested under SUM. Keep each metric an
+  // independent aggregate query instead: every result remains SQL-side, while
+  // COUNT DISTINCT preserves the one-lead/one-metric definition.
+  const [
+    receivedRows,
+    assignedRows,
+    treatedRows,
+    completedRows,
+    convertedRows,
+  ] = await Promise.all([
+    db
+      .select({ total: count() })
+      .from(leads)
+      .where(and(...conditions)),
+    db
+      .select({ total: countDistinct(leads.id) })
+      .from(leads)
+      .innerJoin(
+        assignmentEvent,
+        and(
+          eq(assignmentEvent.partnerId, leads.partnerId),
+          eq(assignmentEvent.leadId, leads.id)
+        )
+      )
+      .where(
+        and(
+          ...conditions,
+          inArray(assignmentEvent.type, [
+            "assigned",
+            "lead_distributed",
+            "lead_reassigned",
+          ]),
+          lt(assignmentEvent.occurredAt, period.end)
+        )
+      ),
+    db
+      .select({ total: countDistinct(leads.id) })
+      .from(leads)
+      .innerJoin(
+        contact,
+        and(
+          eq(contact.partnerId, leads.partnerId),
+          eq(contact.leadId, leads.id)
+        )
+      )
+      .where(
+        and(
+          ...conditions,
+          eq(contact.partnerId, context.partnerId),
+          lt(contact.occurredAt, period.end)
+        )
+      ),
+    db
+      .select({ total: countDistinct(leads.id) })
+      .from(leads)
+      .innerJoin(
+        terminalEvent,
+        and(
+          eq(terminalEvent.partnerId, leads.partnerId),
+          eq(terminalEvent.leadId, leads.id)
+        )
+      )
+      .innerJoin(
+        terminalStatus,
+        and(
+          sql`${terminalStatus.id} = cast(json_unquote(json_extract(${terminalEvent.payloadJson}, '$.statusId')) as unsigned)`,
+          eq(terminalStatus.partnerId, terminalEvent.partnerId)
+        )
+      )
+      .where(
+        and(
+          ...conditions,
+          eq(terminalEvent.partnerId, context.partnerId),
+          eq(terminalEvent.type, "status_changed"),
+          lt(terminalEvent.occurredAt, period.end),
+          eq(terminalStatus.isTerminal, true)
+        )
+      ),
+    db
+      .select({ total: countDistinct(leads.id) })
+      .from(leads)
+      .innerJoin(
+        conversionEvent,
+        and(
+          eq(conversionEvent.partnerId, leads.partnerId),
+          eq(conversionEvent.leadId, leads.id)
+        )
+      )
+      .innerJoin(
+        conversionStatus,
+        and(
+          sql`${conversionStatus.id} = cast(json_unquote(json_extract(${conversionEvent.payloadJson}, '$.statusId')) as unsigned)`,
+          eq(conversionStatus.partnerId, conversionEvent.partnerId)
+        )
+      )
+      .where(
+        and(
+          ...conditions,
+          eq(conversionEvent.partnerId, context.partnerId),
+          eq(conversionEvent.type, "status_changed"),
+          lt(conversionEvent.occurredAt, period.end),
+          eq(conversionStatus.isTerminal, true),
+          eq(conversionStatus.category, "completed")
+        )
+      ),
+  ]);
   return {
-    received: numberOf(row?.received),
-    assigned: numberOf(row?.assigned),
-    treated: numberOf(row?.treated),
-    completed: numberOf(row?.completed),
-    converted: numberOf(row?.converted),
+    received: numberOf(receivedRows[0]?.total),
+    assigned: numberOf(assignedRows[0]?.total),
+    treated: numberOf(treatedRows[0]?.total),
+    completed: numberOf(completedRows[0]?.total),
+    converted: numberOf(convertedRows[0]?.total),
   };
 }
 
@@ -588,103 +650,353 @@ async function queryCampaignAndPdvOverview(
     gte(leads.receivedAt, period.start),
     lt(leads.receivedAt, period.end),
   ];
-  const treated = contactExistsBefore(period.end);
-  const completed = statusTransitionExists("terminal", null, period.end);
-  const converted = statusTransitionExists("completed", null, period.end);
-  const fields = {
-    leads: count(),
-    treated: sql<number>`coalesce(sum(case when ${treated} then 1 else 0 end), 0)`,
-    completed: sql<number>`coalesce(sum(case when ${completed} then 1 else 0 end), 0)`,
-    converted: sql<number>`coalesce(sum(case when ${converted} then 1 else 0 end), 0)`,
-    firstContactAverageSeconds: sql<
-      number | null
-    >`avg(case when ${leads.firstContactAt} is not null and ${leads.firstContactAt} < ${period.end} then timestampdiff(second, ${leads.receivedAt}, ${leads.firstContactAt}) else null end)`,
-  };
+  const campaignTerminalEvent = alias(
+    leadTimelineEvents,
+    "analytics_campaign_terminal_event"
+  );
+  const campaignTerminalStatus = alias(
+    leadStatuses,
+    "analytics_campaign_terminal_status"
+  );
+  const campaignConversionEvent = alias(
+    leadTimelineEvents,
+    "analytics_campaign_conversion_event"
+  );
+  const campaignConversionStatus = alias(
+    leadStatuses,
+    "analytics_campaign_conversion_status"
+  );
+  const pdvTerminalEvent = alias(
+    leadTimelineEvents,
+    "analytics_pdv_terminal_event"
+  );
+  const pdvTerminalStatus = alias(
+    leadStatuses,
+    "analytics_pdv_terminal_status"
+  );
+  const pdvConversionEvent = alias(
+    leadTimelineEvents,
+    "analytics_pdv_conversion_event"
+  );
+  const pdvConversionStatus = alias(
+    leadStatuses,
+    "analytics_pdv_conversion_status"
+  );
   const followUpConditions = [
     ...analyticsScopeConditions(context, scope, filters),
     eq(followUps.partnerId, context.partnerId),
     eq(followUps.status, "pending"),
     lt(followUps.dueAt, now),
   ];
-  const [campaignRows, pdvRows, campaignOverdue, pdvOverdue] =
-    await Promise.all([
-      db
-        .select({
-          campaignId: campaigns.id,
-          campaignName: campaigns.name,
-          ...fields,
-        })
-        .from(leads)
-        .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
-        .where(and(...cohortConditions))
-        .groupBy(campaigns.id, campaigns.name)
-        .orderBy(desc(count()), asc(campaigns.name)),
-      db
-        .select({ pdvId: pdvs.id, pdvName: pdvs.name, ...fields })
-        .from(leads)
-        .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
-        .where(and(...cohortConditions))
-        .groupBy(pdvs.id, pdvs.name)
-        .orderBy(desc(count()), asc(pdvs.name)),
-      db
-        .select({ campaignId: leads.campaignId, overdue: count() })
-        .from(followUps)
-        .innerJoin(
-          leads,
-          and(
-            eq(leads.id, followUps.leadId),
-            eq(leads.partnerId, followUps.partnerId)
+  // These grouped queries deliberately avoid correlated EXISTS expressions
+  // inside SUM. TiDB accepts the joins below and COUNT DISTINCT maintains the
+  // metric's one Lead per campaign/PDV semantics.
+  const [
+    campaignRows,
+    campaignTreatedRows,
+    campaignCompletedRows,
+    campaignConversionRows,
+    pdvRows,
+    pdvTreatedRows,
+    pdvCompletedRows,
+    pdvConversionRows,
+    campaignOverdue,
+    pdvOverdue,
+  ] = await Promise.all([
+    db
+      .select({
+        campaignId: campaigns.id,
+        campaignName: campaigns.name,
+        leads: count(),
+        firstContactAverageSeconds: sql<
+          number | null
+        >`avg(case when ${leads.firstContactAt} is not null and ${leads.firstContactAt} < ${period.end} then timestampdiff(second, ${leads.receivedAt}, ${leads.firstContactAt}) else null end)`,
+      })
+      .from(leads)
+      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
+      .where(and(...cohortConditions))
+      .groupBy(campaigns.id, campaigns.name)
+      .orderBy(desc(count()), asc(campaigns.name)),
+    db
+      .select({ campaignId: leads.campaignId, total: countDistinct(leads.id) })
+      .from(leads)
+      .innerJoin(
+        leadContacts,
+        and(
+          eq(leadContacts.partnerId, leads.partnerId),
+          eq(leadContacts.leadId, leads.id)
+        )
+      )
+      .where(
+        and(
+          ...cohortConditions,
+          eq(leadContacts.partnerId, context.partnerId),
+          lt(leadContacts.occurredAt, period.end)
+        )
+      )
+      .groupBy(leads.campaignId),
+    db
+      .select({ campaignId: leads.campaignId, total: countDistinct(leads.id) })
+      .from(leads)
+      .innerJoin(
+        campaignTerminalEvent,
+        and(
+          eq(campaignTerminalEvent.partnerId, leads.partnerId),
+          eq(campaignTerminalEvent.leadId, leads.id)
+        )
+      )
+      .innerJoin(
+        campaignTerminalStatus,
+        and(
+          sql`${campaignTerminalStatus.id} = cast(json_unquote(json_extract(${campaignTerminalEvent.payloadJson}, '$.statusId')) as unsigned)`,
+          eq(campaignTerminalStatus.partnerId, campaignTerminalEvent.partnerId)
+        )
+      )
+      .where(
+        and(
+          ...cohortConditions,
+          eq(campaignTerminalEvent.partnerId, context.partnerId),
+          eq(campaignTerminalEvent.type, "status_changed"),
+          lt(campaignTerminalEvent.occurredAt, period.end),
+          eq(campaignTerminalStatus.isTerminal, true)
+        )
+      )
+      .groupBy(leads.campaignId),
+    db
+      .select({ campaignId: leads.campaignId, total: countDistinct(leads.id) })
+      .from(leads)
+      .innerJoin(
+        campaignConversionEvent,
+        and(
+          eq(campaignConversionEvent.partnerId, leads.partnerId),
+          eq(campaignConversionEvent.leadId, leads.id)
+        )
+      )
+      .innerJoin(
+        campaignConversionStatus,
+        and(
+          sql`${campaignConversionStatus.id} = cast(json_unquote(json_extract(${campaignConversionEvent.payloadJson}, '$.statusId')) as unsigned)`,
+          eq(
+            campaignConversionStatus.partnerId,
+            campaignConversionEvent.partnerId
           )
         )
-        .where(and(...followUpConditions))
-        .groupBy(leads.campaignId),
-      db
-        .select({ pdvId: leads.pdvId, overdue: count() })
-        .from(followUps)
-        .innerJoin(
-          leads,
-          and(
-            eq(leads.id, followUps.leadId),
-            eq(leads.partnerId, followUps.partnerId)
-          )
+      )
+      .where(
+        and(
+          ...cohortConditions,
+          eq(campaignConversionEvent.partnerId, context.partnerId),
+          eq(campaignConversionEvent.type, "status_changed"),
+          lt(campaignConversionEvent.occurredAt, period.end),
+          eq(campaignConversionStatus.isTerminal, true),
+          eq(campaignConversionStatus.category, "completed")
         )
-        .where(and(...followUpConditions))
-        .groupBy(leads.pdvId),
-    ]);
+      )
+      .groupBy(leads.campaignId),
+    db
+      .select({
+        pdvId: pdvs.id,
+        pdvName: pdvs.name,
+        leads: count(),
+        firstContactAverageSeconds: sql<
+          number | null
+        >`avg(case when ${leads.firstContactAt} is not null and ${leads.firstContactAt} < ${period.end} then timestampdiff(second, ${leads.receivedAt}, ${leads.firstContactAt}) else null end)`,
+      })
+      .from(leads)
+      .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
+      .where(and(...cohortConditions))
+      .groupBy(pdvs.id, pdvs.name)
+      .orderBy(desc(count()), asc(pdvs.name)),
+    db
+      .select({ pdvId: leads.pdvId, total: countDistinct(leads.id) })
+      .from(leads)
+      .innerJoin(
+        leadContacts,
+        and(
+          eq(leadContacts.partnerId, leads.partnerId),
+          eq(leadContacts.leadId, leads.id)
+        )
+      )
+      .where(
+        and(
+          ...cohortConditions,
+          eq(leadContacts.partnerId, context.partnerId),
+          lt(leadContacts.occurredAt, period.end)
+        )
+      )
+      .groupBy(leads.pdvId),
+    db
+      .select({ pdvId: leads.pdvId, total: countDistinct(leads.id) })
+      .from(leads)
+      .innerJoin(
+        pdvTerminalEvent,
+        and(
+          eq(pdvTerminalEvent.partnerId, leads.partnerId),
+          eq(pdvTerminalEvent.leadId, leads.id)
+        )
+      )
+      .innerJoin(
+        pdvTerminalStatus,
+        and(
+          sql`${pdvTerminalStatus.id} = cast(json_unquote(json_extract(${pdvTerminalEvent.payloadJson}, '$.statusId')) as unsigned)`,
+          eq(pdvTerminalStatus.partnerId, pdvTerminalEvent.partnerId)
+        )
+      )
+      .where(
+        and(
+          ...cohortConditions,
+          eq(pdvTerminalEvent.partnerId, context.partnerId),
+          eq(pdvTerminalEvent.type, "status_changed"),
+          lt(pdvTerminalEvent.occurredAt, period.end),
+          eq(pdvTerminalStatus.isTerminal, true)
+        )
+      )
+      .groupBy(leads.pdvId),
+    db
+      .select({ pdvId: leads.pdvId, total: countDistinct(leads.id) })
+      .from(leads)
+      .innerJoin(
+        pdvConversionEvent,
+        and(
+          eq(pdvConversionEvent.partnerId, leads.partnerId),
+          eq(pdvConversionEvent.leadId, leads.id)
+        )
+      )
+      .innerJoin(
+        pdvConversionStatus,
+        and(
+          sql`${pdvConversionStatus.id} = cast(json_unquote(json_extract(${pdvConversionEvent.payloadJson}, '$.statusId')) as unsigned)`,
+          eq(pdvConversionStatus.partnerId, pdvConversionEvent.partnerId)
+        )
+      )
+      .where(
+        and(
+          ...cohortConditions,
+          eq(pdvConversionEvent.partnerId, context.partnerId),
+          eq(pdvConversionEvent.type, "status_changed"),
+          lt(pdvConversionEvent.occurredAt, period.end),
+          eq(pdvConversionStatus.isTerminal, true),
+          eq(pdvConversionStatus.category, "completed")
+        )
+      )
+      .groupBy(leads.pdvId),
+    db
+      .select({ campaignId: leads.campaignId, overdue: count() })
+      .from(followUps)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, followUps.leadId),
+          eq(leads.partnerId, followUps.partnerId)
+        )
+      )
+      .where(and(...followUpConditions))
+      .groupBy(leads.campaignId),
+    db
+      .select({ pdvId: leads.pdvId, overdue: count() })
+      .from(followUps)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, followUps.leadId),
+          eq(leads.partnerId, followUps.partnerId)
+        )
+      )
+      .where(and(...followUpConditions))
+      .groupBy(leads.pdvId),
+  ]);
   const campaignOverdueMap = new Map(
     campaignOverdue.map(row => [row.campaignId, numberOf(row.overdue)])
   );
   const pdvOverdueMap = new Map(
     pdvOverdue.map(row => [row.pdvId, numberOf(row.overdue)])
   );
-  const normalize = (row: {
-    leads: unknown;
-    treated: unknown;
-    completed: unknown;
-    converted: unknown;
-    firstContactAverageSeconds: unknown;
-  }) => ({
-    leads: numberOf(row.leads),
-    treated: numberOf(row.treated),
-    completed: numberOf(row.completed),
-    conversions: numberOf(row.converted),
-    conversionRate: safeRate(numberOf(row.converted), numberOf(row.leads)),
-    firstContactAverageSeconds:
-      row.firstContactAverageSeconds == null
-        ? null
-        : numberOf(row.firstContactAverageSeconds),
-  });
+  const metricsById = (
+    treatedRows: Array<{ id: number; total: unknown }>,
+    completedRows: Array<{ id: number; total: unknown }>,
+    conversionRows: Array<{ id: number; total: unknown }>
+  ) => {
+    const metrics = new Map<
+      number,
+      { treated: number; completed: number; converted: number }
+    >();
+    for (const row of treatedRows) {
+      metrics.set(row.id, {
+        treated: numberOf(row.total),
+        completed: 0,
+        converted: 0,
+      });
+    }
+    for (const row of completedRows) {
+      const current = metrics.get(row.id) ?? {
+        treated: 0,
+        completed: 0,
+        converted: 0,
+      };
+      current.completed = numberOf(row.total);
+      metrics.set(row.id, current);
+    }
+    for (const row of conversionRows) {
+      const current = metrics.get(row.id) ?? {
+        treated: 0,
+        completed: 0,
+        converted: 0,
+      };
+      current.converted = numberOf(row.total);
+      metrics.set(row.id, current);
+    }
+    return metrics;
+  };
+  const campaignMetrics = metricsById(
+    campaignTreatedRows.map(row => ({ id: row.campaignId, total: row.total })),
+    campaignCompletedRows.map(row => ({
+      id: row.campaignId,
+      total: row.total,
+    })),
+    campaignConversionRows.map(row => ({
+      id: row.campaignId,
+      total: row.total,
+    }))
+  );
+  const pdvMetrics = metricsById(
+    pdvTreatedRows.map(row => ({ id: row.pdvId, total: row.total })),
+    pdvCompletedRows.map(row => ({ id: row.pdvId, total: row.total })),
+    pdvConversionRows.map(row => ({ id: row.pdvId, total: row.total }))
+  );
+  const normalize = (
+    row: {
+      leads: unknown;
+      firstContactAverageSeconds: unknown;
+    },
+    metrics:
+      | { treated: number; completed: number; converted: number }
+      | undefined
+  ) => {
+    const leadTotal = numberOf(row.leads);
+    const values = metrics ?? { treated: 0, completed: 0, converted: 0 };
+    return {
+      leads: leadTotal,
+      treated: values.treated,
+      completed: values.completed,
+      conversions: values.converted,
+      conversionRate: safeRate(values.converted, leadTotal),
+      firstContactAverageSeconds:
+        row.firstContactAverageSeconds == null
+          ? null
+          : numberOf(row.firstContactAverageSeconds),
+    };
+  };
   return {
     campaigns: campaignRows.map(row => ({
       id: row.campaignId,
       name: row.campaignName,
-      ...normalize(row),
+      ...normalize(row, campaignMetrics.get(row.campaignId)),
       followUpsOverdue: campaignOverdueMap.get(row.campaignId) ?? 0,
     })),
     pdvs: pdvRows.map(row => ({
       id: row.pdvId,
       name: row.pdvName,
-      ...normalize(row),
+      ...normalize(row, pdvMetrics.get(row.pdvId)),
       followUpsOverdue: pdvOverdueMap.get(row.pdvId) ?? 0,
     })),
   };
@@ -697,59 +1009,28 @@ export async function getDashboardAnalytics(
 ) {
   const analytics = await createAnalyticsContext(context, filters);
   const { db, scope, period, now } = analytics;
-
-  // Keep the client response deliberately generic, but make a failed aggregate
-  // identifiable in the service log. This is especially important for the
-  // dashboard because it fans out into independent SQL aggregates and one
-  // failed query must not be mistaken for an authorization failure.
-  const queryStage = async <T>(stage: string, query: () => Promise<T>) => {
-    try {
-      return await query();
-    } catch (error) {
-      console.error("[v2.analytics.dashboard] aggregate failed", {
-        stage,
-        partnerId: context.partnerId,
-        membershipId: context.membershipId,
-        role: context.role,
-        error: error instanceof Error ? error.message : "unknown error",
-      });
-      throw error;
-    }
-  };
   const [cohort, previousCohort, activity, previousActivity, stocks, overview] =
     await Promise.all([
-      queryStage("cohort", () =>
-        queryCohortMetrics(db, context, scope, filters, period)
+      queryCohortMetrics(db, context, scope, filters, period),
+      queryCohortMetrics(db, context, scope, filters, {
+        start: period.previousStart,
+        end: period.previousEnd,
+      }),
+      queryPeriodActivityMetrics(db, context, scope, filters, period),
+      queryPeriodActivityMetrics(db, context, scope, filters, {
+        start: period.previousStart,
+        end: period.previousEnd,
+      }),
+      queryDashboardStocks(
+        db,
+        context,
+        scope,
+        filters,
+        period,
+        now,
+        analytics.staleLeadMinutes
       ),
-      queryStage("previous_cohort", () =>
-        queryCohortMetrics(db, context, scope, filters, {
-          start: period.previousStart,
-          end: period.previousEnd,
-        })
-      ),
-      queryStage("activity", () =>
-        queryPeriodActivityMetrics(db, context, scope, filters, period)
-      ),
-      queryStage("previous_activity", () =>
-        queryPeriodActivityMetrics(db, context, scope, filters, {
-          start: period.previousStart,
-          end: period.previousEnd,
-        })
-      ),
-      queryStage("stocks", () =>
-        queryDashboardStocks(
-          db,
-          context,
-          scope,
-          filters,
-          period,
-          now,
-          analytics.staleLeadMinutes
-        )
-      ),
-      queryStage("overview", () =>
-        queryCampaignAndPdvOverview(db, context, scope, filters, period, now)
-      ),
+      queryCampaignAndPdvOverview(db, context, scope, filters, period, now),
     ]);
   const conversionRate = safeRate(cohort.converted, cohort.received);
   const previousConversionRate = safeRate(
