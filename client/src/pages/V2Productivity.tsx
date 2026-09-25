@@ -4,11 +4,11 @@ import {
   type AnalyticsUiFilters,
 } from "@/components/v2/AnalyticsFilters";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { v2trpc } from "@/lib/v2trpc";
 import { useState } from "react";
-import { Link } from "wouter";
 
 function number(value: number | undefined | null) {
   return new Intl.NumberFormat("pt-BR").format(value ?? 0);
@@ -43,29 +43,8 @@ export default function V2Productivity() {
   const access = v2trpc.access.context.useQuery();
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 p-4 sm:p-8">
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
-            V2 / Gestão
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold">
-            Produtividade operacional
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Contatos, disciplina de follow-up e governança são calculados por
-            vendedor a partir das entidades reais.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/v2/dashboard">
-            <Button variant="outline">Dashboard</Button>
-          </Link>
-          <Link href="/v2/reports">
-            <Button variant="outline">Relatórios</Button>
-          </Link>
-        </div>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader eyebrow="V2 / Gestão" title="Produtividade operacional" description="Contatos, disciplina de follow-up e governança são calculados por vendedor a partir das entidades reais." />
 
       <AnalyticsFilters value={filters} onChange={setFilters} />
 
@@ -76,17 +55,9 @@ export default function V2Productivity() {
           </CardContent>
         </Card>
       ) : productivity.isLoading ? (
-        <Card>
-          <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            Calculando produtividade no banco V2…
-          </CardContent>
-        </Card>
+        <V2LoadingState label="Calculando produtividade no banco V2" />
       ) : productivity.isError ? (
-        <Card>
-          <CardContent className="p-8 text-center text-sm text-destructive">
-            Não foi possível carregar a produtividade autorizada.
-          </CardContent>
-        </Card>
+        <V2ErrorState message="Não foi possível carregar a produtividade autorizada." onRetry={() => productivity.refetch()} />
       ) : productivity.data ? (
         <>
           <section className="grid gap-3 sm:grid-cols-4">
@@ -117,9 +88,30 @@ export default function V2Productivity() {
                 período.
               </p>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
+            <CardContent>
               {productivity.data.sellers.length ? (
-                <table className="w-full min-w-[1500px] text-sm">
+                <>
+                <div className="grid gap-3 md:hidden">
+                  {productivity.data.sellers.map(row => (
+                    <div key={row.membershipId} className="v2-mobile-record rounded-lg border p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <button className="text-left font-medium hover:underline" onClick={() => access.data?.role !== "seller" && setFilters({ ...filters, sellerMembershipId: row.membershipId })}>{row.name}</button>
+                        {row.followUpsOverdue ? <Badge variant="destructive">{row.followUpsOverdue} FU vencidos</Badge> : <Badge variant="secondary">Sem FU vencido</Badge>}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{row.pdvNames.join(", ") || "Sem PDV"}</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                        <span>Carteira <strong className="text-foreground">{number(row.leadsInPortfolio)}</strong></span><span>Atribuídos <strong className="text-foreground">{number(row.leadsAssignedInPeriod)}</strong></span>
+                        <span>Tratados <strong className="text-foreground">{number(row.leadsTreated)}</strong></span><span>Taxa <strong className="text-foreground">{percent(row.treatmentRate)}</strong></span>
+                        <span>Contatos <strong className="text-foreground">{number(row.contacts)}</strong></span><span>Conversões <strong className="text-foreground">{number(row.conversions)}</strong></span>
+                        <span>FU concluídos <strong className="text-foreground">{number(row.followUpsCompleted)}</strong></span><span>Taxa FU <strong className="text-foreground">{percent(row.followUpCompletionRate)}</strong></span>
+                        <span>1º contato <strong className="text-foreground">{duration(row.firstContactAverageSeconds)}</strong></span><span>Sem 1º contato <strong className="text-foreground">{number(row.leadsWithoutFirstContact)}</strong></span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Governança: {row.governanceComplete} completa(s) · {row.governancePending} pendente(s) · Última atividade: {row.lastActivityAt ? new Date(row.lastActivityAt).toLocaleString("pt-BR") : "—"}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-sm">
                   <thead className="border-b text-left text-muted-foreground">
                     <tr>
                       <th className="p-2">Vendedor</th>
@@ -210,6 +202,8 @@ export default function V2Productivity() {
                     ))}
                   </tbody>
                 </table>
+                </div>
+                </>
               ) : (
                 <p className="p-8 text-center text-sm text-muted-foreground">
                   Nenhum vendedor ativo no escopo selecionado.

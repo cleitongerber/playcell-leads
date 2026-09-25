@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { v2trpc } from "@/lib/v2trpc";
+import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -76,22 +77,8 @@ export default function V2ImportConfiguration() {
   });
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-8">
-      <Link href="/v2/admin">
-        <Button variant="outline">← Administração V2</Button>
-      </Link>
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
-          V2 / Administração
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold">
-          Configuração de importações
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Defina a política padrão, campos personalizados e templates
-          reutilizáveis do parceiro.
-        </p>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader eyebrow="V2 / Administração" title="Configuração de importações" description="Defina a política padrão, campos personalizados e templates reutilizáveis do parceiro." actions={<Link href="/v2/admin"><Button variant="outline">← Administração V2</Button></Link>} />
       {!canManage ? (
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">

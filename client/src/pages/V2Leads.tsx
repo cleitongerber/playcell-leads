@@ -10,7 +10,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { v2trpc } from "@/lib/v2trpc";
+import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { followUpStatusLabel } from "@/lib/followUpPresentation";
 import { presentTimelineEvent } from "@/lib/timelinePresentation";
 import { FormEvent, useState } from "react";
@@ -118,50 +121,18 @@ export default function V2Leads() {
   const access = v2trpc.access.context.useQuery();
   const followUpAlerts = v2trpc.followUps.alerts.useQuery();
   return (
-    <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
-            V2 / Operação
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold">Leads</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Fila disponível e carteira do vendedor usam paginação diretamente no
-            banco.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/v2/follow-ups">
-            <Button variant="outline">
-              Follow-ups
-              {(followUpAlerts.data?.overdue ?? 0) +
-                (followUpAlerts.data?.today ?? 0) >
-                0 && (
-                <Badge className="ml-2" variant="destructive">
-                  {(followUpAlerts.data?.overdue ?? 0) +
-                    (followUpAlerts.data?.today ?? 0)}
-                </Badge>
-              )}
-            </Button>
-          </Link>
-          <Link href="/v2/campaigns">
-            <Button variant="outline">Campanhas</Button>
-          </Link>
-          <Link href="/v2/dashboard">
-            <Button variant="outline">Dashboard</Button>
-          </Link>
-        </div>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader eyebrow="V2 / Operação" title="Leads" description="Fila disponível e carteira do vendedor usam paginação diretamente no banco." actions={(followUpAlerts.data?.overdue ?? 0) + (followUpAlerts.data?.today ?? 0) > 0 ? <Badge variant="destructive">{(followUpAlerts.data?.overdue ?? 0) + (followUpAlerts.data?.today ?? 0)} follow-up(s)</Badge> : undefined} />
       <Card>
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row">
-          <Select
+          <div className="min-w-0 flex-1 space-y-1.5"><Label htmlFor="leads-view">Visão</Label><Select
             value={view}
             onValueChange={value => {
               setView(value as View);
               setPage(1);
             }}
           >
-            <SelectTrigger className="w-full sm:w-48">
+            <SelectTrigger id="leads-view" className="w-full sm:w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -171,8 +142,9 @@ export default function V2Leads() {
                 <SelectItem value="all">Todos no escopo</SelectItem>
               )}
             </SelectContent>
-          </Select>
-          <Input
+          </Select></div>
+          <div className="min-w-0 flex-1 space-y-1.5"><Label htmlFor="leads-search">Busca</Label><Input
+            id="leads-search"
             className="max-w-md"
             placeholder="Buscar nome ou telefone"
             value={search}
@@ -180,7 +152,7 @@ export default function V2Leads() {
               setSearch(event.target.value);
               setPage(1);
             }}
-          />
+          /></div>
         </CardContent>
       </Card>
       <Card>
@@ -195,13 +167,9 @@ export default function V2Leads() {
         </CardHeader>
         <CardContent className="space-y-2">
           {list.isLoading ? (
-            <p className="p-8 text-center text-sm text-muted-foreground">
-              Carregando leads…
-            </p>
+            <V2LoadingState label="Carregando leads" />
           ) : list.isError ? (
-            <p className="p-8 text-center text-sm text-destructive">
-              Não foi possível carregar os leads. Tente novamente.
-            </p>
+            <V2ErrorState message="Não foi possível carregar os leads." onRetry={() => list.refetch()} />
           ) : list.data?.items.length ? (
             list.data.items.map(lead => (
               <button
@@ -344,18 +312,9 @@ export function V2LeadDetail() {
     onError: error => toast.error(error.message),
   });
   const lead = detail.data?.lead;
-  if (detail.isLoading)
-    return (
-      <main className="p-8 text-center text-sm text-muted-foreground">
-        Carregando lead…
-      </main>
-    );
+  if (detail.isLoading) return <main className="v2-page"><V2LoadingState label="Carregando lead" /></main>;
   if (!lead)
-    return (
-      <main className="p-8 text-center text-sm text-muted-foreground">
-        Lead não encontrado ou sem acesso.
-      </main>
-    );
+    return <main className="v2-page"><V2ErrorState message="Lead não encontrado ou sem acesso." /></main>;
   const isSeller = access.data?.role === "seller";
   const isOwner = lead.assignedMembershipId === access.data?.membershipId;
   // A system Super Admin can supervise every tenant, but is not itself an
@@ -373,23 +332,8 @@ export function V2LeadDetail() {
       governance?.followUpRequired
   );
   return (
-    <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
-      <Link href="/v2/leads">
-        <Button variant="outline">← Leads</Button>
-      </Link>
-      <header>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-3xl font-semibold">
-            {lead.name || "Lead sem nome"}
-          </h1>
-          <Badge>{detail.data?.status?.label}</Badge>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {lead.phone || "Sem telefone"} · {detail.data?.campaign?.name} ·{" "}
-          {detail.data?.pdv?.name} · Responsável:{" "}
-          {detail.data?.assignee?.name || "Não atribuído"}
-        </p>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader eyebrow="V2 / Lead" title={lead.name || "Lead sem nome"} description={`${lead.phone || "Sem telefone"} · ${detail.data?.campaign?.name} · ${detail.data?.pdv?.name} · Responsável: ${detail.data?.assignee?.name || "Não atribuído"}`} actions={<><Badge>{detail.data?.status?.label}</Badge>{canWork && <Button asChild><a href="#register-treatment">Registrar tratativa</a></Button>}<Link href="/v2/leads"><Button variant="outline">← Leads</Button></Link></>} />
       {!lead.assignedMembershipId && isSeller && (
         <Button
           onClick={() => assume.mutate({ id })}
@@ -452,6 +396,7 @@ export function V2LeadDetail() {
                   </Select>
                 </div>
                 <form
+                  id="register-treatment"
                   className="space-y-2"
                   onSubmit={(event: FormEvent) => {
                     event.preventDefault();
@@ -472,22 +417,23 @@ export function V2LeadDetail() {
                 >
                   <p className="text-sm font-medium">Registrar contato</p>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
+                    <div className="space-y-1.5"><Label htmlFor="contact-channel">Canal</Label><Input
+                      id="contact-channel"
                       value={contact.channel}
                       onChange={event =>
                         setContact({ ...contact, channel: event.target.value })
                       }
-                      placeholder="Canal"
-                    />
-                    <Input
+                    /></div>
+                    <div className="space-y-1.5"><Label htmlFor="contact-outcome">Resultado</Label><Input
+                      id="contact-outcome"
                       value={contact.outcome}
                       onChange={event =>
                         setContact({ ...contact, outcome: event.target.value })
                       }
-                      placeholder="Resultado"
-                    />
+                    /></div>
                   </div>
-                  <Textarea
+                  <div className="space-y-1.5"><Label htmlFor="contact-summary">Resumo {governance?.noteRequired && "(obrigatório)"}</Label><Textarea
+                    id="contact-summary"
                     value={contact.summary}
                     onChange={event =>
                       setContact({ ...contact, summary: event.target.value })
@@ -498,8 +444,8 @@ export function V2LeadDetail() {
                         : "Resumo do contato"
                     }
                     required={governance?.noteRequired}
-                  />
-                  <Select
+                  /></div>
+                  <div className="space-y-1.5"><Label htmlFor="contact-status">Status após contato</Label><Select
                     value={contact.statusId || "unchanged"}
                     onValueChange={value =>
                       setContact({
@@ -508,7 +454,7 @@ export function V2LeadDetail() {
                       })
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="contact-status">
                       <SelectValue placeholder="Manter status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -519,9 +465,10 @@ export function V2LeadDetail() {
                         </SelectItem>
                       ))}
                     </SelectContent>
-                  </Select>
+                  </Select></div>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
+                    <div className="space-y-1.5"><Label htmlFor="contact-follow-up">Próximo follow-up {governance?.followUpRequired && "(obrigatório)"}</Label><Input
+                      id="contact-follow-up"
                       type="datetime-local"
                       value={contact.followUpDueAt}
                       onChange={event =>
@@ -532,8 +479,9 @@ export function V2LeadDetail() {
                       }
                       required={governance?.followUpRequired}
                       aria-label="Próximo follow-up"
-                    />
-                    <Input
+                    /></div>
+                    <div className="space-y-1.5"><Label htmlFor="contact-follow-up-note">Motivo do follow-up</Label><Input
+                      id="contact-follow-up-note"
                       value={contact.followUpNote}
                       onChange={event =>
                         setContact({
@@ -542,7 +490,7 @@ export function V2LeadDetail() {
                         })
                       }
                       placeholder="Motivo do follow-up"
-                    />
+                    /></div>
                   </div>
                   {governance?.followUpRequired && (
                     <p className="text-xs text-muted-foreground">

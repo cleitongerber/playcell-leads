@@ -12,6 +12,8 @@ import {
   type GovernanceRuleFormValue,
 } from "@/components/v2/GovernanceRuleEditor";
 import { CampaignLeadManagement } from "@/components/v2/CampaignLeadManagement";
+import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { v2trpc } from "@/lib/v2trpc";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -71,22 +73,8 @@ export default function V2Campaigns() {
     }));
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
-            V2 / Operação
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold">Campanhas</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Crie a campanha, defina os PDVs e deixe-a pronta para a futura
-            importação de leads.
-          </p>
-        </div>
-        <Link href="/v2/admin">
-          <Button variant="outline">Administração V2</Button>
-        </Link>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader eyebrow="V2 / Operação" title="Campanhas" description="Crie a campanha, defina os PDVs e deixe-a pronta para a importação de Leads." />
       {canManage && (
         <Card>
           <CardHeader>
@@ -299,18 +287,9 @@ export function V2CampaignDetail() {
         ? current.pdvIds.filter(item => item !== pdvId)
         : [...current.pdvIds, pdvId],
     }));
-  if (detail.isLoading)
-    return (
-      <main className="p-8 text-center text-sm text-muted-foreground">
-        Carregando campanha…
-      </main>
-    );
+  if (detail.isLoading) return <main className="v2-page"><V2LoadingState label="Carregando campanha" /></main>;
   if (!campaign)
-    return (
-      <main className="p-8 text-center text-sm text-muted-foreground">
-        Campanha não encontrada ou sem acesso.
-      </main>
-    );
+    return <main className="v2-page"><V2ErrorState message="Campanha não encontrada ou sem acesso." /></main>;
   const nextStatus =
     campaign.status === "draft"
       ? "active"
@@ -320,20 +299,8 @@ export function V2CampaignDetail() {
           ? "archived"
           : null;
   return (
-    <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-8">
-      <Link href="/v2/campaigns">
-        <Button variant="outline">← Campanhas</Button>
-      </Link>
-      <header>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-3xl font-semibold">{campaign.name}</h1>
-          <Badge>{statusLabel[campaign.status]}</Badge>
-          {campaign.isFrozen && <Badge variant="destructive">Congelada</Badge>}
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {campaign.code} · {campaign.description || "Sem descrição"}
-        </p>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader eyebrow="V2 / Campanha" title={campaign.name} description={`${campaign.code} · ${campaign.description || "Sem descrição"}`} actions={<><Badge>{statusLabel[campaign.status]}</Badge>{campaign.isFrozen && <Badge variant="destructive">Congelada</Badge>}<Link href="/v2/campaigns"><Button variant="outline">← Campanhas</Button></Link></>} />
       <Card>
         <CardHeader>
           <CardTitle>{editing ? "Editar rascunho" : "Visão geral"}</CardTitle>

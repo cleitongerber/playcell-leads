@@ -217,7 +217,17 @@ const analyticsReportInput = analyticsFiltersInput.extend({
  */
 export const v2FoundationRouter = v2Router({
   auth: v2Router({
-    me: v2PublicProcedure.query(({ ctx }) => ctx.user),
+    me: v2PublicProcedure.query(({ ctx }) =>
+      ctx.user
+        ? {
+            id: ctx.user.id,
+            name: ctx.user.name,
+            email: ctx.user.email,
+            systemRole: ctx.user.systemRole,
+            isActive: ctx.user.isActive,
+          }
+        : null
+    ),
     login: v2PublicProcedure
       .input(
         z.object({

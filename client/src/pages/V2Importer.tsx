@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { v2trpc } from "@/lib/v2trpc";
+import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useRoute } from "wouter";
@@ -317,44 +319,18 @@ export default function V2Importer() {
   };
 
   if (!validCampaignId) {
-    return (
-      <main className="p-8 text-center text-sm text-muted-foreground">
-        Campanha inválida.
-      </main>
-    );
+    return <main className="v2-page"><V2ErrorState message="Campanha inválida." /></main>;
   }
   if (setup.isLoading) {
-    return (
-      <main className="p-8 text-center text-sm text-muted-foreground">
-        Carregando importador…
-      </main>
-    );
+    return <main className="v2-page"><V2LoadingState label="Carregando importador" /></main>;
   }
   if (!setupData) {
-    return (
-      <main className="p-8 text-center text-sm text-muted-foreground">
-        Campanha não encontrada ou sem acesso.
-      </main>
-    );
+    return <main className="v2-page"><V2ErrorState message="Campanha não encontrada ou sem acesso." /></main>;
   }
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
-            V2 / Campanhas / Importações
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold">Importar leads</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {setupData.campaign.name} · o CSV é validado no servidor antes de
-            qualquer lead ser criado.
-          </p>
-        </div>
-        <Link href={`/v2/campaigns/${campaignId}`}>
-          <Button variant="outline">← Campanha</Button>
-        </Link>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader eyebrow="V2 / Campanhas / Importações" title="Importar leads" description={`${setupData.campaign.name} · o CSV é validado no servidor antes de qualquer lead ser criado.`} actions={<Link href={`/v2/campaigns/${campaignId}`}><Button variant="outline">← Campanha</Button></Link>} />
 
       <section className="grid gap-2 sm:grid-cols-4">
         {[
@@ -471,8 +447,11 @@ export default function V2Importer() {
                   </div>
                 )}
               </div>
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full min-w-[760px] text-left text-sm">
+              <div className="grid gap-3 md:hidden">
+                {mappings.map(mapping => <div key={mapping.sourceHeader} className="space-y-3 rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><span className="font-medium">{mapping.sourceHeader}</span><label className="flex items-center gap-2 text-xs text-muted-foreground"><Checkbox checked={mapping.isRequired} disabled={!mapping.targetKey} onCheckedChange={checked => updateMapping(mapping.sourceHeader, { isRequired: checked === true })} /> Obrigatório</label></div><label className="grid gap-1 text-xs font-medium">Destino<select className="h-9 rounded-md border bg-background px-2 text-sm font-normal" value={mapping.targetKey ? `${mapping.targetKind}:${mapping.targetKey}` : ""} onChange={event => selectTarget(mapping.sourceHeader, event.target.value)}><option value="">Não importar esta coluna</option><optgroup label="Campos do lead">{coreTargets.map(target => <option key={target.key} value={`core:${target.key}`}>{target.label}</option>)}</optgroup>{customFields.length > 0 && <optgroup label="Campos personalizados">{customFields.map(field => <option key={field.key} value={`custom:${field.key}`}>{field.label ?? field.key} · {field.key}</option>)}</optgroup>}</select></label><label className="grid gap-1 text-xs font-medium">Transformação<select className="h-9 rounded-md border bg-background px-2 text-sm font-normal" value={mapping.transformKey ?? ""} onChange={event => updateMapping(mapping.sourceHeader, { transformKey: event.target.value || null })}><option value="">Sem transformação</option><option value="trim">Remover espaços</option><option value="lowercase">Minúsculas</option><option value="uppercase">Maiúsculas</option><option value="digits_only">Somente dígitos</option></select></label></div>)}
+              </div>
+              <div className="hidden overflow-x-auto rounded-lg border md:block">
+                <table className="w-full text-left text-sm">
                   <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="p-3">Coluna do arquivo</th>
@@ -739,8 +718,11 @@ export default function V2Importer() {
                 </p>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="overflow-x-auto rounded-lg border">
-                  <table className="w-full min-w-[650px] text-left text-sm">
+                <div className="grid gap-2 md:hidden">
+                  {preview.data?.items.map(row => <div key={row.rowNumber} className="rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><span className="font-medium">Linha {row.rowNumber}</span><Badge variant={row.status === "invalid" ? "destructive" : "outline"}>{row.status}</Badge></div><p className="mt-2 break-words font-mono text-xs text-muted-foreground">{row.mappedData ? JSON.stringify(row.mappedData) : "—"}</p></div>)}
+                </div>
+                <div className="hidden overflow-x-auto rounded-lg border md:block">
+                  <table className="w-full text-left text-sm">
                     <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="p-3">Linha</th>

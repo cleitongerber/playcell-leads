@@ -13,9 +13,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { v2trpc } from "@/lib/v2trpc";
+import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Link } from "wouter";
 
 type ReportType =
   | "leads"
@@ -72,30 +73,13 @@ export default function V2Reports() {
   };
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 p-4 sm:p-8">
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
-            V2 / Gestão
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold">Relatórios</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Análise histórica e exportação CSV com o mesmo escopo autorizado da
-            consulta.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/v2/dashboard">
-            <Button variant="outline">Dashboard</Button>
-          </Link>
-          <Link href="/v2/productivity">
-            <Button variant="outline">Produtividade</Button>
-          </Link>
-        </div>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader eyebrow="V2 / Gestão" title="Relatórios" description="Análise histórica e exportação CSV com o mesmo escopo autorizado da consulta." />
 
       <Card>
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
+          <label className="text-sm font-medium" htmlFor="report-type">Tipo de relatório</label>
           <Select
             value={type}
             onValueChange={value => {
@@ -103,7 +87,7 @@ export default function V2Reports() {
               setPage(1);
             }}
           >
-            <SelectTrigger className="sm:max-w-xs">
+            <SelectTrigger id="report-type">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -120,6 +104,7 @@ export default function V2Reports() {
                 ))}
             </SelectContent>
           </Select>
+          </div>
           <Button
             className="sm:ml-auto"
             disabled={!canQuery || exportCsv.isPending || !report.data?.total}
@@ -138,17 +123,9 @@ export default function V2Reports() {
           </CardContent>
         </Card>
       ) : report.isLoading ? (
-        <Card>
-          <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            Consultando relatório no banco V2…
-          </CardContent>
-        </Card>
+        <V2LoadingState label="Consultando relatório no banco V2" />
       ) : report.isError ? (
-        <Card>
-          <CardContent className="p-8 text-center text-sm text-destructive">
-            Não foi possível carregar este relatório no seu escopo.
-          </CardContent>
-        </Card>
+        <V2ErrorState message="Não foi possível carregar este relatório no seu escopo." onRetry={() => report.refetch()} />
       ) : report.data ? (
         <Card>
           <CardHeader>
@@ -158,9 +135,18 @@ export default function V2Reports() {
               {report.data.period.timeZone}
             </p>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          <CardContent>
             {report.data.rows.length ? (
-              <table className="w-full min-w-max text-sm">
+              <>
+              <div className="grid gap-3 md:hidden">
+                {report.data.rows.map((row, index) => (
+                  <div key={index} className="v2-mobile-record rounded-lg border p-3">
+                    {report.data.columns.map(column => <div key={column.key} className="flex items-start justify-between gap-3 border-b py-1.5 last:border-0"><span className="text-xs text-muted-foreground">{column.label}</span><span className="max-w-[65%] text-right text-sm" title={display(row[column.key])}>{display(row[column.key])}</span></div>)}
+                  </div>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
                 <thead className="border-b text-left text-muted-foreground">
                   <tr>
                     {report.data.columns.map(column => (
@@ -186,6 +172,8 @@ export default function V2Reports() {
                   ))}
                 </tbody>
               </table>
+              </div>
+              </>
             ) : (
               <p className="p-8 text-center text-sm text-muted-foreground">
                 Nenhum registro para os filtros aplicados.

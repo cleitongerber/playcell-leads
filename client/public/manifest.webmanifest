@@ -3,6 +3,7 @@
   "short_name": "Playcell",
   "description": "Gestão comercial de leads, campanhas e PDVs.",
   "lang": "pt-BR",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

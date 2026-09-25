@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { followUpStatusLabel } from "@/lib/followUpPresentation";
 import { v2trpc } from "@/lib/v2trpc";
+import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -90,27 +91,8 @@ export default function V2FollowUps() {
   });
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
-            V2 / Operação
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold">Follow-ups</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Agenda do parceiro em {alerts.data?.timezone ?? "…"}. Vencimento é
-            calculado no servidor, não no navegador.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/v2/leads">
-            <Button variant="outline">Leads</Button>
-          </Link>
-          <Link href="/v2/dashboard">
-            <Button variant="outline">Dashboard</Button>
-          </Link>
-        </div>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader eyebrow="V2 / Operação" title="Follow-ups" description={`Agenda do parceiro em ${alerts.data?.timezone ?? "…"}. Vencimento é calculado no servidor, não no navegador.`} />
 
       <section className="grid gap-3 sm:grid-cols-3">
         <Card className={alerts.data?.overdue ? "border-destructive" : ""}>
@@ -158,14 +140,14 @@ export default function V2FollowUps() {
           </div>
           {canFilterTeam && (
             <div className="flex flex-1 flex-col gap-2 sm:flex-row">
-              <Select
+              <div className="min-w-0 flex-1 space-y-1.5"><label className="text-sm font-medium" htmlFor="followup-pdv">PDV</label><Select
                 value={pdvId || "all"}
                 onValueChange={value => {
                   setPdvId(value === "all" ? "" : value);
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="flex-1">
+                <SelectTrigger id="followup-pdv" className="flex-1">
                   <SelectValue placeholder="Todos os PDVs" />
                 </SelectTrigger>
                 <SelectContent>
@@ -176,15 +158,15 @@ export default function V2FollowUps() {
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
-              <Select
+              </Select></div>
+              <div className="min-w-0 flex-1 space-y-1.5"><label className="text-sm font-medium" htmlFor="followup-owner">Responsável</label><Select
                 value={ownerMembershipId || "all"}
                 onValueChange={value => {
                   setOwnerMembershipId(value === "all" ? "" : value);
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="flex-1">
+                <SelectTrigger id="followup-owner" className="flex-1">
                   <SelectValue placeholder="Todos os responsáveis" />
                 </SelectTrigger>
                 <SelectContent>
@@ -196,7 +178,7 @@ export default function V2FollowUps() {
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
+              </Select></div>
             </div>
           )}
         </CardContent>

@@ -123,12 +123,23 @@
 }
 
 @layer base {
+  html {
+    min-width: 320px;
+    min-height: 100%;
+    scroll-behavior: smooth;
+  }
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+    min-width: 320px;
+    min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+  #root { min-height: 100dvh; }
+  :focus-visible { outline-width: 2px; outline-offset: 2px; }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
   [type="button"]:not(:disabled),
@@ -182,5 +193,211 @@
       padding-right: 2rem;
       max-width: 1280px; /* Standard content width */
     }
+  }
+
+  .v2-app-shell {
+    min-height: 100dvh;
+    background: var(--background);
+  }
+  .v2-desktop-sidebar {
+    display: none;
+  }
+  .v2-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    min-height: 3.75rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+    background: color-mix(in oklab, var(--background) 94%, transparent);
+    padding: 0.625rem 1rem;
+    backdrop-filter: blur(14px);
+  }
+  .v2-mobile-brand {
+    display: grid;
+    place-items: center;
+    color: var(--primary);
+  }
+  .v2-mobile-partner {
+    position: sticky;
+    top: 3.75rem;
+    z-index: 20;
+    border-bottom: 1px solid var(--border);
+    background: var(--background);
+    padding: 0.5rem 1rem;
+  }
+  .v2-context-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--primary) 7%, var(--background));
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
+  }
+  .v2-shell-content {
+    min-width: 0;
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+  .v2-sidebar-brand {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.25rem 0.375rem 1rem;
+  }
+  .v2-sidebar-nav {
+    display: grid;
+    gap: 0.25rem;
+    overflow-y: auto;
+    padding: 0.75rem 0.25rem;
+  }
+  .v2-sidebar-nav-item,
+  .v2-mobile-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border-radius: 0.625rem;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+  .v2-sidebar-nav-item {
+    min-height: 2.5rem;
+    padding: 0.625rem 0.75rem;
+  }
+  .v2-sidebar-nav-item:hover,
+  .v2-sidebar-nav-item.is-active {
+    background: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
+  }
+  .v2-sidebar-footer {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: auto;
+    padding: 1rem 0.25rem 0;
+  }
+  .v2-mobile-bottom-nav {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.125rem;
+    border-top: 1px solid var(--border);
+    background: color-mix(in oklab, var(--background) 96%, transparent);
+    padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom));
+    backdrop-filter: blur(16px);
+  }
+  .v2-mobile-nav-item {
+    min-width: 0;
+    min-height: 3.25rem;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.2rem;
+    padding: 0.3rem 0.2rem;
+    font-size: 0.6875rem;
+  }
+  .v2-mobile-nav-item.is-active { color: var(--primary); }
+  .v2-mobile-more-sheet { padding-bottom: env(safe-area-inset-bottom); }
+  .v2-page {
+    width: 100%;
+    max-width: 90rem;
+    margin: 0 auto;
+    padding: 1.25rem 1rem 2.5rem;
+  }
+  .v2-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+  .v2-page-header h1 { font-size: clamp(1.5rem, 2vw, 2rem); line-height: 1.15; }
+  .v2-page-header p { max-width: 52rem; margin-top: 0.35rem; color: var(--muted-foreground); font-size: 0.9rem; }
+  .v2-page-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
+  .v2-metric-card { min-height: 7.5rem; }
+  .v2-responsive-table { min-width: 0; }
+  .v2-mobile-record { display: grid; gap: 0.75rem; }
+  .v2-login-shell {
+    display: grid;
+    min-height: 100dvh;
+    place-items: center;
+    background: radial-gradient(circle at 20% 0%, color-mix(in oklab, var(--primary) 10%, transparent), transparent 42%), var(--background);
+    padding: 1rem;
+  }
+  .v2-login-card {
+    display: grid;
+    width: min(100%, 30rem);
+    gap: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--card);
+    padding: clamp(1.25rem, 4vw, 2rem);
+    box-shadow: 0 18px 48px color-mix(in oklab, var(--foreground) 8%, transparent);
+  }
+  .v2-brand-mark {
+    display: grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    place-items: center;
+    border-radius: 0.75rem;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-weight: 800;
+  }
+  .v2-eyebrow { color: var(--primary); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+  .v2-login-title { margin-top: 0.35rem; font-size: 1.75rem; }
+  .v2-login-description { margin-top: 0.35rem; color: var(--muted-foreground); font-size: 0.9rem; line-height: 1.55; }
+  .v2-offline-banner,
+  .v2-update-banner {
+    position: fixed;
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    left: max(1rem, env(safe-area-inset-left));
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 0.7rem 0.8rem;
+    font-size: 0.8125rem;
+    box-shadow: 0 12px 32px color-mix(in oklab, var(--foreground) 16%, transparent);
+  }
+  .v2-offline-banner { background: var(--card); color: var(--muted-foreground); }
+  .v2-update-banner { background: var(--primary); color: var(--primary-foreground); }
+  .v2-banner-dismiss { display: grid; min-width: 2rem; min-height: 2rem; place-items: center; border-radius: 0.4rem; }
+  .v2-banner-dismiss:hover { background: color-mix(in oklab, currentColor 15%, transparent); }
+
+  @media (min-width: 640px) {
+    .v2-page { padding: 1.75rem 1.5rem 3rem; }
+    .v2-offline-banner, .v2-update-banner { left: auto; width: min(28rem, calc(100vw - 2rem)); }
+  }
+  @media (min-width: 1024px) {
+    .v2-desktop-sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 40;
+      display: flex;
+      width: 15.5rem;
+      flex-direction: column;
+      border-right: 1px solid var(--sidebar-border);
+      background: var(--sidebar);
+      padding: 1.25rem 1rem;
+    }
+    .v2-app-shell { padding-left: 15.5rem; }
+    .v2-topbar { padding-right: 1.5rem; padding-left: 1.5rem; }
+    .v2-mobile-partner, .v2-mobile-bottom-nav { display: none; }
+    .v2-shell-content { padding-bottom: 0; }
+    .v2-page { padding: 2rem 2rem 3.5rem; }
   }
 }

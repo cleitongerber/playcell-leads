@@ -510,7 +510,29 @@ export function CampaignLeadManagement({
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="grid gap-3 md:hidden">
+          {management.isLoading ? (
+            <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">Carregando base…</div>
+          ) : management.data?.items.length ? management.data.items.map(lead => (
+            <article key={lead.id} className="v2-mobile-record rounded-lg border p-3">
+              <div className="flex items-start gap-3">
+                <Checkbox checked={allFiltered || selected.has(lead.id)} onCheckedChange={checked => toggleLead(lead.id, checked === true)} disabled={allFiltered} aria-label={`Selecionar ${lead.name || "lead"}`} />
+                <div className="min-w-0 flex-1">
+                  <Link href={`/v2/leads/${lead.id}`}><span className="font-medium hover:underline">{lead.name || "Lead sem nome"}</span></Link>
+                  <p className="text-xs text-muted-foreground">{lead.phone || "Sem telefone"} · {lead.sourceLabel || "Sem origem"}</p>
+                </div>
+                <Badge variant="outline">{lead.statusLabel}</Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                <span>PDV <strong className="text-foreground">{lead.pdvName}</strong></span>
+                <span>Responsável <strong className="text-foreground">{lead.ownerName || "Sem responsável"}</strong></span>
+                <span>Próximo FU <strong className="text-foreground">{lead.nextFollowUpAt?.toLocaleString("pt-BR") || "—"}</strong></span>
+                <span>Atividade <strong className="text-foreground">{lead.lastActivityAt?.toLocaleString("pt-BR") || "—"}</strong></span>
+              </div>
+            </article>
+          )) : <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">Nenhum lead encontrado com estes filtros.</div>}
+        </div>
+        <div className="hidden overflow-x-auto rounded-lg border md:block">
           <table className="w-full min-w-[860px] text-sm">
             <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
               <tr>

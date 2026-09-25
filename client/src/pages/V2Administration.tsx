@@ -11,9 +11,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { v2trpc } from "@/lib/v2trpc";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { useV2Session } from "@/components/v2/V2AppShell";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Link } from "wouter";
 
 type Role = "partner_admin" | "manager" | "seller";
 const roleLabel: Record<Role, string> = {
@@ -22,81 +23,13 @@ const roleLabel: Record<Role, string> = {
   seller: "Vendedor",
 };
 
-function V2Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const utils = v2trpc.useUtils();
-  const login = v2trpc.auth.login.useMutation({
-    onSuccess: () => utils.auth.me.invalidate(),
-    onError: error => toast.error(error.message),
-  });
-  return (
-    <main className="mx-auto flex min-h-screen max-w-md items-center p-5">
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>Playcell Leads V2</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Acesso administrativo da nova plataforma.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="space-y-3"
-            onSubmit={(event: FormEvent) => {
-              event.preventDefault();
-              login.mutate({ email, password });
-            }}
-          >
-            <Input
-              type="email"
-              required
-              placeholder="E-mail"
-              value={email}
-              onChange={event => setEmail(event.target.value)}
-            />
-            <Input
-              type="password"
-              minLength={8}
-              required
-              placeholder="Senha"
-              value={password}
-              onChange={event => setPassword(event.target.value)}
-            />
-            <Button className="w-full" disabled={login.isPending}>
-              Entrar
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </main>
-  );
-}
-
 export default function V2Administration() {
-  const me = v2trpc.auth.me.useQuery(undefined, { retry: false });
-  if (me.isLoading)
-    return (
-      <main className="p-8 text-center text-sm text-muted-foreground">
-        Carregando acesso V2…
-      </main>
-    );
-  if (!me.data) return <V2Login />;
-  return (
-    <V2AdministrationContent
-      isSuperAdmin={me.data.systemRole === "super_admin"}
-    />
-  );
+  const session = useV2Session();
+  return <V2AdministrationContent isSuperAdmin={session.systemRole === "super_admin"} />;
 }
 
 function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const utils = v2trpc.useUtils();
-  const logout = v2trpc.auth.logout.useMutation({
-    onSuccess: () => {
-      utils.auth.me.setData(undefined, null);
-      toast.success("Sessão encerrada");
-    },
-    onError: error => toast.error(error.message),
-  });
   const [partnerId, setPartnerId] = useState(() => {
     try {
       return localStorage.getItem("v2-active-partner") ?? "";
@@ -228,54 +161,12 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         : [...selected, id]
     );
   return (
-    <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
-            V2 / Administração
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold">
-            PDVs e acessos operacionais
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            O usuário global, o acesso ao parceiro e os PDVs atribuídos são
-            controlados separadamente.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => logout.mutate()}
-            disabled={logout.isPending}
-          >
-            Sair
-          </Button>
-          <Link href="/v2/campaigns">
-            <Button variant="outline">Campanhas</Button>
-          </Link>
-          <Link href="/v2/dashboard">
-            <Button variant="outline">Dashboard</Button>
-          </Link>
-          <Link href="/v2/productivity">
-            <Button variant="outline">Produtividade</Button>
-          </Link>
-          <Link href="/v2/reports">
-            <Button variant="outline">Relatórios</Button>
-          </Link>
-          <Link href="/v2/leads">
-            <Button variant="outline">Leads</Button>
-          </Link>
-          <Link href="/v2/follow-ups">
-            <Button variant="outline">Follow-ups</Button>
-          </Link>
-          <Link href="/v2/governance">
-            <Button variant="outline">Governança operacional</Button>
-          </Link>
-          <Link href="/v2/import-settings">
-            <Button variant="outline">Importações</Button>
-          </Link>
-        </div>
-      </header>
+    <main className="v2-page">
+      <V2PageHeader
+        eyebrow="V2 / Administração"
+        title="PDVs e acessos operacionais"
+        description="O usuário global, o acesso ao parceiro e os PDVs atribuídos são controlados separadamente."
+      />
       {isSuperAdmin && (
         <Card>
           <CardHeader>

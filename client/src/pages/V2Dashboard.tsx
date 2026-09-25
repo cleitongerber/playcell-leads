@@ -4,9 +4,10 @@ import {
   type AnalyticsUiFilters,
 } from "@/components/v2/AnalyticsFilters";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { v2trpc } from "@/lib/v2trpc";
+import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { useState } from "react";
 import { Link } from "wouter";
 
@@ -57,7 +58,7 @@ function MetricCard({
   destructive?: boolean;
 }) {
   const content = (
-    <Card className={destructive ? "border-destructive/60" : ""}>
+    <Card className={`v2-metric-card ${destructive ? "border-destructive/60" : ""}`}>
       <CardContent className="p-4">
         <p className="text-sm text-muted-foreground">{title}</p>
         <p className="mt-1 text-2xl font-semibold">{value}</p>
@@ -83,30 +84,12 @@ export default function V2Dashboard() {
   });
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 p-4 sm:p-8">
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
-            V2 / Gestão
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold">Dashboard operacional</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Leitura atual da operação. Estoques são posições de agora; fluxos
-            respeitam o período selecionado.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/v2/productivity">
-            <Button variant="outline">Produtividade</Button>
-          </Link>
-          <Link href="/v2/reports">
-            <Button variant="outline">Relatórios</Button>
-          </Link>
-          <Link href="/v2/admin">
-            <Button variant="outline">Administração</Button>
-          </Link>
-        </div>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader
+        eyebrow="V2 / Gestão"
+        title="Dashboard operacional"
+        description="Leitura atual da operação. Estoques são posições de agora; fluxos respeitam o período selecionado."
+      />
 
       <AnalyticsFilters value={filters} onChange={setFilters} />
 
@@ -117,17 +100,12 @@ export default function V2Dashboard() {
           </CardContent>
         </Card>
       ) : dashboard.isLoading ? (
-        <Card>
-          <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            Calculando indicadores no banco V2…
-          </CardContent>
-        </Card>
+        <V2LoadingState label="Calculando indicadores no banco V2" />
       ) : dashboard.isError ? (
-        <Card>
-          <CardContent className="p-8 text-center text-sm text-destructive">
-            Não foi possível carregar os indicadores autorizados.
-          </CardContent>
-        </Card>
+        <V2ErrorState
+          message="Não foi possível carregar os indicadores autorizados."
+          onRetry={() => dashboard.refetch()}
+        />
       ) : dashboard.data ? (
         <>
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -323,9 +301,35 @@ function OverviewTable({
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent className="overflow-x-auto">
+      <CardContent>
         {rows.length ? (
-          <table className="w-full min-w-[760px] text-sm">
+          <>
+          <div className="grid gap-3 md:hidden">
+            {rows.map(row => (
+              <div key={row.id} className="v2-mobile-record rounded-lg border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 font-medium">
+                    {campaign ? (
+                      <Link href={`/v2/campaigns/${row.id}`} className="hover:underline">{row.name}</Link>
+                    ) : row.name}
+                  </div>
+                  <Badge variant={row.followUpsOverdue ? "destructive" : "secondary"}>
+                    {row.followUpsOverdue ? `${row.followUpsOverdue} vencidos` : "Sem vencidos"}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                  <span>Leads <strong className="text-foreground">{number(row.leads)}</strong></span>
+                  <span>Tratados <strong className="text-foreground">{number(row.treated)}</strong></span>
+                  <span>Concluídos <strong className="text-foreground">{number(row.completed)}</strong></span>
+                  <span>Conversões <strong className="text-foreground">{number(row.conversions)}</strong></span>
+                  <span>Taxa <strong className="text-foreground">{percent(row.conversionRate)}</strong></span>
+                  <span>1º contato <strong className="text-foreground">{duration(row.firstContactAverageSeconds)}</strong></span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-sm">
             <thead className="border-b text-left text-muted-foreground">
               <tr>
                 <th className="p-2">{title.slice(0, -1)}</th>
@@ -371,6 +375,8 @@ function OverviewTable({
               ))}
             </tbody>
           </table>
+          </div>
+          </>
         ) : (
           <p className="p-5 text-center text-sm text-muted-foreground">
             Sem dados no período e escopo selecionados.

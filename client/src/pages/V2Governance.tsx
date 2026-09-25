@@ -8,6 +8,7 @@ import {
   type GovernanceRuleFormValue,
 } from "@/components/v2/GovernanceRuleEditor";
 import { v2trpc } from "@/lib/v2trpc";
+import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -35,21 +36,8 @@ export default function V2Governance() {
     access.data?.role === "super_admin" ||
     access.data?.role === "partner_admin";
   return (
-    <main className="mx-auto max-w-4xl space-y-6 p-4 sm:p-8">
-      <Link href="/v2/admin">
-        <Button variant="outline">← Administração V2</Button>
-      </Link>
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">
-          V2 / Administração
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold">Governança operacional</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Defina os requisitos padrão de qualidade das tratativas deste
-          parceiro. Uma campanha pode usar este padrão ou declarar seu próprio
-          override.
-        </p>
-      </header>
+    <main className="v2-page space-y-6">
+      <V2PageHeader eyebrow="V2 / Administração" title="Governança operacional" description="Defina os requisitos padrão de qualidade das tratativas deste parceiro. Uma campanha pode usar este padrão ou declarar seu próprio override." actions={<Link href="/v2/admin"><Button variant="outline">← Administração V2</Button></Link>} />
       <Card>
         <CardHeader>
           <CardTitle>Regra padrão do parceiro</CardTitle>
