@@ -1823,7 +1823,11 @@ async function listLeadsReport(
   const concludedAtByLead = new Map<number, Date>();
   for (const event of terminalEvents) {
     const statusId = timelineStatusId(event.payloadJson);
-    if (statusId && terminalStatusIds.has(statusId)) {
+    if (
+      statusId &&
+      terminalStatusIds.has(statusId) &&
+      !concludedAtByLead.has(event.leadId)
+    ) {
       concludedAtByLead.set(event.leadId, event.occurredAt);
     }
   }
