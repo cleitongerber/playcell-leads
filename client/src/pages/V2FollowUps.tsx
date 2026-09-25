@@ -36,7 +36,18 @@ function asDateTimeLocal(value: Date) {
 }
 
 export default function V2FollowUps() {
-  const [view, setView] = useState<FollowUpView>("overdue");
+  const requestedView =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("view");
+  const initialView: FollowUpView =
+    requestedView === "overdue" ||
+    requestedView === "today" ||
+    requestedView === "upcoming" ||
+    requestedView === "completed"
+      ? requestedView
+      : "overdue";
+  const [view, setView] = useState<FollowUpView>(initialView);
   const [page, setPage] = useState(1);
   const [pdvId, setPdvId] = useState("");
   const [ownerMembershipId, setOwnerMembershipId] = useState("");
@@ -91,9 +102,14 @@ export default function V2FollowUps() {
             calculado no servidor, não no navegador.
           </p>
         </div>
-        <Link href="/v2/leads">
-          <Button variant="outline">Leads</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/v2/leads">
+            <Button variant="outline">Leads</Button>
+          </Link>
+          <Link href="/v2/dashboard">
+            <Button variant="outline">Dashboard</Button>
+          </Link>
+        </div>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-3">
@@ -175,7 +191,8 @@ export default function V2FollowUps() {
                   <SelectItem value="all">Todos os responsáveis</SelectItem>
                   {filterOptions.data?.owners.map(owner => (
                     <SelectItem key={owner.id} value={String(owner.id)}>
-                      {owner.name} · {membershipRoleLabels[owner.role] ?? "Usuário"}
+                      {owner.name} ·{" "}
+                      {membershipRoleLabels[owner.role] ?? "Usuário"}
                     </SelectItem>
                   ))}
                 </SelectContent>

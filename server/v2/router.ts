@@ -90,6 +90,13 @@ import {
   updatePartnerMembership,
 } from "./userService";
 import {
+  exportAnalyticsReport,
+  getDashboardAnalytics,
+  getProductivityAnalytics,
+  listAnalyticsFilters,
+  listAnalyticsReport,
+} from "./analyticsService";
+import {
   v2ManagerProcedure,
   v2PartnerAdminProcedure,
   v2PartnerOrSuperProcedure,
@@ -167,6 +174,42 @@ const leadDistributionSelectionInput = z.discriminatedUnion("mode", [
     filters: leadManagementFiltersInput,
   }),
 ]);
+
+const analyticsFiltersInput = z.object({
+  preset: z
+    .enum([
+      "today",
+      "yesterday",
+      "last_7_days",
+      "this_week",
+      "this_month",
+      "custom",
+    ])
+    .optional(),
+  fromDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  toDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  campaignId: z.number().int().positive().optional(),
+  pdvId: z.number().int().positive().optional(),
+  sellerMembershipId: z.number().int().positive().optional(),
+});
+
+const analyticsReportInput = analyticsFiltersInput.extend({
+  type: z.enum([
+    "leads",
+    "treatments",
+    "follow_ups",
+    "imports",
+    "distributions",
+  ]),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(1).max(100).default(25),
+});
 
 /**
  * V2 foundation router. It is intentionally exported separately until the V2
@@ -736,6 +779,31 @@ export const v2FoundationRouter = v2Router({
       .mutation(({ ctx, input }) =>
         softDeleteLeadEvidence(ctx.partner, input.id)
       ),
+  }),
+  analytics: v2Router({
+    filters: v2PartnerProcedure.query(({ ctx }) =>
+      listAnalyticsFilters(ctx.partner)
+    ),
+    dashboard: v2PartnerProcedure
+      .input(analyticsFiltersInput.optional())
+      .query(({ ctx, input }) =>
+        getDashboardAnalytics(ctx.partner, input ?? {})
+      ),
+    productivity: v2PartnerProcedure
+      .input(analyticsFiltersInput.optional())
+      .query(({ ctx, input }) =>
+        getProductivityAnalytics(ctx.partner, input ?? {})
+      ),
+    reports: v2Router({
+      list: v2PartnerProcedure
+        .input(analyticsReportInput)
+        .query(({ ctx, input }) => listAnalyticsReport(ctx.partner, input)),
+      export: v2PartnerProcedure
+        .input(analyticsReportInput.omit({ page: true, pageSize: true }))
+        .mutation(({ ctx, input }) =>
+          exportAnalyticsReport(ctx.partner, input)
+        ),
+    }),
   }),
 });
 

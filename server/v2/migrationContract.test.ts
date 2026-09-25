@@ -4,8 +4,10 @@ import { getTableConfig } from "drizzle-orm/mysql-core";
 import { describe, expect, it } from "vitest";
 import {
   leadDistributionBatches,
+  leadContacts,
   leadTimelineEvents,
   leads,
+  followUps,
 } from "../../drizzle-v2/schema";
 
 describe("V2 migration tenant-key contract", () => {
@@ -14,8 +16,10 @@ describe("V2 migration tenant-key contract", () => {
       resolve(process.cwd(), "drizzle-v2/0003_v2_leads_timeline.sql"),
       "utf8"
     );
-    const leadKey = "CONSTRAINT `leads_id_partner_unique` UNIQUE(`id`,`partnerId`)";
-    const childForeignKey = "ALTER TABLE `lead_contacts` ADD CONSTRAINT `lead_contacts_lead_tenant_fk`";
+    const leadKey =
+      "CONSTRAINT `leads_id_partner_unique` UNIQUE(`id`,`partnerId`)";
+    const childForeignKey =
+      "ALTER TABLE `lead_contacts` ADD CONSTRAINT `lead_contacts_lead_tenant_fk`";
 
     expect(migration).toContain(leadKey);
     expect(migration.indexOf(leadKey)).toBeLessThan(
@@ -41,7 +45,9 @@ describe("V2 migration tenant-key contract", () => {
       "utf8"
     );
     expect(migration).toContain("CREATE TABLE `lead_distribution_batches`");
-    expect(migration).toContain("lead_distribution_batches_partner_actor_request_unique");
+    expect(migration).toContain(
+      "lead_distribution_batches_partner_actor_request_unique"
+    );
     expect(migration).toContain("leads_partner_distribution_filter_idx");
     expect(migration).toContain("lead_reassigned");
     expect(migration).toContain("follow_up_owner_changed");
@@ -62,5 +68,31 @@ describe("V2 migration tenant-key contract", () => {
       column => column.name === "type"
     );
     expect(timelineType?.enumValues).toContain("lead_returned_to_queue");
+  });
+
+  it("adds only the analytics indexes needed by period, actor and event queries", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle-v2/0009_v2_analytics_indexes.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("leads_partner_analytics_received_idx");
+    expect(migration).toContain("lead_contacts_partner_actor_occurred_idx");
+    expect(migration).toContain(
+      "lead_timeline_events_partner_type_occurred_idx"
+    );
+    expect(migration).toContain("follow_ups_partner_owner_completed_idx");
+
+    expect(
+      getTableConfig(leads).indexes.map(index => index.config.name)
+    ).toContain("leads_partner_analytics_received_idx");
+    expect(
+      getTableConfig(leadContacts).indexes.map(index => index.config.name)
+    ).toContain("lead_contacts_partner_actor_occurred_idx");
+    expect(
+      getTableConfig(leadTimelineEvents).indexes.map(index => index.config.name)
+    ).toContain("lead_timeline_events_partner_type_occurred_idx");
+    expect(
+      getTableConfig(followUps).indexes.map(index => index.config.name)
+    ).toContain("follow_ups_partner_owner_completed_idx");
   });
 });

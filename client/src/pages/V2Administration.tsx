@@ -160,7 +160,9 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       return;
     }
     if (!partnerId) {
-      const active = selectablePartners.data.filter(partner => partner.isActive);
+      const active = selectablePartners.data.filter(
+        partner => partner.isActive
+      );
       if (active.length === 1) selectPartner(String(active[0].id));
     }
   }, [partnerId, selectablePartners.data]);
@@ -250,6 +252,15 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           </Button>
           <Link href="/v2/campaigns">
             <Button variant="outline">Campanhas</Button>
+          </Link>
+          <Link href="/v2/dashboard">
+            <Button variant="outline">Dashboard</Button>
+          </Link>
+          <Link href="/v2/productivity">
+            <Button variant="outline">Produtividade</Button>
+          </Link>
+          <Link href="/v2/reports">
+            <Button variant="outline">Relatórios</Button>
           </Link>
           <Link href="/v2/leads">
             <Button variant="outline">Leads</Button>

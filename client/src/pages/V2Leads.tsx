@@ -93,12 +93,19 @@ function EvidenceUploader({
 
 export default function V2Leads() {
   const [, navigate] = useLocation();
-  const initialCampaign =
+  const initialParams =
     typeof window === "undefined"
-      ? undefined
-      : Number(new URLSearchParams(window.location.search).get("campaignId")) ||
-        undefined;
-  const [view, setView] = useState<View>("available");
+      ? new URLSearchParams()
+      : new URLSearchParams(window.location.search);
+  const initialCampaign = Number(initialParams.get("campaignId")) || undefined;
+  const requestedView = initialParams.get("view");
+  const initialView: View =
+    requestedView === "available" ||
+    requestedView === "mine" ||
+    requestedView === "all"
+      ? requestedView
+      : "available";
+  const [view, setView] = useState<View>(initialView);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const list = v2trpc.leads.list.useQuery({
@@ -139,6 +146,9 @@ export default function V2Leads() {
           </Link>
           <Link href="/v2/campaigns">
             <Button variant="outline">Campanhas</Button>
+          </Link>
+          <Link href="/v2/dashboard">
+            <Button variant="outline">Dashboard</Button>
           </Link>
         </div>
       </header>

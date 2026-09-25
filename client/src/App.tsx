@@ -8,6 +8,9 @@ import V2FollowUps from "@/pages/V2FollowUps";
 import V2Governance from "@/pages/V2Governance";
 import V2Importer from "@/pages/V2Importer";
 import V2ImportConfiguration from "@/pages/V2ImportConfiguration";
+import V2Dashboard from "@/pages/V2Dashboard";
+import V2Productivity from "@/pages/V2Productivity";
+import V2Reports from "@/pages/V2Reports";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -18,6 +21,9 @@ function Router() {
       <Route path="/" component={V2Administration} />
       <Route path="/v2/admin" component={V2Administration} />
       <Route path="/v2/import-settings" component={V2ImportConfiguration} />
+      <Route path="/v2/dashboard" component={V2Dashboard} />
+      <Route path="/v2/productivity" component={V2Productivity} />
+      <Route path="/v2/reports" component={V2Reports} />
       <Route path="/v2/campaigns/:id/imports" component={V2Importer} />
       <Route path="/v2/campaigns/:id" component={V2CampaignDetail} />
       <Route path="/v2/campaigns" component={V2Campaigns} />

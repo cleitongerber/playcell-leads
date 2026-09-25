@@ -64,6 +64,13 @@
       "when": 1790303263580,
       "tag": "0008_v2_lead_distribution",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1790334102087,
+      "tag": "0009_v2_analytics_indexes",
+      "breakpoints": true
     }
   ]
 }

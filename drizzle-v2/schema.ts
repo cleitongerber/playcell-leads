@@ -498,6 +498,18 @@ export const leads = mysqlTable(
       table.lastActivityAt,
       table.id
     ),
+    // Period analytics starts with the tenant/date range before applying
+    // optional campaign, PDV and current-owner dimensions.
+    partnerAnalyticsReceivedIdx: index(
+      "leads_partner_analytics_received_idx"
+    ).on(
+      table.partnerId,
+      table.deletedAt,
+      table.receivedAt,
+      table.campaignId,
+      table.pdvId,
+      table.assignedMembershipId
+    ),
     partnerPhoneIdx: index("leads_partner_normalized_phone_idx").on(
       table.partnerId,
       table.normalizedPhone
@@ -574,6 +586,9 @@ export const leadDistributionBatches = mysqlTable(
     partnerStatusCreatedIdx: index(
       "lead_distribution_batches_partner_status_created_idx"
     ).on(table.partnerId, table.status, table.createdAt),
+    partnerCreatedIdx: index(
+      "lead_distribution_batches_partner_created_idx"
+    ).on(table.partnerId, table.createdAt, table.actorUserId),
     partnerReference: foreignKey({
       columns: [table.partnerId],
       foreignColumns: [partners.id],
@@ -616,6 +631,13 @@ export const leadTimelineEvents = mysqlTable(
     leadChronologicalIdx: index(
       "lead_timeline_events_lead_chronological_idx"
     ).on(table.partnerId, table.leadId, table.occurredAt, table.id),
+    typeOccurredIdx: index("lead_timeline_events_partner_type_occurred_idx").on(
+      table.partnerId,
+      table.type,
+      table.occurredAt,
+      table.actorMembershipId,
+      table.leadId
+    ),
     idPartnerLeadUnique: uniqueIndex(
       "lead_timeline_events_id_partner_lead_unique"
     ).on(table.id, table.partnerId, table.leadId),
@@ -650,6 +672,12 @@ export const leadContacts = mysqlTable(
       table.partnerId,
       table.leadId,
       table.occurredAt
+    ),
+    actorOccurredIdx: index("lead_contacts_partner_actor_occurred_idx").on(
+      table.partnerId,
+      table.actorMembershipId,
+      table.occurredAt,
+      table.leadId
     ),
     leadTenantReference: foreignKey({
       columns: [table.leadId, table.partnerId],
@@ -697,6 +725,12 @@ export const followUps = mysqlTable(
     statusDueIdx: index("follow_ups_partner_status_due_idx").on(
       table.partnerId,
       table.status,
+      table.dueAt
+    ),
+    ownerCompletedIdx: index("follow_ups_partner_owner_completed_idx").on(
+      table.partnerId,
+      table.ownerMembershipId,
+      table.completedAt,
       table.dueAt
     ),
     leadTenantReference: foreignKey({
