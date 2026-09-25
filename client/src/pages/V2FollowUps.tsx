@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { followUpStatusLabel } from "@/lib/followUpPresentation";
 import { v2trpc } from "@/lib/v2trpc";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -20,7 +21,7 @@ const viewLabels: Record<FollowUpView, string> = {
   overdue: "Vencidos",
   today: "Hoje",
   upcoming: "Próximos",
-  completed: "Concluídos",
+  completed: "Histórico",
 };
 
 const membershipRoleLabels: Record<string, string> = {
@@ -219,9 +220,7 @@ export default function V2FollowUps() {
                           : "outline"
                       }
                     >
-                      {item.derivedStatus === "overdue"
-                        ? "Vencido"
-                        : item.status}
+                      {followUpStatusLabel(item.status, item.derivedStatus)}
                     </Badge>
                     <span className="text-sm text-muted-foreground">
                       {new Date(item.dueAt).toLocaleString("pt-BR")}

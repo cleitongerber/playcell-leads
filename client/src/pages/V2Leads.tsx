@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { v2trpc } from "@/lib/v2trpc";
+import { followUpStatusLabel } from "@/lib/followUpPresentation";
 import { presentTimelineEvent } from "@/lib/timelinePresentation";
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
@@ -727,7 +728,7 @@ export function V2LeadDetail() {
                 <Badge
                   variant={item.status === "pending" ? "outline" : "secondary"}
                 >
-                  {item.status}
+                  {followUpStatusLabel(item.status)}
                 </Badge>
                 <span className="ml-2 text-sm">
                   {item.dueAt.toLocaleString("pt-BR")}
