@@ -85,11 +85,18 @@ export function CampaignLeadManagement({
   const [reason, setReason] = useState("");
   const [requestKey, setRequestKey] = useState(createRequestKey);
   const isOperational = campaign.status === "active" && !campaign.isFrozen;
+  const backendFilters = useMemo(() => {
+    const { customFieldKey, customFieldValue, ...baseFilters } = filters;
+    const value = customFieldValue?.trim();
+    return customFieldKey && value
+      ? { ...baseFilters, customFieldKey, customFieldValue: value }
+      : baseFilters;
+  }, [filters]);
   const queryInput = {
     campaignId: campaign.id,
     page,
     pageSize: 25,
-    ...filters,
+    ...backendFilters,
   };
   const management = v2trpc.leads.managementList.useQuery(queryInput);
   const options = v2trpc.leads.managementFilters.useQuery({
@@ -195,7 +202,7 @@ export function CampaignLeadManagement({
             mode: "filtered",
             filters: {
               campaignId: campaign.id,
-              ...filters,
+              ...backendFilters,
             },
           }
         : {
