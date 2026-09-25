@@ -74,10 +74,15 @@ describe("V2 evidence upload validation", () => {
         BUILT_IN_FORGE_API_URL: "https://legacy-storage.example",
         BUILT_IN_FORGE_API_KEY: "legacy-key",
       })
-    ).toBe("forge_s3");
+    ).toBe("s3");
     expect(
       resolveEvidenceStorageProvider({ V2_EVIDENCE_STORAGE_PROVIDER: "s3" })
     ).toBe("s3");
+    expect(
+      resolveEvidenceStorageProvider({
+        V2_EVIDENCE_STORAGE_PROVIDER: "forge_s3",
+      })
+    ).toBe("forge_s3");
     expect(() =>
       resolveEvidenceStorageProvider({
         V2_EVIDENCE_STORAGE_PROVIDER: "invalid",

@@ -67,7 +67,7 @@ function booleanSetting(value: string) {
 /**
  * Forge was used by the original hosted template. V2 now defaults to the
  * portable S3-compatible backend and only uses Forge when it is explicitly
- * configured for a legacy deployment.
+ * selected for a legacy deployment.
  */
 export function resolveEvidenceStorageProvider(
   environment: NodeJS.ProcessEnv = process.env
@@ -76,12 +76,7 @@ export function resolveEvidenceStorageProvider(
     environment,
     "V2_EVIDENCE_STORAGE_PROVIDER"
   ).toLowerCase();
-  if (!configured) {
-    return setting(environment, "BUILT_IN_FORGE_API_URL") &&
-      setting(environment, "BUILT_IN_FORGE_API_KEY")
-      ? "forge_s3"
-      : "s3";
-  }
+  if (!configured) return "s3";
   if (configured === "forge_s3" || configured === "s3") return configured;
   throw new EvidenceStorageConfigurationError();
 }
