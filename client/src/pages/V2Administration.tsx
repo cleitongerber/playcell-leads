@@ -90,6 +90,13 @@ export default function V2Administration() {
 
 function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const utils = v2trpc.useUtils();
+  const logout = v2trpc.auth.logout.useMutation({
+    onSuccess: () => {
+      utils.auth.me.setData(undefined, null);
+      toast.success("Sessão encerrada");
+    },
+    onError: error => toast.error(error.message),
+  });
   const [partnerId, setPartnerId] = useState(() => {
     try {
       return localStorage.getItem("v2-active-partner") ?? "";
@@ -234,6 +241,13 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+          >
+            Sair
+          </Button>
           <Link href="/v2/campaigns">
             <Button variant="outline">Campanhas</Button>
           </Link>

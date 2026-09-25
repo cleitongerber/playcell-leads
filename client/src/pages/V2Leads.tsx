@@ -347,7 +347,11 @@ export function V2LeadDetail() {
     );
   const isSeller = access.data?.role === "seller";
   const isOwner = lead.assignedMembershipId === access.data?.membershipId;
-  const canWork = !isSeller || isOwner;
+  // A system Super Admin can supervise every tenant, but is not itself an
+  // operational actor in a partner. Contact records require a membership so
+  // that their author remains auditable.
+  const hasOperationalMembership = Boolean(access.data?.membershipId);
+  const canWork = hasOperationalMembership && (!isSeller || isOwner);
   const canManageEvidence =
     access.data?.role === "super_admin" ||
     access.data?.role === "partner_admin";
@@ -389,7 +393,11 @@ export function V2LeadDetail() {
             <CardTitle>Tratativa</CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            {canWork ? (
+            {access.isLoading ? (
+              <p className="text-sm text-muted-foreground">
+                Carregando permissões operacionais…
+              </p>
+            ) : canWork ? (
               <>
                 {hasGovernanceRequirements && (
                   <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
@@ -591,8 +599,9 @@ export function V2LeadDetail() {
               </>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Somente o vendedor responsável pode registrar tratativas neste
-                lead.
+                {!hasOperationalMembership
+                  ? "O Super Admin possui visão administrativa deste parceiro. Para registrar tratativas, entre com um usuário que tenha acesso operacional ativo ao parceiro."
+                  : "Somente o vendedor responsável pode registrar tratativas neste lead."}
               </p>
             )}
           </CardContent>
