@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   createEvidenceStorageKey,
+  EvidenceStorageConfigurationError,
+  readS3EvidenceConfiguration,
+  resolveEvidenceStorageProvider,
   validateEvidenceUpload,
 } from "./evidenceStorage";
 import { defaultGovernanceRule } from "./governancePolicy";
@@ -62,5 +65,52 @@ describe("V2 evidence upload validation", () => {
         }
       )
     ).toThrow("não é permitido");
+  });
+
+  it("selects portable S3 storage by default and keeps legacy Forge explicit", () => {
+    expect(resolveEvidenceStorageProvider({})).toBe("s3");
+    expect(
+      resolveEvidenceStorageProvider({
+        BUILT_IN_FORGE_API_URL: "https://legacy-storage.example",
+        BUILT_IN_FORGE_API_KEY: "legacy-key",
+      })
+    ).toBe("forge_s3");
+    expect(
+      resolveEvidenceStorageProvider({ V2_EVIDENCE_STORAGE_PROVIDER: "s3" })
+    ).toBe("s3");
+    expect(() =>
+      resolveEvidenceStorageProvider({
+        V2_EVIDENCE_STORAGE_PROVIDER: "invalid",
+      })
+    ).toThrow(EvidenceStorageConfigurationError);
+  });
+
+  it("requires complete HTTPS S3 configuration without returning secrets", () => {
+    const configured = readS3EvidenceConfiguration({
+      V2_EVIDENCE_S3_BUCKET: "playcell-evidences",
+      V2_EVIDENCE_S3_REGION: "auto",
+      V2_EVIDENCE_S3_ENDPOINT: "https://account.r2.cloudflarestorage.com",
+      V2_EVIDENCE_S3_ACCESS_KEY_ID: "test-access-key",
+      V2_EVIDENCE_S3_SECRET_ACCESS_KEY: "test-secret-key",
+      V2_EVIDENCE_S3_FORCE_PATH_STYLE: "false",
+    });
+    expect(configured).toMatchObject({
+      bucket: "playcell-evidences",
+      region: "auto",
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      forcePathStyle: false,
+    });
+    expect(() => readS3EvidenceConfiguration({})).toThrow(
+      EvidenceStorageConfigurationError
+    );
+    expect(() =>
+      readS3EvidenceConfiguration({
+        V2_EVIDENCE_S3_BUCKET: "playcell-evidences",
+        V2_EVIDENCE_S3_REGION: "auto",
+        V2_EVIDENCE_S3_ENDPOINT: "http://insecure-storage.example",
+        V2_EVIDENCE_S3_ACCESS_KEY_ID: "test-access-key",
+        V2_EVIDENCE_S3_SECRET_ACCESS_KEY: "test-secret-key",
+      })
+    ).toThrow(EvidenceStorageConfigurationError);
   });
 });

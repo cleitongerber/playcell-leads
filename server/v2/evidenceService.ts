@@ -9,9 +9,12 @@ import {
 import type { PartnerContext } from "./access";
 import {
   createEvidenceStorageKey,
-  forgeEvidenceStorage,
+  EvidenceStorageConfigurationError,
+  getEvidenceStorage,
+  resolveEvidenceStorageProvider,
   validateEvidenceUpload,
   type EvidenceStorage,
+  type EvidenceStorageProvider,
 } from "./evidenceStorage";
 import {
   assertEvidenceLeadScope,
@@ -114,10 +117,14 @@ export async function uploadLeadEvidence(
     mimeType: string;
     base64: string;
   },
-  storage: EvidenceStorage = forgeEvidenceStorage
+  storage?: EvidenceStorage
 ) {
   if (!context.membershipId)
     throw new Error("Uma membership ativa é necessária para anexar evidências");
+  const storageProvider: EvidenceStorageProvider = storage
+    ? "forge_s3"
+    : resolveEvidenceStorageProvider();
+  const activeStorage = storage ?? getEvidenceStorage(storageProvider);
   const db = await getV2Db();
   const lead = await loadAccessibleLead(db, context, input.leadId);
   await assertTimelineEventForLead(db, context, lead.id, input.timelineEventId);
@@ -134,7 +141,7 @@ export async function uploadLeadEvidence(
       leadId: lead.id,
       timelineEventId: input.timelineEventId,
       uploadedByMembershipId: context.membershipId!,
-      storageProvider: "forge_s3",
+      storageProvider,
       storageKey,
       storageStatus: "uploading",
       fileName: upload.fileName,
@@ -151,7 +158,7 @@ export async function uploadLeadEvidence(
 
   let storageUploaded = false;
   try {
-    await storage.put(storageKey, upload.bytes, upload.mimeType);
+    await activeStorage.put(storageKey, upload.bytes, upload.mimeType);
     storageUploaded = true;
     await db.transaction(async tx => {
       const transactionDb = tx as unknown as V2Database;
@@ -221,6 +228,7 @@ export async function uploadLeadEvidence(
         )
         .catch(() => undefined);
     }
+    if (error instanceof EvidenceStorageConfigurationError) throw error;
     throw new Error("Não foi possível enviar a evidência");
   }
 }
@@ -250,7 +258,7 @@ async function loadAccessibleEvidence(
 export async function getEvidenceDownloadUrl(
   context: PartnerContext,
   evidenceId: number,
-  storage: EvidenceStorage = forgeEvidenceStorage
+  storage?: EvidenceStorage
 ) {
   const db = await getV2Db();
   const { evidence } = await loadAccessibleEvidence(db, context, evidenceId);
@@ -258,7 +266,10 @@ export async function getEvidenceDownloadUrl(
     throw new Error("Evidência indisponível");
   }
   // Never log or persist the signed URL; it is generated only after access checks.
-  return { url: await storage.getSignedUrl(evidence.storageKey) };
+  const activeStorage =
+    storage ??
+    getEvidenceStorage(evidence.storageProvider as EvidenceStorageProvider);
+  return { url: await activeStorage.getSignedUrl(evidence.storageKey) };
 }
 
 export async function softDeleteLeadEvidence(

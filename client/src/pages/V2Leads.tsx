@@ -620,6 +620,10 @@ export function V2LeadDetail() {
               const eventEvidences = detail.data.evidences.filter(
                 evidence => evidence.timelineEventId === event.id
               );
+              const uploadedEvidences = eventEvidences.filter(
+                evidence =>
+                  !evidence.deletedAt && evidence.storageStatus === "available"
+              );
               const eventGovernance = detail.data.treatmentGovernance.find(
                 item => item.timelineEventId === event.id
               );
@@ -629,9 +633,9 @@ export function V2LeadDetail() {
                 <div key={event.id} className="border-l-2 pl-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium">{presentation.title}</p>
-                    {eventEvidences.length > 0 && (
+                    {uploadedEvidences.length > 0 && (
                       <Badge variant="secondary">
-                        {eventEvidences.length} evidência(s)
+                        {uploadedEvidences.length} evidência(s)
                       </Badge>
                     )}
                     {eventGovernance && !eventGovernance.isComplete && (
@@ -665,7 +669,11 @@ export function V2LeadDetail() {
                       <Badge variant="outline">
                         {evidence.deletedAt
                           ? "removida"
-                          : evidence.storageStatus}
+                          : evidence.storageStatus === "available"
+                            ? "disponível"
+                            : evidence.storageStatus === "failed"
+                              ? "falha no envio"
+                              : "enviando"}
                       </Badge>
                       {evidence.storageStatus === "available" &&
                         !evidence.deletedAt && (

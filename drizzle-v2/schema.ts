@@ -46,7 +46,7 @@ export const timelineVisibility = ["partner", "restricted"] as const;
 export const followUpStatus = ["pending", "completed", "cancelled"] as const;
 export const governanceRuleMode = ["inherit", "override"] as const;
 export const governanceRuleSource = ["partner", "campaign"] as const;
-export const evidenceStorageProvider = ["forge_s3"] as const;
+export const evidenceStorageProvider = ["forge_s3", "s3"] as const;
 export const evidenceStorageStatus = [
   "uploading",
   "available",

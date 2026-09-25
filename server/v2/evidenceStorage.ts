@@ -1,4 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { ENV } from "../_core/env";
 import { storageGetSignedUrl, storagePutExact } from "../storage";
 import {
   allowedEvidenceMimeTypes,
@@ -17,12 +24,152 @@ export type EvidenceStorage = {
   getSignedUrl(key: string): Promise<string>;
 };
 
+export type EvidenceStorageProvider = "forge_s3" | "s3";
+
+const EVIDENCE_DOWNLOAD_TTL_SECONDS = 5 * 60;
+const STORAGE_CONFIGURATION_MESSAGE =
+  "O armazenamento privado de evidências ainda não está configurado.";
+
+export class EvidenceStorageConfigurationError extends Error {
+  constructor() {
+    super(STORAGE_CONFIGURATION_MESSAGE);
+    this.name = "EvidenceStorageConfigurationError";
+  }
+}
+
 export const forgeEvidenceStorage: EvidenceStorage = {
   async put(key, bytes, mimeType) {
     await storagePutExact(key, bytes, mimeType);
   },
   getSignedUrl: storageGetSignedUrl,
 };
+
+type S3EvidenceConfiguration = {
+  bucket: string;
+  region: string;
+  endpoint?: string;
+  forcePathStyle: boolean;
+  accessKeyId: string;
+  secretAccessKey: string;
+};
+
+function setting(environment: NodeJS.ProcessEnv, key: string) {
+  return environment[key]?.trim() ?? "";
+}
+
+function booleanSetting(value: string) {
+  if (!value) return false;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new EvidenceStorageConfigurationError();
+}
+
+/**
+ * Forge was used by the original hosted template. V2 now defaults to the
+ * portable S3-compatible backend and only uses Forge when it is explicitly
+ * configured for a legacy deployment.
+ */
+export function resolveEvidenceStorageProvider(
+  environment: NodeJS.ProcessEnv = process.env
+): EvidenceStorageProvider {
+  const configured = setting(
+    environment,
+    "V2_EVIDENCE_STORAGE_PROVIDER"
+  ).toLowerCase();
+  if (!configured) {
+    return setting(environment, "BUILT_IN_FORGE_API_URL") &&
+      setting(environment, "BUILT_IN_FORGE_API_KEY")
+      ? "forge_s3"
+      : "s3";
+  }
+  if (configured === "forge_s3" || configured === "s3") return configured;
+  throw new EvidenceStorageConfigurationError();
+}
+
+export function readS3EvidenceConfiguration(
+  environment: NodeJS.ProcessEnv = process.env
+): S3EvidenceConfiguration {
+  const bucket = setting(environment, "V2_EVIDENCE_S3_BUCKET");
+  const region = setting(environment, "V2_EVIDENCE_S3_REGION");
+  const accessKeyId = setting(environment, "V2_EVIDENCE_S3_ACCESS_KEY_ID");
+  const secretAccessKey = setting(
+    environment,
+    "V2_EVIDENCE_S3_SECRET_ACCESS_KEY"
+  );
+  const endpoint = setting(environment, "V2_EVIDENCE_S3_ENDPOINT");
+  if (!bucket || !region || !accessKeyId || !secretAccessKey) {
+    throw new EvidenceStorageConfigurationError();
+  }
+  if (endpoint) {
+    try {
+      const parsed = new URL(endpoint);
+      if (parsed.protocol !== "https:") throw new Error("insecure endpoint");
+    } catch {
+      throw new EvidenceStorageConfigurationError();
+    }
+  }
+  return {
+    bucket,
+    region,
+    endpoint: endpoint || undefined,
+    forcePathStyle: booleanSetting(
+      setting(environment, "V2_EVIDENCE_S3_FORCE_PATH_STYLE")
+    ),
+    accessKeyId,
+    secretAccessKey,
+  };
+}
+
+function createS3EvidenceStorage(
+  environment: NodeJS.ProcessEnv = process.env
+): EvidenceStorage {
+  const config = readS3EvidenceConfiguration(environment);
+  const client = new S3Client({
+    region: config.region,
+    ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+    forcePathStyle: config.forcePathStyle,
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
+    },
+  });
+  return {
+    async put(key, bytes, mimeType) {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: config.bucket,
+          Key: key,
+          Body: bytes,
+          ContentType: mimeType,
+        })
+      );
+    },
+    getSignedUrl(key) {
+      return getSignedUrl(
+        client,
+        new GetObjectCommand({ Bucket: config.bucket, Key: key }),
+        { expiresIn: EVIDENCE_DOWNLOAD_TTL_SECONDS }
+      );
+    },
+  };
+}
+
+/** Resolves a backend without leaking endpoints or credentials to callers. */
+export function getEvidenceStorage(
+  provider: EvidenceStorageProvider,
+  environment: NodeJS.ProcessEnv = process.env
+): EvidenceStorage {
+  if (provider === "forge_s3") {
+    if (
+      !setting(environment, "BUILT_IN_FORGE_API_URL") ||
+      !setting(environment, "BUILT_IN_FORGE_API_KEY")
+    ) {
+      throw new EvidenceStorageConfigurationError();
+    }
+    return forgeEvidenceStorage;
+  }
+  return createS3EvidenceStorage(environment);
+}
 
 function sanitizeOriginalFileName(fileName: string) {
   const normalized = fileName
