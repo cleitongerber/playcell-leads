@@ -55,6 +55,5 @@ export function AnalyticsFilters({ value, onChange, includeSeller = true }: { va
   return <Card><CardContent className="p-4">
     <div className="flex items-center justify-between gap-3 md:hidden"><div><p className="font-medium">Filtros</p><p className="text-xs text-muted-foreground">{activeCount ? `${activeCount} filtro(s) ativo(s)` : "Período padrão"}</p></div><Drawer open={drawerOpen} onOpenChange={setDrawerOpen}><DrawerTrigger asChild><Button type="button" variant="outline"><SlidersHorizontal className="mr-2 size-4" /> Ajustar</Button></DrawerTrigger><DrawerContent className="max-h-[90dvh] overflow-y-auto"><DrawerHeader><DrawerTitle>Filtros analíticos</DrawerTitle><DrawerDescription>Escolha o universo autorizado para os indicadores.</DrawerDescription></DrawerHeader><div className="grid gap-4 p-4"><FilterControls {...controlProps} idPrefix="mobile-analytics" /></div></DrawerContent></Drawer></div>
     <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4"><FilterControls {...controlProps} idPrefix="desktop-analytics" /></div>
-    <p className="mt-3 hidden text-xs text-muted-foreground md:block">Datas calculadas no servidor em {filters.data?.timeZone ?? "…"}.</p>
   </CardContent></Card>;
 }

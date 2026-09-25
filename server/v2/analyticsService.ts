@@ -11,6 +11,7 @@ import {
   isNull,
   lt,
   max,
+  min,
   notInArray,
   sql,
   type SQL,
@@ -1656,6 +1657,22 @@ function customFieldValue(value: unknown): string | number | null {
   return JSON.stringify(value);
 }
 
+function timelineStatusId(payload: unknown) {
+  let value: unknown = payload;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== "object" || !("statusId" in value)) {
+    return null;
+  }
+  const statusId = Number((value as { statusId?: unknown }).statusId);
+  return Number.isInteger(statusId) && statusId > 0 ? statusId : null;
+}
+
 function leadReportColumns(
   customFields: Array<{ key: string; label: string }>
 ) {
@@ -1696,12 +1713,6 @@ async function listLeadsReport(
     gte(leads.receivedAt, period.start),
     lt(leads.receivedAt, period.end),
   ];
-  const nextFollowUp = alias(followUps, "report_lead_next_follow_up");
-  const completedEvent = alias(
-    leadTimelineEvents,
-    "report_lead_completed_event"
-  );
-  const completedStatus = alias(leadStatuses, "report_lead_completed_status");
   const [customFields, records, totals] = await Promise.all([
     db
       .select({
@@ -1735,22 +1746,6 @@ async function listLeadsReport(
         assignedAt: leads.assignedAt,
         firstContactAt: leads.firstContactAt,
         lastActivityAt: leads.lastActivityAt,
-        nextFollowUpAt: sql<Date | null>`(
-          select min(${nextFollowUp.dueAt}) from ${nextFollowUp}
-          where ${nextFollowUp.partnerId} = ${leads.partnerId}
-            and ${nextFollowUp.leadId} = ${leads.id}
-            and ${nextFollowUp.status} = 'pending'
-        )`,
-        concludedAt: sql<Date | null>`(
-          select max(${completedEvent.occurredAt}) from ${completedEvent}
-          inner join ${completedStatus}
-            on ${completedStatus.id} = cast(json_unquote(json_extract(${completedEvent.payloadJson}, '$.statusId')) as unsigned)
-            and ${completedStatus.partnerId} = ${completedEvent.partnerId}
-          where ${completedEvent.partnerId} = ${leads.partnerId}
-            and ${completedEvent.leadId} = ${leads.id}
-            and ${completedEvent.type} = 'status_changed'
-            and ${completedStatus.isTerminal} = true
-        )`,
         customData: leads.customData,
       })
       .from(leads)
@@ -1775,6 +1770,63 @@ async function listLeadsReport(
       .from(leads)
       .where(and(...conditions)),
   ]);
+  const leadIds = records.map(record => record.id);
+  const [nextFollowUps, terminalStatuses, terminalEvents] = leadIds.length
+    ? await Promise.all([
+        db
+          .select({
+            leadId: followUps.leadId,
+            dueAt: min(followUps.dueAt),
+          })
+          .from(followUps)
+          .where(
+            and(
+              eq(followUps.partnerId, context.partnerId),
+              inArray(followUps.leadId, leadIds),
+              eq(followUps.status, "pending")
+            )
+          )
+          .groupBy(followUps.leadId),
+        db
+          .select({ id: leadStatuses.id })
+          .from(leadStatuses)
+          .where(
+            and(
+              eq(leadStatuses.partnerId, context.partnerId),
+              eq(leadStatuses.isTerminal, true)
+            )
+          ),
+        db
+          .select({
+            leadId: leadTimelineEvents.leadId,
+            occurredAt: leadTimelineEvents.occurredAt,
+            payloadJson: leadTimelineEvents.payloadJson,
+          })
+          .from(leadTimelineEvents)
+          .where(
+            and(
+              eq(leadTimelineEvents.partnerId, context.partnerId),
+              eq(leadTimelineEvents.type, "status_changed"),
+              inArray(leadTimelineEvents.leadId, leadIds)
+            )
+          )
+          .orderBy(
+            desc(leadTimelineEvents.occurredAt),
+            desc(leadTimelineEvents.id)
+          ),
+      ])
+    : [[], [], []];
+  const nextFollowUpByLead = new Map(
+    nextFollowUps.map(row => [row.leadId, row.dueAt])
+  );
+  const terminalStatusIds = new Set(terminalStatuses.map(row => row.id));
+  const concludedAtByLead = new Map<number, Date>();
+  for (const event of terminalEvents) {
+    const statusId = timelineStatusId(event.payloadJson);
+    if (statusId && terminalStatusIds.has(statusId)) {
+      concludedAtByLead.set(event.leadId, event.occurredAt);
+    }
+  }
   const columns = leadReportColumns(customFields);
   return {
     columns,
@@ -1797,9 +1849,9 @@ async function listLeadsReport(
         assignedAt: valueOfDate(record.assignedAt),
         firstContactAt: valueOfDate(record.firstContactAt),
         lastActivityAt: valueOfDate(record.lastActivityAt),
-        nextFollowUpAt: valueOfDate(record.nextFollowUpAt),
+        nextFollowUpAt: valueOfDate(nextFollowUpByLead.get(record.id)),
         completed: record.statusTerminal ? "Sim" : "Não",
-        concludedAt: valueOfDate(record.concludedAt),
+        concludedAt: valueOfDate(concludedAtByLead.get(record.id)),
         ...Object.fromEntries(
           customFields.map(field => [
             `custom_${field.key}`,
