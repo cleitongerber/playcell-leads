@@ -80,7 +80,7 @@ export default function V2Campaigns() {
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
-        eyebrow="V2 / Operação"
+        eyebrow="Operação"
         title="Campanhas"
         description="Crie a campanha, defina os PDVs e deixe-a pronta para a importação de Leads."
       />
@@ -361,7 +361,7 @@ export function V2CampaignDetail() {
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
-        eyebrow="V2 / Campanha"
+        eyebrow="Campanha"
         title={campaign.name}
         description={`${campaign.code} · ${campaign.description || "Sem descrição"}`}
         actions={
@@ -634,7 +634,7 @@ export function V2CampaignDetail() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            O importador V2 usa mapeamento configurável, prévia obrigatória e
+            O importador usa mapeamento configurável, prévia obrigatória e
             histórico versionado. Distribuição automática permanece em etapa
             futura.
           </p>

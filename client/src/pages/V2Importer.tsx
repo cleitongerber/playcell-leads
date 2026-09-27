@@ -345,7 +345,7 @@ export default function V2Importer() {
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
-        eyebrow="V2 / Campanhas / Importações"
+        eyebrow="Campanhas / Importações"
         title="Importar leads"
         description={`${setupData.campaign.name} · o CSV é validado no servidor antes de qualquer lead ser criado.`}
         actions={
@@ -364,7 +364,7 @@ export default function V2Importer() {
         ].map(([number, label]) => (
           <div
             key={number}
-            className={`rounded-lg border p-3 text-sm ${step === number ? "border-emerald-600 bg-emerald-50" : "text-muted-foreground"}`}
+            className={`rounded-lg border p-3 text-sm ${step === number ? "border-brand-secondary bg-brand-accent/10 text-foreground" : "text-muted-foreground"}`}
           >
             <strong>{number}.</strong> {label}
           </div>
@@ -552,7 +552,7 @@ export default function V2Importer() {
                   </div>
                 ))}
               </div>
-              <div className="hidden overflow-x-auto rounded-lg border md:block">
+              <div className="v2-table-scroll hidden md:block">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                     <tr>
@@ -670,7 +670,7 @@ export default function V2Importer() {
                 </Button>
               </div>
               {!setupData.canManageTemplates && !templateId && (
-                <p className="text-xs text-amber-700">
+                <p className="text-xs text-warning">
                   Seu perfil pode importar usando um template existente, mas não
                   pode criar ou alterar templates.
                 </p>
@@ -841,7 +841,7 @@ export default function V2Importer() {
                     </div>
                   ))}
                 </div>
-                <div className="hidden overflow-x-auto rounded-lg border md:block">
+                <div className="v2-table-scroll hidden md:block">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                       <tr>
@@ -876,7 +876,7 @@ export default function V2Importer() {
                   </table>
                 </div>
                 {!!issues.data?.items.length && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
                     <p className="mb-2 font-medium">Problemas encontrados</p>
                     <ul className="space-y-1 text-sm">
                       {issues.data.items.map(issue => (

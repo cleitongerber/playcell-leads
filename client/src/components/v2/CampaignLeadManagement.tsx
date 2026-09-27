@@ -258,7 +258,7 @@ export function CampaignLeadManagement({
       </CardHeader>
       <CardContent className="space-y-5">
         {!isOperational && (
-          <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+          <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
             {campaign.isFrozen
               ? "A base pode ser consultada, mas a distribuição fica bloqueada enquanto a campanha estiver congelada."
               : campaign.status === "draft"
@@ -430,7 +430,7 @@ export function CampaignLeadManagement({
           />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {[
             ["Total", management.data?.summary.total ?? 0],
             ["Sem responsável", management.data?.summary.available ?? 0],
@@ -631,7 +631,7 @@ export function CampaignLeadManagement({
             </div>
           )}
         </div>
-        <div className="hidden overflow-x-auto rounded-lg border md:block">
+        <div className="v2-table-scroll hidden md:block">
           <table className="w-full min-w-[860px] text-sm">
             <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
               <tr>
@@ -789,7 +789,7 @@ export function CampaignLeadManagement({
             </p>
           )}
           {operation === "return_to_queue" && (
-            <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
               Leads com follow-up pendente ou pendência de governança serão
               mantidos na carteira atual e aparecerão como ignorados no
               resultado.

@@ -73,7 +73,7 @@ export default function V2Reports() {
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
-        eyebrow="V2 / Gestão"
+        eyebrow="Gestão"
         title="Relatórios"
         description="Análise histórica e exportação CSV com o mesmo escopo autorizado da consulta."
       />
@@ -127,7 +127,7 @@ export default function V2Reports() {
           </CardContent>
         </Card>
       ) : report.isLoading ? (
-        <V2LoadingState label="Consultando relatório no banco V2" />
+        <V2LoadingState label="Consultando relatório no banco" />
       ) : report.isError ? (
         <V2ErrorState
           message="Não foi possível carregar este relatório no seu escopo."
@@ -170,7 +170,7 @@ export default function V2Reports() {
                     </div>
                   ))}
                 </div>
-                <div className="hidden overflow-x-auto md:block">
+                <div className="v2-table-scroll hidden md:block">
                   <table className="w-full text-sm">
                     <thead className="border-b text-left text-muted-foreground">
                       <tr>

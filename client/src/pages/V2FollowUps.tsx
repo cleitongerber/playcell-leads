@@ -137,7 +137,7 @@ export default function V2FollowUps() {
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
-        eyebrow="V2 / Operação"
+        eyebrow="Operação"
         title="Follow-ups"
         description={`Agenda do parceiro em ${alerts.data?.timezone ?? "…"}. Vencimento é calculado no servidor, não no navegador.`}
       />

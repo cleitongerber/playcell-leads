@@ -37,7 +37,7 @@ export default function V2Governance() {
     access.data?.role === "partner_admin";
   return (
     <main className="v2-page space-y-6">
-      <V2PageHeader eyebrow="V2 / Administração" title="Governança operacional" description="Defina os requisitos padrão de qualidade das tratativas deste parceiro. Uma campanha pode usar este padrão ou declarar seu próprio override." actions={<Link href="/v2/admin"><Button variant="outline">← Administração V2</Button></Link>} />
+      <V2PageHeader eyebrow="Administração" title="Governança operacional" description="Defina os requisitos padrão de qualidade das tratativas deste parceiro. Uma campanha pode usar este padrão ou declarar seu próprio override." actions={<Link href="/v2/admin"><Button variant="outline">← Administração</Button></Link>} />
       <Card>
         <CardHeader>
           <CardTitle>Regra padrão do parceiro</CardTitle>

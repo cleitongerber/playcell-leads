@@ -41,7 +41,7 @@ export default function V2Productivity() {
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
-        eyebrow="V2 / Gestão"
+        eyebrow="Gestão"
         title="Produtividade operacional"
         description="Contatos, disciplina de follow-up e governança são calculados por vendedor a partir das entidades reais."
       />
@@ -55,7 +55,7 @@ export default function V2Productivity() {
           </CardContent>
         </Card>
       ) : productivity.isLoading ? (
-        <V2LoadingState label="Calculando produtividade no banco V2" />
+        <V2LoadingState label="Calculando produtividade operacional" />
       ) : productivity.isError ? (
         <V2ErrorState
           message="Não foi possível carregar a produtividade autorizada."
@@ -63,7 +63,7 @@ export default function V2Productivity() {
         />
       ) : productivity.data ? (
         <>
-          <section className="grid gap-3 sm:grid-cols-4">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Summary
               title="Vendedores visíveis"
               value={number(productivity.data.totals.sellers)}
@@ -199,7 +199,7 @@ export default function V2Productivity() {
                       </div>
                     ))}
                   </div>
-                  <div className="hidden overflow-x-auto md:block">
+                  <div className="v2-table-scroll hidden md:block">
                     <table className="w-full text-sm">
                       <thead className="border-b text-left text-muted-foreground">
                         <tr>
@@ -324,10 +324,10 @@ function Summary({
   destructive?: boolean;
 }) {
   return (
-    <Card className={destructive ? "border-destructive/60" : ""}>
+    <Card className={`v2-metric-card ${destructive ? "border-danger/60" : ""}`}>
       <CardContent className="p-4">
         <p className="text-sm text-muted-foreground">{title}</p>
-        <p className="mt-1 text-2xl font-semibold">{value}</p>
+        <p className="v2-kpi-value mt-3 text-3xl">{value}</p>
       </CardContent>
     </Card>
   );

@@ -219,7 +219,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   return (
     <main className="v2-page">
       <V2PageHeader
-        eyebrow="V2 / Administração"
+        eyebrow="Administração"
         title="PDVs e acessos operacionais"
         description="O usuário global, o acesso ao parceiro e os PDVs atribuídos são controlados separadamente."
       />

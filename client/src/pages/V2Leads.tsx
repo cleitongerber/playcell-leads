@@ -273,7 +273,7 @@ export default function V2Leads() {
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
-        eyebrow="V2 / Operação"
+        eyebrow="Operação"
         title="Leads"
         description="Fila disponível e carteira do vendedor usam paginação diretamente no banco."
         actions={
@@ -722,7 +722,7 @@ export function V2LeadDetail() {
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
-        eyebrow="V2 / Lead"
+        eyebrow="Lead"
         title={lead.name || "Lead sem nome"}
         description={`${lead.phone || "Sem telefone"} · ${detail.data?.campaign?.name} · ${detail.data?.pdv?.name} · Responsável: ${detail.data?.assignee?.name || "Não atribuído"}`}
         actions={
@@ -747,7 +747,7 @@ export function V2LeadDetail() {
           {assume.isPending ? "Assumindo…" : "Assumir lead"}
         </Button>
       )}
-      <div className="grid gap-6 lg:grid-cols-[.9fr_1.1fr]">
+      <div className="grid gap-6 xl:grid-cols-[.9fr_1.1fr]">
         <Card>
           <CardHeader>
             <CardTitle>Tratativa</CardTitle>
@@ -820,7 +820,7 @@ export function V2LeadDetail() {
                 </div>
                 {externalContactHint && (
                   <div
-                    className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950"
+                    className="rounded-md border border-brand-secondary/35 bg-brand-accent/10 p-3 text-sm text-foreground"
                     role="status"
                   >
                     {externalContactHint === "whatsapp"
@@ -829,7 +829,7 @@ export function V2LeadDetail() {
                   </div>
                 )}
                 {hasGovernanceRequirements && (
-                  <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                  <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
                     <p className="font-medium">Exigências desta tratativa</p>
                     <p className="mt-1">
                       {[
@@ -1101,7 +1101,7 @@ export function V2LeadDetail() {
               const canAttach =
                 event.type === "contact" || event.type === "note";
               return (
-                <div key={event.id} className="border-l-2 pl-4">
+                <div key={event.id} className="border-l-2 border-brand-accent pl-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium">{presentation.title}</p>
                     {uploadedEvidences.length > 0 && (

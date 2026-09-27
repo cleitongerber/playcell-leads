@@ -40,14 +40,13 @@ import {
   LogOut,
   Menu,
   MoreHorizontal,
-  PanelLeftOpen,
-  Settings2,
   ShieldCheck,
   SlidersHorizontal,
   Target,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
+import { FluxoBrand } from "./FluxoBrand";
 import {
   createContext,
   type FormEvent,
@@ -117,17 +116,14 @@ function V2Login() {
   return (
     <main className="v2-login-shell">
       <section className="v2-login-card" aria-labelledby="v2-login-title">
-        <div className="v2-brand-mark" aria-hidden="true">
-          P
-        </div>
+        <FluxoBrand />
         <div>
-          <p className="v2-eyebrow">Playcell Leads</p>
           <h1 id="v2-login-title" className="v2-login-title">
             Acesse sua operação
           </h1>
           <p className="v2-login-description">
-            Entre para acompanhar Leads, campanhas e follow-ups no contexto do
-            seu parceiro.
+            Entre para acompanhar Leads, campanhas e follow-ups no contexto
+            autorizado do seu parceiro.
           </p>
         </div>
         <form
@@ -198,7 +194,12 @@ function PartnerSelector({
 }) {
   const partners = v2trpc.partners.available.useQuery();
   return (
-    <div className={cn("min-w-0", compact ? "w-full" : "w-full sm:w-64")}>
+    <div
+      className={cn(
+        "fluxo-partner-selector min-w-0",
+        compact ? "w-full" : "w-full sm:w-64"
+      )}
+    >
       {!compact && <Label className="sr-only">Parceiro ativo</Label>}
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
@@ -286,7 +287,7 @@ function UserMenu({
         >
           <Avatar className="size-8 border">
             <AvatarFallback className="text-xs font-semibold">
-              {initials || "PL"}
+              {initials || "FL"}
             </AvatarFallback>
           </Avatar>
           <span className={cn("min-w-0", !compact && "hidden sm:block")}>
@@ -408,13 +409,7 @@ function ShellFrame({
     <div className="v2-app-shell">
       <aside className="v2-desktop-sidebar">
         <div className="v2-sidebar-brand">
-          <div className="v2-brand-mark" aria-hidden="true">
-            P
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">Playcell Leads</p>
-            <p className="truncate text-xs text-muted-foreground">V2 operacional</p>
-          </div>
+          <FluxoBrand inverse />
         </div>
         <PartnerSelector value={partnerId} onChange={selectPartner} compact />
         <nav aria-label="Navegação principal" className="v2-sidebar-nav">
@@ -442,12 +437,10 @@ function ShellFrame({
       <div className="min-w-0 flex-1">
         <header className="v2-topbar">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="v2-mobile-brand lg:hidden" aria-hidden="true">
-              <PanelLeftOpen className="size-5" />
-            </div>
+            <FluxoBrand compact className="lg:hidden" />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">
-                {activeItem?.label ?? "Playcell Leads"}
+                {activeItem?.label ?? "FLUXO"}
               </p>
               <p className="hidden truncate text-xs text-muted-foreground sm:block">
                 {selectedPartner?.name ?? "Selecione um parceiro"}

@@ -8,6 +8,19 @@ import { v2trpc } from "@/lib/v2trpc";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path } from "@/lib/operationalNavigation";
+import {
+  BellRing,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Inbox,
+  MessageSquareText,
+  Timer,
+  TrendingUp,
+  UserRoundX,
+  UsersRound,
+  type LucideIcon,
+} from "lucide-react";
 import { Link } from "wouter";
 
 function number(value: number | undefined | null) {
@@ -49,20 +62,34 @@ function MetricCard({
   comparison,
   href,
   destructive = false,
+  icon: Icon,
 }: {
   title: string;
   value: string;
   comparison?: number | null;
   href?: string;
   destructive?: boolean;
+  icon: LucideIcon;
 }) {
   const content = (
     <Card
-      className={`v2-metric-card ${destructive ? "border-destructive/60" : ""}`}
+      className={`v2-metric-card ${destructive ? "border-danger/60" : ""}`}
     >
       <CardContent className="p-4">
-        <p className="text-sm text-muted-foreground">{title}</p>
-        <p className="mt-1 text-2xl font-semibold">{value}</p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-sm text-muted-foreground">{title}</p>
+          <span
+            className={
+              destructive
+                ? "grid size-8 place-items-center rounded-lg bg-danger/10 text-danger"
+                : "grid size-8 place-items-center rounded-lg bg-brand-accent/10 text-brand-secondary"
+            }
+            aria-hidden="true"
+          >
+            <Icon className="size-4" />
+          </span>
+        </div>
+        <p className="v2-kpi-value mt-3 text-3xl">{value}</p>
         {comparison !== undefined && (
           <p className="mt-2 text-xs text-muted-foreground">
             {delta(comparison)}
@@ -102,7 +129,7 @@ export default function V2Dashboard() {
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
-        eyebrow="V2 / Gestão"
+        eyebrow="Gestão"
         title="Dashboard operacional"
         description="Leitura atual da operação. Estoques são posições de agora; fluxos respeitam o período selecionado."
       />
@@ -116,7 +143,7 @@ export default function V2Dashboard() {
           </CardContent>
         </Card>
       ) : dashboard.isLoading ? (
-        <V2LoadingState label="Calculando indicadores no banco V2" />
+        <V2LoadingState label="Calculando indicadores operacionais" />
       ) : dashboard.isError ? (
         <V2ErrorState
           message="Não foi possível carregar os indicadores autorizados."
@@ -124,16 +151,18 @@ export default function V2Dashboard() {
         />
       ) : dashboard.data ? (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <MetricCard
               title="Leads recebidos"
               value={number(dashboard.data.cards.leadsReceived)}
               comparison={dashboard.data.comparisons.leadsReceived}
+              icon={Inbox}
             />
             <MetricCard
               title="Leads disponíveis"
               value={number(dashboard.data.cards.leadsAvailable)}
               href={leadPath("available")}
+              icon={UserRoundX}
             />
             <MetricCard
               title="Leads em carteira"
@@ -142,36 +171,43 @@ export default function V2Dashboard() {
                 assignment: "assigned",
                 assignedMembershipId: filters.sellerMembershipId,
               })}
+              icon={UsersRound}
             />
             <MetricCard
               title="Leads tratados"
               value={number(dashboard.data.cards.leadsTreated)}
               comparison={dashboard.data.comparisons.leadsTreated}
+              icon={MessageSquareText}
             />
             <MetricCard
               title="Leads concluídos"
               value={number(dashboard.data.cards.leadsCompleted)}
               comparison={dashboard.data.comparisons.leadsCompleted}
+              icon={CheckCircle2}
             />
             <MetricCard
               title="Taxa de conversão"
               value={percent(dashboard.data.cards.conversionRate)}
               comparison={dashboard.data.comparisons.conversionRate}
+              icon={TrendingUp}
             />
             <MetricCard
               title="Follow-ups vencidos"
               value={number(dashboard.data.cards.followUpsOverdue)}
               destructive
               href={followUpPath("overdue")}
+              icon={BellRing}
             />
             <MetricCard
               title="Follow-ups para hoje"
               value={number(dashboard.data.cards.followUpsToday)}
               href={followUpPath("today")}
+              icon={CalendarDays}
             />
             <MetricCard
               title="Tempo médio até 1º contato"
               value={duration(dashboard.data.cards.firstContactAverageSeconds)}
+              icon={Timer}
             />
             <MetricCard
               title="Sem primeiro contato"
@@ -180,6 +216,7 @@ export default function V2Dashboard() {
                 firstContact: "missing",
                 assignedMembershipId: filters.sellerMembershipId,
               })}
+              icon={Clock3}
             />
           </section>
 
@@ -394,7 +431,7 @@ function OverviewTable({
                 </div>
               ))}
             </div>
-            <div className="hidden overflow-x-auto md:block">
+            <div className="v2-table-scroll hidden md:block">
               <table className="w-full text-sm">
                 <thead className="border-b text-left text-muted-foreground">
                   <tr>

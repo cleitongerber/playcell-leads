@@ -1,14 +1,14 @@
 {
-  "name": "Playcell Leads",
-  "short_name": "Playcell",
-  "description": "Gestão comercial de leads, campanhas e PDVs.",
+  "name": "FLUXO",
+  "short_name": "FLUXO",
+  "description": "Gestão de leads e performance comercial.",
   "lang": "pt-BR",
   "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f7faf8",
-  "theme_color": "#102b35",
+  "background_color": "#F4F6F8",
+  "theme_color": "#0F4C5C",
   "icons": [
     { "src": "/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
     { "src": "/icons/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }

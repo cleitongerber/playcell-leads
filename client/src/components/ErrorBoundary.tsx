@@ -1,4 +1,6 @@
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { FluxoBrand } from "@/components/v2/FluxoBrand";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Component, ReactNode } from "react";
 
@@ -24,33 +26,33 @@ class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex items-center justify-center min-h-screen p-8 bg-background">
-          <div className="flex flex-col items-center w-full max-w-2xl p-8">
-            <AlertTriangle
-              size={48}
-              className="text-destructive mb-6 flex-shrink-0"
-            />
+        <div className="fluxo-login-shell">
+          <Card className="w-full max-w-lg fluxo-login-card">
+            <CardContent className="space-y-8 px-6 py-8 text-center sm:px-8">
+              <div className="flex justify-center">
+                <FluxoBrand />
+              </div>
+              <div className="flex justify-center">
+                <div className="flex size-12 items-center justify-center rounded-full bg-warning/10 text-warning">
+                  <AlertTriangle aria-hidden="true" className="size-6" />
+                </div>
+              </div>
 
-            <h2 className="text-xl mb-4">An unexpected error occurred.</h2>
+              <div className="space-y-3">
+                <h1 className="font-manrope text-xl font-bold text-foreground">Não foi possível carregar esta tela</h1>
+                <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">
+                  Tente atualizar a página. Se o problema persistir, entre em contato com o administrador da operação.
+                </p>
+              </div>
 
-            <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
-              <pre className="text-sm text-muted-foreground whitespace-break-spaces">
-                {this.state.error?.stack}
-              </pre>
-            </div>
-
-            <button
-              onClick={() => window.location.reload()}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg",
-                "bg-primary text-primary-foreground",
-                "hover:opacity-90 cursor-pointer"
-              )}
-            >
-              <RotateCcw size={16} />
-              Reload Page
-            </button>
-          </div>
+              <div>
+                <Button type="button" onClick={() => window.location.reload()}>
+                  <RotateCcw aria-hidden="true" className="size-4" />
+                  Atualizar página
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       );
     }

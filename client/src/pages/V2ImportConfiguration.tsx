@@ -78,7 +78,7 @@ export default function V2ImportConfiguration() {
 
   return (
     <main className="v2-page space-y-6">
-      <V2PageHeader eyebrow="V2 / Administração" title="Configuração de importações" description="Defina a política padrão, campos personalizados e templates reutilizáveis do parceiro." actions={<Link href="/v2/admin"><Button variant="outline">← Administração V2</Button></Link>} />
+      <V2PageHeader eyebrow="Administração" title="Configuração de importações" description="Defina a política padrão, campos personalizados e templates reutilizáveis do parceiro." actions={<Link href="/v2/admin"><Button variant="outline">← Administração</Button></Link>} />
       {!canManage ? (
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">
