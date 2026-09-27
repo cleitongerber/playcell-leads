@@ -5,6 +5,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   like,
   or,
@@ -419,6 +420,9 @@ export async function listLeads(
     campaignId?: number;
     pdvId?: number;
     statusId?: number;
+    assignedMembershipId?: number;
+    assignment?: "assigned" | "unassigned";
+    firstContact?: "missing" | "recorded";
     search?: string;
   }
 ) {
@@ -446,6 +450,21 @@ export async function listLeads(
   if (input.campaignId) conditions.push(eq(leads.campaignId, input.campaignId));
   if (input.pdvId) conditions.push(eq(leads.pdvId, input.pdvId));
   if (input.statusId) conditions.push(eq(leads.statusId, input.statusId));
+  if (input.assignedMembershipId) {
+    conditions.push(eq(leads.assignedMembershipId, input.assignedMembershipId));
+  }
+  if (input.assignment === "assigned") {
+    conditions.push(isNotNull(leads.assignedMembershipId));
+  }
+  if (input.assignment === "unassigned") {
+    conditions.push(isNull(leads.assignedMembershipId));
+  }
+  if (input.firstContact === "missing") {
+    conditions.push(isNull(leads.firstContactAt));
+  }
+  if (input.firstContact === "recorded") {
+    conditions.push(isNotNull(leads.firstContactAt));
+  }
   if (input.search?.trim())
     conditions.push(
       or(

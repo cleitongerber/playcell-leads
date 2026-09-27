@@ -10,9 +10,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { followUpStatusLabel } from "@/lib/followUpPresentation";
+import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
+import { FollowUpCancellationDialog } from "@/components/v2/FollowUpCancellationDialog";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
 
@@ -36,11 +38,22 @@ function asDateTimeLocal(value: Date) {
   return local.toISOString().slice(0, 16);
 }
 
+function queryId(value: string | null) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : "";
+}
+
+function queryPage(value: string | null) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+}
+
 export default function V2FollowUps() {
-  const requestedView =
+  const initialParams =
     typeof window === "undefined"
-      ? null
-      : new URLSearchParams(window.location.search).get("view");
+      ? new URLSearchParams()
+      : new URLSearchParams(window.location.search);
+  const requestedView = initialParams.get("view");
   const initialView: FollowUpView =
     requestedView === "overdue" ||
     requestedView === "today" ||
@@ -49,10 +62,19 @@ export default function V2FollowUps() {
       ? requestedView
       : "overdue";
   const [view, setView] = useState<FollowUpView>(initialView);
-  const [page, setPage] = useState(1);
-  const [pdvId, setPdvId] = useState("");
-  const [ownerMembershipId, setOwnerMembershipId] = useState("");
+  const [page, setPage] = useState(() => queryPage(initialParams.get("page")));
+  const [pdvId, setPdvId] = useState(() => queryId(initialParams.get("pdvId")));
+  const [ownerMembershipId, setOwnerMembershipId] = useState(() =>
+    queryId(initialParams.get("ownerMembershipId"))
+  );
+  const [campaignId, setCampaignId] = useState(() =>
+    queryId(initialParams.get("campaignId"))
+  );
   const [reschedule, setReschedule] = useState<Record<number, string>>({});
+  const [cancelTarget, setCancelTarget] = useState<{
+    id: number;
+    leadName: string;
+  } | null>(null);
   const access = v2trpc.access.context.useQuery();
   const canFilterTeam = Boolean(access.data && access.data.role !== "seller");
   const filterOptions = v2trpc.followUps.filters.useQuery(undefined, {
@@ -65,34 +87,60 @@ export default function V2FollowUps() {
     page,
     pageSize: 25,
     pdvId: pdvId ? Number(pdvId) : undefined,
+    campaignId: campaignId ? Number(campaignId) : undefined,
     ownerMembershipId: ownerMembershipId
       ? Number(ownerMembershipId)
       : undefined,
   });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const target = buildV2Path("/v2/follow-ups", {
+      view: view === "overdue" ? undefined : view,
+      page: page > 1 ? page : undefined,
+      pdvId: pdvId || undefined,
+      campaignId: campaignId || undefined,
+      ownerMembershipId: ownerMembershipId || undefined,
+    });
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (target !== current)
+      window.history.replaceState(window.history.state, "", target);
+  }, [campaignId, ownerMembershipId, page, pdvId, view]);
   const refresh = () => {
     utils.followUps.alerts.invalidate();
     utils.followUps.list.invalidate();
     utils.leads.get.invalidate();
   };
   const complete = v2trpc.followUps.complete.useMutation({
-    onSuccess: refresh,
+    onSuccess: () => {
+      setCancelTarget(null);
+      refresh();
+      toast.success("Follow-up concluído.");
+    },
     onError: error => toast.error(error.message),
   });
   const cancel = v2trpc.followUps.cancel.useMutation({
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      toast.success("Follow-up cancelado.");
+    },
     onError: error => toast.error(error.message),
   });
   const rescheduleFollowUp = v2trpc.followUps.reschedule.useMutation({
     onSuccess: () => {
       setReschedule({});
       refresh();
+      toast.success("Follow-up reagendado.");
     },
     onError: error => toast.error(error.message),
   });
 
   return (
     <main className="v2-page space-y-6">
-      <V2PageHeader eyebrow="V2 / Operação" title="Follow-ups" description={`Agenda do parceiro em ${alerts.data?.timezone ?? "…"}. Vencimento é calculado no servidor, não no navegador.`} />
+      <V2PageHeader
+        eyebrow="V2 / Operação"
+        title="Follow-ups"
+        description={`Agenda do parceiro em ${alerts.data?.timezone ?? "…"}. Vencimento é calculado no servidor, não no navegador.`}
+      />
 
       <section className="grid gap-3 sm:grid-cols-3">
         <Card className={alerts.data?.overdue ? "border-destructive" : ""}>
@@ -140,49 +188,77 @@ export default function V2FollowUps() {
           </div>
           {canFilterTeam && (
             <div className="flex flex-1 flex-col gap-2 sm:flex-row">
-              <div className="min-w-0 flex-1 space-y-1.5"><label className="text-sm font-medium" htmlFor="followup-pdv">PDV</label><Select
-                value={pdvId || "all"}
-                onValueChange={value => {
-                  setPdvId(value === "all" ? "" : value);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger id="followup-pdv" className="flex-1">
-                  <SelectValue placeholder="Todos os PDVs" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os PDVs</SelectItem>
-                  {filterOptions.data?.pdvs.map(pdv => (
-                    <SelectItem key={pdv.id} value={String(pdv.id)}>
-                      {pdv.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select></div>
-              <div className="min-w-0 flex-1 space-y-1.5"><label className="text-sm font-medium" htmlFor="followup-owner">Responsável</label><Select
-                value={ownerMembershipId || "all"}
-                onValueChange={value => {
-                  setOwnerMembershipId(value === "all" ? "" : value);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger id="followup-owner" className="flex-1">
-                  <SelectValue placeholder="Todos os responsáveis" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os responsáveis</SelectItem>
-                  {filterOptions.data?.owners.map(owner => (
-                    <SelectItem key={owner.id} value={String(owner.id)}>
-                      {owner.name} ·{" "}
-                      {membershipRoleLabels[owner.role] ?? "Usuário"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select></div>
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <label className="text-sm font-medium" htmlFor="followup-pdv">
+                  PDV
+                </label>
+                <Select
+                  value={pdvId || "all"}
+                  onValueChange={value => {
+                    setPdvId(value === "all" ? "" : value);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger id="followup-pdv" className="flex-1">
+                    <SelectValue placeholder="Todos os PDVs" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os PDVs</SelectItem>
+                    {filterOptions.data?.pdvs.map(pdv => (
+                      <SelectItem key={pdv.id} value={String(pdv.id)}>
+                        {pdv.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <label className="text-sm font-medium" htmlFor="followup-owner">
+                  Responsável
+                </label>
+                <Select
+                  value={ownerMembershipId || "all"}
+                  onValueChange={value => {
+                    setOwnerMembershipId(value === "all" ? "" : value);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger id="followup-owner" className="flex-1">
+                    <SelectValue placeholder="Todos os responsáveis" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os responsáveis</SelectItem>
+                    {filterOptions.data?.owners.map(owner => (
+                      <SelectItem key={owner.id} value={String(owner.id)}>
+                        {owner.name} ·{" "}
+                        {membershipRoleLabels[owner.role] ?? "Usuário"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
+      {campaignId && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-2 p-3 text-sm">
+            <span className="text-muted-foreground">Contexto aplicado:</span>
+            <Badge variant="outline">Campanha selecionada</Badge>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setCampaignId("");
+                setPage(1);
+              }}
+            >
+              Limpar contexto
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -197,7 +273,11 @@ export default function V2FollowUps() {
               <article key={item.id} className="rounded-lg border p-4">
                 <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
                   <div>
-                    <Link href={`/v2/leads/${item.leadId}`}>
+                    <Link
+                      href={buildV2Path(`/v2/leads/${item.leadId}`, {
+                        from: currentV2Path(),
+                      })}
+                    >
                       <span className="cursor-pointer font-medium hover:underline">
                         {item.leadName || "Lead sem nome"}
                       </span>
@@ -230,14 +310,21 @@ export default function V2FollowUps() {
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                     <Button
                       size="sm"
+                      disabled={complete.isPending}
                       onClick={() => complete.mutate({ id: item.id })}
                     >
-                      Concluir
+                      {complete.isPending ? "Concluindo…" : "Concluir"}
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => cancel.mutate({ id: item.id })}
+                      disabled={cancel.isPending}
+                      onClick={() =>
+                        setCancelTarget({
+                          id: item.id,
+                          leadName: item.leadName || "este Lead",
+                        })
+                      }
                     >
                       Cancelar
                     </Button>
@@ -300,6 +387,15 @@ export default function V2FollowUps() {
           </div>
         </CardContent>
       </Card>
+      <FollowUpCancellationDialog
+        open={Boolean(cancelTarget)}
+        onOpenChange={open => !open && setCancelTarget(null)}
+        leadName={cancelTarget?.leadName ?? "este Lead"}
+        pending={cancel.isPending}
+        onConfirm={() => {
+          if (cancelTarget) cancel.mutate({ id: cancelTarget.id });
+        }}
+      />
     </main>
   );
 }

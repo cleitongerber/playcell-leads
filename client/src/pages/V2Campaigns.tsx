@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   blankGovernanceRule,
@@ -48,6 +49,9 @@ function toDate(value: string) {
 
 export default function V2Campaigns() {
   const [form, setForm] = useState<CampaignForm>(blank);
+  const [createdCampaignId, setCreatedCampaignId] = useState<number | null>(
+    null
+  );
   const campaigns = v2trpc.campaigns.list.useQuery({ includeArchived: true });
   const pdvs = v2trpc.pdvs.list.useQuery({ includeInactive: false });
   const access = v2trpc.access.context.useQuery();
@@ -56,8 +60,9 @@ export default function V2Campaigns() {
     access.data?.role === "super_admin" ||
     access.data?.role === "partner_admin";
   const create = v2trpc.campaigns.create.useMutation({
-    onSuccess: () => {
+    onSuccess: campaignId => {
       setForm(blank);
+      setCreatedCampaignId(campaignId);
       utils.campaigns.list.invalidate();
       toast.success("Campanha criada como rascunho");
     },
@@ -74,7 +79,11 @@ export default function V2Campaigns() {
 
   return (
     <main className="v2-page space-y-6">
-      <V2PageHeader eyebrow="V2 / Operação" title="Campanhas" description="Crie a campanha, defina os PDVs e deixe-a pronta para a importação de Leads." />
+      <V2PageHeader
+        eyebrow="V2 / Operação"
+        title="Campanhas"
+        description="Crie a campanha, defina os PDVs e deixe-a pronta para a importação de Leads."
+      />
       {canManage && (
         <Card>
           <CardHeader>
@@ -96,45 +105,64 @@ export default function V2Campaigns() {
               }}
             >
               <div className="grid gap-3 sm:grid-cols-2">
-                <Input
-                  required
-                  placeholder="Código da campanha"
-                  value={form.code}
+                <div className="space-y-1.5">
+                  <Label htmlFor="campaign-code">Código da campanha</Label>
+                  <Input
+                    id="campaign-code"
+                    required
+                    value={form.code}
+                    onChange={event =>
+                      setForm({ ...form, code: event.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="campaign-name">Nome</Label>
+                  <Input
+                    id="campaign-name"
+                    required
+                    value={form.name}
+                    onChange={event =>
+                      setForm({ ...form, name: event.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="campaign-description">
+                  Descrição (opcional)
+                </Label>
+                <Textarea
+                  id="campaign-description"
+                  value={form.description}
                   onChange={event =>
-                    setForm({ ...form, code: event.target.value })
-                  }
-                />
-                <Input
-                  required
-                  placeholder="Nome"
-                  value={form.name}
-                  onChange={event =>
-                    setForm({ ...form, name: event.target.value })
+                    setForm({ ...form, description: event.target.value })
                   }
                 />
               </div>
-              <Textarea
-                placeholder="Descrição (opcional)"
-                value={form.description}
-                onChange={event =>
-                  setForm({ ...form, description: event.target.value })
-                }
-              />
               <div className="grid gap-3 sm:grid-cols-2">
-                <Input
-                  type="date"
-                  value={form.startsAt}
-                  onChange={event =>
-                    setForm({ ...form, startsAt: event.target.value })
-                  }
-                />
-                <Input
-                  type="date"
-                  value={form.endsAt}
-                  onChange={event =>
-                    setForm({ ...form, endsAt: event.target.value })
-                  }
-                />
+                <div className="space-y-1.5">
+                  <Label htmlFor="campaign-starts-at">Início (opcional)</Label>
+                  <Input
+                    id="campaign-starts-at"
+                    type="date"
+                    value={form.startsAt}
+                    onChange={event =>
+                      setForm({ ...form, startsAt: event.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="campaign-ends-at">Fim (opcional)</Label>
+                  <Input
+                    id="campaign-ends-at"
+                    type="date"
+                    value={form.endsAt}
+                    onChange={event =>
+                      setForm({ ...form, endsAt: event.target.value })
+                    }
+                  />
+                </div>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="mb-2 text-sm font-medium">PDVs participantes</p>
@@ -157,9 +185,32 @@ export default function V2Campaigns() {
                 className="w-fit"
                 disabled={create.isPending || !form.pdvIds.length}
               >
-                Salvar rascunho
+                {create.isPending ? "Salvando…" : "Salvar rascunho"}
               </Button>
             </form>
+          </CardContent>
+        </Card>
+      )}
+      {createdCampaignId && (
+        <Card className="border-primary/30">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-medium">
+                Campanha criada. Próximo passo: importar a base de Leads.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Depois da importação, a gestão da base permite distribuir os
+                Leads.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href={`/v2/campaigns/${createdCampaignId}/imports`}>
+                <Button>Importar Leads</Button>
+              </Link>
+              <Link href={`/v2/campaigns/${createdCampaignId}`}>
+                <Button variant="outline">Abrir campanha</Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -287,9 +338,18 @@ export function V2CampaignDetail() {
         ? current.pdvIds.filter(item => item !== pdvId)
         : [...current.pdvIds, pdvId],
     }));
-  if (detail.isLoading) return <main className="v2-page"><V2LoadingState label="Carregando campanha" /></main>;
+  if (detail.isLoading)
+    return (
+      <main className="v2-page">
+        <V2LoadingState label="Carregando campanha" />
+      </main>
+    );
   if (!campaign)
-    return <main className="v2-page"><V2ErrorState message="Campanha não encontrada ou sem acesso." /></main>;
+    return (
+      <main className="v2-page">
+        <V2ErrorState message="Campanha não encontrada ou sem acesso." />
+      </main>
+    );
   const nextStatus =
     campaign.status === "draft"
       ? "active"
@@ -300,7 +360,22 @@ export function V2CampaignDetail() {
           : null;
   return (
     <main className="v2-page space-y-6">
-      <V2PageHeader eyebrow="V2 / Campanha" title={campaign.name} description={`${campaign.code} · ${campaign.description || "Sem descrição"}`} actions={<><Badge>{statusLabel[campaign.status]}</Badge>{campaign.isFrozen && <Badge variant="destructive">Congelada</Badge>}<Link href="/v2/campaigns"><Button variant="outline">← Campanhas</Button></Link></>} />
+      <V2PageHeader
+        eyebrow="V2 / Campanha"
+        title={campaign.name}
+        description={`${campaign.code} · ${campaign.description || "Sem descrição"}`}
+        actions={
+          <>
+            <Badge>{statusLabel[campaign.status]}</Badge>
+            {campaign.isFrozen && (
+              <Badge variant="destructive">Congelada</Badge>
+            )}
+            <Link href="/v2/campaigns">
+              <Button variant="outline">← Campanhas</Button>
+            </Link>
+          </>
+        }
+      />
       <Card>
         <CardHeader>
           <CardTitle>{editing ? "Editar rascunho" : "Visão geral"}</CardTitle>
@@ -440,7 +515,11 @@ export function V2CampaignDetail() {
                     campaign.status === "active") &&
                   !campaign.isFrozen && (
                     <Link href={`/v2/campaigns/${id}/imports`}>
-                      <Button variant="outline">Importações</Button>
+                      <Button>
+                        {(detail.data?.metrics.total ?? 0) > 0
+                          ? "Importações"
+                          : "Importar Leads"}
+                      </Button>
                     </Link>
                   )}
                 {canManage && campaign.status === "draft" && (

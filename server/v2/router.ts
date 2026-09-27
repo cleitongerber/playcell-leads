@@ -457,6 +457,9 @@ export const v2FoundationRouter = v2Router({
           campaignId: z.number().int().positive().optional(),
           pdvId: z.number().int().positive().optional(),
           statusId: z.number().int().positive().optional(),
+          assignedMembershipId: z.number().int().positive().optional(),
+          assignment: z.enum(["assigned", "unassigned"]).optional(),
+          firstContact: z.enum(["missing", "recorded"]).optional(),
           search: z.string().max(200).optional(),
         })
       )
@@ -572,6 +575,7 @@ export const v2FoundationRouter = v2Router({
           pageSize: z.number().int().min(1).max(100).default(25),
           ownerMembershipId: z.number().int().positive().optional(),
           pdvId: z.number().int().positive().optional(),
+          campaignId: z.number().int().positive().optional(),
         })
       )
       .query(({ ctx, input }) => listFollowUps(ctx.partner, input)),

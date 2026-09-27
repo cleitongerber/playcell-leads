@@ -1,14 +1,13 @@
 import {
   AnalyticsFilters,
-  defaultAnalyticsFilters,
-  type AnalyticsUiFilters,
+  useAnalyticsUrlFilters,
 } from "@/components/v2/AnalyticsFilters";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { v2trpc } from "@/lib/v2trpc";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
-import { useState } from "react";
+import { buildV2Path } from "@/lib/operationalNavigation";
 import { Link } from "wouter";
 
 function number(value: number | undefined | null) {
@@ -58,7 +57,9 @@ function MetricCard({
   destructive?: boolean;
 }) {
   const content = (
-    <Card className={`v2-metric-card ${destructive ? "border-destructive/60" : ""}`}>
+    <Card
+      className={`v2-metric-card ${destructive ? "border-destructive/60" : ""}`}
+    >
       <CardContent className="p-4">
         <p className="text-sm text-muted-foreground">{title}</p>
         <p className="mt-1 text-2xl font-semibold">{value}</p>
@@ -74,14 +75,29 @@ function MetricCard({
 }
 
 export default function V2Dashboard() {
-  const [filters, setFilters] = useState<AnalyticsUiFilters>(
-    defaultAnalyticsFilters
-  );
+  const [filters, setFilters] = useAnalyticsUrlFilters();
   const canQuery =
     filters.preset !== "custom" || Boolean(filters.fromDate && filters.toDate);
   const dashboard = v2trpc.analytics.dashboard.useQuery(filters, {
     enabled: canQuery,
   });
+  const leadPath = (
+    view: "available" | "mine" | "all",
+    extra: Record<string, string | number | undefined> = {}
+  ) =>
+    buildV2Path("/v2/leads", {
+      view,
+      campaignId: filters.campaignId,
+      pdvId: filters.pdvId,
+      ...extra,
+    });
+  const followUpPath = (view: "overdue" | "today") =>
+    buildV2Path("/v2/follow-ups", {
+      view,
+      campaignId: filters.campaignId,
+      pdvId: filters.pdvId,
+      ownerMembershipId: filters.sellerMembershipId,
+    });
 
   return (
     <main className="v2-page space-y-6">
@@ -117,12 +133,15 @@ export default function V2Dashboard() {
             <MetricCard
               title="Leads disponíveis"
               value={number(dashboard.data.cards.leadsAvailable)}
-              href="/v2/leads?view=available"
+              href={leadPath("available")}
             />
             <MetricCard
               title="Leads em carteira"
               value={number(dashboard.data.cards.leadsInPortfolio)}
-              href="/v2/leads?view=mine"
+              href={leadPath("all", {
+                assignment: "assigned",
+                assignedMembershipId: filters.sellerMembershipId,
+              })}
             />
             <MetricCard
               title="Leads tratados"
@@ -143,12 +162,12 @@ export default function V2Dashboard() {
               title="Follow-ups vencidos"
               value={number(dashboard.data.cards.followUpsOverdue)}
               destructive
-              href="/v2/follow-ups?view=overdue"
+              href={followUpPath("overdue")}
             />
             <MetricCard
               title="Follow-ups para hoje"
               value={number(dashboard.data.cards.followUpsToday)}
-              href="/v2/follow-ups?view=today"
+              href={followUpPath("today")}
             />
             <MetricCard
               title="Tempo médio até 1º contato"
@@ -157,7 +176,10 @@ export default function V2Dashboard() {
             <MetricCard
               title="Sem primeiro contato"
               value={number(dashboard.data.cards.leadsWithoutFirstContact)}
-              href="/v2/leads?view=all"
+              href={leadPath("all", {
+                firstContact: "missing",
+                assignedMembershipId: filters.sellerMembershipId,
+              })}
             />
           </section>
 
@@ -208,14 +230,18 @@ export default function V2Dashboard() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <Link
-                  href="/v2/leads?view=available"
+                  href={leadPath("available")}
                   className="block rounded-md border p-3 hover:bg-muted/40"
                 >
                   <p className="text-sm">Sem responsável</p>
                   <strong>{number(dashboard.data.health.unassigned)}</strong>
                 </Link>
                 <Link
-                  href="/v2/leads?view=all"
+                  href={leadPath("all", {
+                    assignment: "assigned",
+                    firstContact: "missing",
+                    assignedMembershipId: filters.sellerMembershipId,
+                  })}
                   className="block rounded-md border p-3 hover:bg-muted/40"
                 >
                   <p className="text-sm">Atribuídos sem primeiro contato</p>
@@ -224,7 +250,7 @@ export default function V2Dashboard() {
                   </strong>
                 </Link>
                 <Link
-                  href="/v2/follow-ups?view=overdue"
+                  href={followUpPath("overdue")}
                   className="block rounded-md border p-3 hover:bg-muted/40"
                 >
                   <p className="text-sm">Follow-ups vencidos</p>
@@ -232,10 +258,7 @@ export default function V2Dashboard() {
                     {number(dashboard.data.health.followUpsOverdue)}
                   </strong>
                 </Link>
-                <Link
-                  href="/v2/leads?view=all"
-                  className="block rounded-md border p-3 hover:bg-muted/40"
-                >
+                <div className="rounded-md border p-3">
                   <p className="text-sm">
                     Sem atividade há{" "}
                     {Math.max(
@@ -245,16 +268,13 @@ export default function V2Dashboard() {
                     dia(s)
                   </p>
                   <strong>{number(dashboard.data.health.staleLeads)}</strong>
-                </Link>
-                <Link
-                  href="/v2/governance"
-                  className="block rounded-md border p-3 hover:bg-muted/40"
-                >
+                </div>
+                <div className="rounded-md border p-3">
                   <p className="text-sm">Pendências de governança</p>
                   <strong>
                     {number(dashboard.data.health.governancePending)}
                   </strong>
-                </Link>
+                </div>
               </CardContent>
             </Card>
           </section>
@@ -304,78 +324,124 @@ function OverviewTable({
       <CardContent>
         {rows.length ? (
           <>
-          <div className="grid gap-3 md:hidden">
-            {rows.map(row => (
-              <div key={row.id} className="v2-mobile-record rounded-lg border p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 font-medium">
-                    {campaign ? (
-                      <Link href={`/v2/campaigns/${row.id}`} className="hover:underline">{row.name}</Link>
-                    ) : row.name}
-                  </div>
-                  <Badge variant={row.followUpsOverdue ? "destructive" : "secondary"}>
-                    {row.followUpsOverdue ? `${row.followUpsOverdue} vencidos` : "Sem vencidos"}
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                  <span>Leads <strong className="text-foreground">{number(row.leads)}</strong></span>
-                  <span>Tratados <strong className="text-foreground">{number(row.treated)}</strong></span>
-                  <span>Concluídos <strong className="text-foreground">{number(row.completed)}</strong></span>
-                  <span>Conversões <strong className="text-foreground">{number(row.conversions)}</strong></span>
-                  <span>Taxa <strong className="text-foreground">{percent(row.conversionRate)}</strong></span>
-                  <span>1º contato <strong className="text-foreground">{duration(row.firstContactAverageSeconds)}</strong></span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="hidden overflow-x-auto md:block">
-          <table className="w-full text-sm">
-            <thead className="border-b text-left text-muted-foreground">
-              <tr>
-                <th className="p-2">{title.slice(0, -1)}</th>
-                <th className="p-2">Leads</th>
-                <th className="p-2">Tratados</th>
-                <th className="p-2">Concluídos</th>
-                <th className="p-2">Conversões</th>
-                <th className="p-2">Taxa</th>
-                <th className="p-2">Vencidos</th>
-                <th className="p-2">1º contato</th>
-              </tr>
-            </thead>
-            <tbody>
+            <div className="grid gap-3 md:hidden">
               {rows.map(row => (
-                <tr key={row.id} className="border-b last:border-0">
-                  <td className="p-2 font-medium">
-                    {campaign ? (
-                      <Link href={`/v2/campaigns/${row.id}`}>
-                        <span className="hover:underline">{row.name}</span>
-                      </Link>
-                    ) : (
-                      row.name
-                    )}
-                  </td>
-                  <td className="p-2">{number(row.leads)}</td>
-                  <td className="p-2">{number(row.treated)}</td>
-                  <td className="p-2">{number(row.completed)}</td>
-                  <td className="p-2">{number(row.conversions)}</td>
-                  <td className="p-2">{percent(row.conversionRate)}</td>
-                  <td className="p-2">
-                    {row.followUpsOverdue ? (
-                      <Badge variant="destructive">
-                        {row.followUpsOverdue}
-                      </Badge>
-                    ) : (
-                      "0"
-                    )}
-                  </td>
-                  <td className="p-2">
-                    {duration(row.firstContactAverageSeconds)}
-                  </td>
-                </tr>
+                <div
+                  key={row.id}
+                  className="v2-mobile-record rounded-lg border p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 font-medium">
+                      {campaign ? (
+                        <Link
+                          href={`/v2/campaigns/${row.id}`}
+                          className="hover:underline"
+                        >
+                          {row.name}
+                        </Link>
+                      ) : (
+                        row.name
+                      )}
+                    </div>
+                    <Badge
+                      variant={
+                        row.followUpsOverdue ? "destructive" : "secondary"
+                      }
+                    >
+                      {row.followUpsOverdue
+                        ? `${row.followUpsOverdue} vencidos`
+                        : "Sem vencidos"}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                    <span>
+                      Leads{" "}
+                      <strong className="text-foreground">
+                        {number(row.leads)}
+                      </strong>
+                    </span>
+                    <span>
+                      Tratados{" "}
+                      <strong className="text-foreground">
+                        {number(row.treated)}
+                      </strong>
+                    </span>
+                    <span>
+                      Concluídos{" "}
+                      <strong className="text-foreground">
+                        {number(row.completed)}
+                      </strong>
+                    </span>
+                    <span>
+                      Conversões{" "}
+                      <strong className="text-foreground">
+                        {number(row.conversions)}
+                      </strong>
+                    </span>
+                    <span>
+                      Taxa{" "}
+                      <strong className="text-foreground">
+                        {percent(row.conversionRate)}
+                      </strong>
+                    </span>
+                    <span>
+                      1º contato{" "}
+                      <strong className="text-foreground">
+                        {duration(row.firstContactAverageSeconds)}
+                      </strong>
+                    </span>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-          </div>
+            </div>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead className="border-b text-left text-muted-foreground">
+                  <tr>
+                    <th className="p-2">{title.slice(0, -1)}</th>
+                    <th className="p-2">Leads</th>
+                    <th className="p-2">Tratados</th>
+                    <th className="p-2">Concluídos</th>
+                    <th className="p-2">Conversões</th>
+                    <th className="p-2">Taxa</th>
+                    <th className="p-2">Vencidos</th>
+                    <th className="p-2">1º contato</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(row => (
+                    <tr key={row.id} className="border-b last:border-0">
+                      <td className="p-2 font-medium">
+                        {campaign ? (
+                          <Link href={`/v2/campaigns/${row.id}`}>
+                            <span className="hover:underline">{row.name}</span>
+                          </Link>
+                        ) : (
+                          row.name
+                        )}
+                      </td>
+                      <td className="p-2">{number(row.leads)}</td>
+                      <td className="p-2">{number(row.treated)}</td>
+                      <td className="p-2">{number(row.completed)}</td>
+                      <td className="p-2">{number(row.conversions)}</td>
+                      <td className="p-2">{percent(row.conversionRate)}</td>
+                      <td className="p-2">
+                        {row.followUpsOverdue ? (
+                          <Badge variant="destructive">
+                            {row.followUpsOverdue}
+                          </Badge>
+                        ) : (
+                          "0"
+                        )}
+                      </td>
+                      <td className="p-2">
+                        {duration(row.firstContactAverageSeconds)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </>
         ) : (
           <p className="p-5 text-center text-sm text-muted-foreground">

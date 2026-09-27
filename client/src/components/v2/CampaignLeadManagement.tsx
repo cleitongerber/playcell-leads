@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -117,7 +118,7 @@ export function CampaignLeadManagement({
   const pageFullySelected =
     pageIds.length > 0 && pageIds.every(id => selected.has(id));
   const selectedCount = allFiltered
-    ? management.data?.total ?? 0
+    ? (management.data?.total ?? 0)
     : selected.size;
   const selectedPdvIds = useMemo(
     () =>
@@ -140,7 +141,8 @@ export function CampaignLeadManagement({
   const selectedPdvNames = useMemo(() => {
     if (allFiltered) {
       return filters.pdvId
-        ? options.data?.pdvs.find(pdv => pdv.id === filters.pdvId)?.name ?? "PDV filtrado"
+        ? (options.data?.pdvs.find(pdv => pdv.id === filters.pdvId)?.name ??
+            "PDV filtrado")
         : "PDVs do resultado filtrado";
     }
     return selectedPdvIds.length
@@ -178,7 +180,9 @@ export function CampaignLeadManagement({
       return;
     }
     if (!isOperational) {
-      toast.error("A campanha não permite alterações operacionais neste momento.");
+      toast.error(
+        "A campanha não permite alterações operacionais neste momento."
+      );
       return;
     }
     setOperation(next);
@@ -234,7 +238,7 @@ export function CampaignLeadManagement({
   };
 
   return (
-    <Card>
+    <Card id="lead-management">
       <CardHeader>
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
           <div>
@@ -253,12 +257,23 @@ export function CampaignLeadManagement({
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
+        {!isOperational && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            {campaign.isFrozen
+              ? "A base pode ser consultada, mas a distribuição fica bloqueada enquanto a campanha estiver congelada."
+              : campaign.status === "draft"
+                ? "A base pode ser consultada, mas é necessário ativar a campanha antes de distribuir Leads."
+                : "A base pode ser consultada, mas campanhas fechadas ou arquivadas não permitem distribuição."}
+          </p>
+        )}
         <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-4">
           <Input
             className="lg:col-span-2"
             placeholder="Buscar nome, telefone ou e-mail"
             value={filters.search ?? ""}
-            onChange={event => updateFilters({ search: event.target.value || undefined })}
+            onChange={event =>
+              updateFilters({ search: event.target.value || undefined })
+            }
           />
           <Select
             value={filters.assignment}
@@ -278,7 +293,9 @@ export function CampaignLeadManagement({
           <Select
             value={filters.pdvId ? String(filters.pdvId) : "all"}
             onValueChange={value =>
-              updateFilters({ pdvId: value === "all" ? undefined : Number(value) })
+              updateFilters({
+                pdvId: value === "all" ? undefined : Number(value),
+              })
             }
           >
             <SelectTrigger>
@@ -352,7 +369,10 @@ export function CampaignLeadManagement({
             <SelectContent>
               <SelectItem value="all">Todos os vendedores</SelectItem>
               {options.data?.sellers.map(seller => (
-                <SelectItem key={seller.membershipId} value={String(seller.membershipId)}>
+                <SelectItem
+                  key={seller.membershipId}
+                  value={String(seller.membershipId)}
+                >
                   {seller.name}
                 </SelectItem>
               ))}
@@ -363,7 +383,9 @@ export function CampaignLeadManagement({
             aria-label="Entrada a partir de"
             value={dateInputValue(filters.receivedFrom)}
             onChange={event =>
-              updateFilters({ receivedFrom: beginningOfDay(event.target.value) })
+              updateFilters({
+                receivedFrom: beginningOfDay(event.target.value),
+              })
             }
           />
           <Input
@@ -428,13 +450,19 @@ export function CampaignLeadManagement({
             <p className="mb-3 text-sm font-medium">Visão por vendedor</p>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {management.data.summary.bySeller.map(seller => (
-                <div key={seller.membershipId} className="rounded-md bg-muted/40 p-3 text-sm">
+                <div
+                  key={seller.membershipId}
+                  className="rounded-md bg-muted/40 p-3 text-sm"
+                >
                   <p className="font-medium">{seller.name}</p>
                   <p className="mt-1 text-muted-foreground">
-                    Carteira ativa: {seller.activeLeadCount} · Campanha: {seller.totalInCampaign}
+                    Carteira ativa: {seller.activeLeadCount} · Campanha:{" "}
+                    {seller.totalInCampaign}
                   </p>
                   <p className="text-muted-foreground">
-                    Vencidos: {seller.overdueFollowUps} · Hoje: {seller.todayFollowUps} · Concluídos: {seller.completedInCampaign}
+                    Vencidos: {seller.overdueFollowUps} · Hoje:{" "}
+                    {seller.todayFollowUps} · Concluídos:{" "}
+                    {seller.completedInCampaign}
                   </p>
                 </div>
               ))}
@@ -495,42 +523,113 @@ export function CampaignLeadManagement({
             {selectedCount > 0 && <Badge>{selectedCount} selecionado(s)</Badge>}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => openOperation("assign")}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!selectedCount || !isOperational}
+              onClick={() => openOperation("assign")}
+            >
               Distribuir
             </Button>
-            <Button size="sm" variant="outline" onClick={() => openOperation("reassign")}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!selectedCount || !isOperational}
+              onClick={() => openOperation("reassign")}
+            >
               Redistribuir
             </Button>
-            <Button size="sm" variant="outline" onClick={() => openOperation("return_to_queue")}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!selectedCount || !isOperational}
+              onClick={() => openOperation("return_to_queue")}
+            >
               Devolver à fila
             </Button>
-            <Button size="sm" onClick={() => openOperation("balanced")}>
+            <Button
+              size="sm"
+              disabled={!selectedCount || !isOperational}
+              onClick={() => openOperation("balanced")}
+            >
               Distribuição equilibrada
             </Button>
           </div>
         </div>
+        {!selectedCount && isOperational && (
+          <p className="text-xs text-muted-foreground">
+            Selecione um ou mais Leads para habilitar as ações de distribuição.
+          </p>
+        )}
 
         <div className="grid gap-3 md:hidden">
           {management.isLoading ? (
-            <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">Carregando base…</div>
-          ) : management.data?.items.length ? management.data.items.map(lead => (
-            <article key={lead.id} className="v2-mobile-record rounded-lg border p-3">
-              <div className="flex items-start gap-3">
-                <Checkbox checked={allFiltered || selected.has(lead.id)} onCheckedChange={checked => toggleLead(lead.id, checked === true)} disabled={allFiltered} aria-label={`Selecionar ${lead.name || "lead"}`} />
-                <div className="min-w-0 flex-1">
-                  <Link href={`/v2/leads/${lead.id}`}><span className="font-medium hover:underline">{lead.name || "Lead sem nome"}</span></Link>
-                  <p className="text-xs text-muted-foreground">{lead.phone || "Sem telefone"} · {lead.sourceLabel || "Sem origem"}</p>
+            <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+              Carregando base…
+            </div>
+          ) : management.data?.items.length ? (
+            management.data.items.map(lead => (
+              <article
+                key={lead.id}
+                className="v2-mobile-record rounded-lg border p-3"
+              >
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    checked={allFiltered || selected.has(lead.id)}
+                    onCheckedChange={checked =>
+                      toggleLead(lead.id, checked === true)
+                    }
+                    disabled={allFiltered}
+                    aria-label={`Selecionar ${lead.name || "lead"}`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={buildV2Path(`/v2/leads/${lead.id}`, {
+                        from: currentV2Path(),
+                      })}
+                    >
+                      <span className="font-medium hover:underline">
+                        {lead.name || "Lead sem nome"}
+                      </span>
+                    </Link>
+                    <p className="text-xs text-muted-foreground">
+                      {lead.phone || "Sem telefone"} ·{" "}
+                      {lead.sourceLabel || "Sem origem"}
+                    </p>
+                  </div>
+                  <Badge variant="outline">{lead.statusLabel}</Badge>
                 </div>
-                <Badge variant="outline">{lead.statusLabel}</Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                <span>PDV <strong className="text-foreground">{lead.pdvName}</strong></span>
-                <span>Responsável <strong className="text-foreground">{lead.ownerName || "Sem responsável"}</strong></span>
-                <span>Próximo FU <strong className="text-foreground">{lead.nextFollowUpAt?.toLocaleString("pt-BR") || "—"}</strong></span>
-                <span>Atividade <strong className="text-foreground">{lead.lastActivityAt?.toLocaleString("pt-BR") || "—"}</strong></span>
-              </div>
-            </article>
-          )) : <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">Nenhum lead encontrado com estes filtros.</div>}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  <span>
+                    PDV{" "}
+                    <strong className="text-foreground">{lead.pdvName}</strong>
+                  </span>
+                  <span>
+                    Responsável{" "}
+                    <strong className="text-foreground">
+                      {lead.ownerName || "Sem responsável"}
+                    </strong>
+                  </span>
+                  <span>
+                    Próximo FU{" "}
+                    <strong className="text-foreground">
+                      {lead.nextFollowUpAt?.toLocaleString("pt-BR") || "—"}
+                    </strong>
+                  </span>
+                  <span>
+                    Atividade{" "}
+                    <strong className="text-foreground">
+                      {lead.lastActivityAt?.toLocaleString("pt-BR") || "—"}
+                    </strong>
+                  </span>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+              Nenhum lead encontrado com estes filtros.
+            </div>
+          )}
         </div>
         <div className="hidden overflow-x-auto rounded-lg border md:block">
           <table className="w-full min-w-[860px] text-sm">
@@ -547,33 +646,66 @@ export function CampaignLeadManagement({
             </thead>
             <tbody>
               {management.isLoading ? (
-                <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Carregando base…</td></tr>
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="p-8 text-center text-muted-foreground"
+                  >
+                    Carregando base…
+                  </td>
+                </tr>
               ) : management.data?.items.length ? (
                 management.data.items.map(lead => (
                   <tr key={lead.id} className="border-t align-top">
                     <td className="p-3">
                       <Checkbox
                         checked={allFiltered || selected.has(lead.id)}
-                        onCheckedChange={checked => toggleLead(lead.id, checked === true)}
+                        onCheckedChange={checked =>
+                          toggleLead(lead.id, checked === true)
+                        }
                         disabled={allFiltered}
                         aria-label={`Selecionar ${lead.name || "lead"}`}
                       />
                     </td>
                     <td className="p-3">
-                      <Link href={`/v2/leads/${lead.id}`}>
-                        <span className="font-medium hover:underline">{lead.name || "Lead sem nome"}</span>
+                      <Link
+                        href={buildV2Path(`/v2/leads/${lead.id}`, {
+                          from: currentV2Path(),
+                        })}
+                      >
+                        <span className="font-medium hover:underline">
+                          {lead.name || "Lead sem nome"}
+                        </span>
                       </Link>
-                      <p className="mt-1 text-xs text-muted-foreground">{lead.phone || "Sem telefone"} · {lead.sourceLabel || "Sem origem"}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {lead.phone || "Sem telefone"} ·{" "}
+                        {lead.sourceLabel || "Sem origem"}
+                      </p>
                     </td>
                     <td className="p-3">{lead.pdvName}</td>
-                    <td className="p-3"><Badge variant="outline">{lead.statusLabel}</Badge></td>
-                    <td className="p-3">{lead.ownerName || "Sem responsável"}</td>
-                    <td className="p-3">{lead.nextFollowUpAt?.toLocaleString("pt-BR") || "—"}</td>
-                    <td className="p-3">{lead.lastActivityAt?.toLocaleString("pt-BR") || "—"}</td>
+                    <td className="p-3">
+                      <Badge variant="outline">{lead.statusLabel}</Badge>
+                    </td>
+                    <td className="p-3">
+                      {lead.ownerName || "Sem responsável"}
+                    </td>
+                    <td className="p-3">
+                      {lead.nextFollowUpAt?.toLocaleString("pt-BR") || "—"}
+                    </td>
+                    <td className="p-3">
+                      {lead.lastActivityAt?.toLocaleString("pt-BR") || "—"}
+                    </td>
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Nenhum lead encontrado com estes filtros.</td></tr>
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="p-8 text-center text-muted-foreground"
+                  >
+                    Nenhum lead encontrado com estes filtros.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -581,46 +713,86 @@ export function CampaignLeadManagement({
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>{management.data?.total ?? 0} resultado(s)</span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => { setPage(page - 1); resetSelection(); }}>Anterior</Button>
-            <Button size="sm" variant="outline" disabled={!management.data || page * management.data.pageSize >= management.data.total} onClick={() => { setPage(page + 1); resetSelection(); }}>Próxima</Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={page <= 1}
+              onClick={() => {
+                setPage(page - 1);
+                resetSelection();
+              }}
+            >
+              Anterior
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                !management.data ||
+                page * management.data.pageSize >= management.data.total
+              }
+              onClick={() => {
+                setPage(page + 1);
+                resetSelection();
+              }}
+            >
+              Próxima
+            </Button>
           </div>
         </div>
       </CardContent>
 
-      <Dialog open={operation !== null} onOpenChange={open => !open && setOperation(null)}>
+      <Dialog
+        open={operation !== null}
+        onOpenChange={open => !open && setOperation(null)}
+      >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{operation ? operationLabel[operation] : "Distribuição"}</DialogTitle>
+            <DialogTitle>
+              {operation ? operationLabel[operation] : "Distribuição"}
+            </DialogTitle>
             <DialogDescription>
-              {selectedCount} lead(s) da campanha {campaign.name} serão processados no servidor. PDVs: {selectedPdvNames}.
+              {selectedCount} lead(s) da campanha {campaign.name} serão
+              processados no servidor. PDVs: {selectedPdvNames}.
             </DialogDescription>
           </DialogHeader>
           {operation !== "return_to_queue" && operation !== "balanced" && (
             <div className="space-y-2">
               <p className="text-sm font-medium">Vendedor de destino</p>
               <Select value={membershipId} onValueChange={setMembershipId}>
-                <SelectTrigger><SelectValue placeholder="Selecione um vendedor" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um vendedor" />
+                </SelectTrigger>
                 <SelectContent>
                   {eligibleSellers.map(seller => (
-                    <SelectItem key={seller.membershipId} value={String(seller.membershipId)}>
+                    <SelectItem
+                      key={seller.membershipId}
+                      value={String(seller.membershipId)}
+                    >
                       {seller.name} · carteira ativa: {seller.activeLeadCount}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {!eligibleSellers.length && (
-                <p className="text-xs text-destructive">Nenhum vendedor elegível cobre os PDVs selecionados.</p>
+                <p className="text-xs text-destructive">
+                  Nenhum vendedor elegível cobre os PDVs selecionados.
+                </p>
               )}
             </div>
           )}
           {operation === "balanced" && (
             <p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-              A distribuição usa apenas vendedores ativos com acesso ao PDV de cada lead. Ela prioriza a menor carteira ativa atual e desempata pelo identificador do vendedor.
+              A distribuição usa apenas vendedores ativos com acesso ao PDV de
+              cada lead. Ela prioriza a menor carteira ativa atual e desempata
+              pelo identificador do vendedor.
             </p>
           )}
           {operation === "return_to_queue" && (
             <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-              Leads com follow-up pendente ou pendência de governança serão mantidos na carteira atual e aparecerão como ignorados no resultado.
+              Leads com follow-up pendente ou pendência de governança serão
+              mantidos na carteira atual e aparecerão como ignorados no
+              resultado.
             </p>
           )}
           <Textarea
@@ -629,8 +801,17 @@ export function CampaignLeadManagement({
             placeholder="Motivo/origem da alteração (opcional)"
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOperation(null)}>Cancelar</Button>
-            <Button disabled={distribute.isPending || (!membershipId && (operation === "assign" || operation === "reassign"))} onClick={execute}>
+            <Button variant="outline" onClick={() => setOperation(null)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={
+                distribute.isPending ||
+                (!membershipId &&
+                  (operation === "assign" || operation === "reassign"))
+              }
+              onClick={execute}
+            >
               {distribute.isPending ? "Processando…" : "Confirmar"}
             </Button>
           </DialogFooter>

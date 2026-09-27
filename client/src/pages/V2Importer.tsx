@@ -237,6 +237,8 @@ export default function V2Importer() {
   });
 
   const setupData = setup.data;
+  const canManageDistribution =
+    setupData?.campaign.status === "active" && !setupData.campaign.isFrozen;
   const customFields = setupData?.customFields ?? [];
   const activeMappings = useMemo(
     () => mappings.filter(mapping => mapping.targetKey),
@@ -319,18 +321,39 @@ export default function V2Importer() {
   };
 
   if (!validCampaignId) {
-    return <main className="v2-page"><V2ErrorState message="Campanha inválida." /></main>;
+    return (
+      <main className="v2-page">
+        <V2ErrorState message="Campanha inválida." />
+      </main>
+    );
   }
   if (setup.isLoading) {
-    return <main className="v2-page"><V2LoadingState label="Carregando importador" /></main>;
+    return (
+      <main className="v2-page">
+        <V2LoadingState label="Carregando importador" />
+      </main>
+    );
   }
   if (!setupData) {
-    return <main className="v2-page"><V2ErrorState message="Campanha não encontrada ou sem acesso." /></main>;
+    return (
+      <main className="v2-page">
+        <V2ErrorState message="Campanha não encontrada ou sem acesso." />
+      </main>
+    );
   }
 
   return (
     <main className="v2-page space-y-6">
-      <V2PageHeader eyebrow="V2 / Campanhas / Importações" title="Importar leads" description={`${setupData.campaign.name} · o CSV é validado no servidor antes de qualquer lead ser criado.`} actions={<Link href={`/v2/campaigns/${campaignId}`}><Button variant="outline">← Campanha</Button></Link>} />
+      <V2PageHeader
+        eyebrow="V2 / Campanhas / Importações"
+        title="Importar leads"
+        description={`${setupData.campaign.name} · o CSV é validado no servidor antes de qualquer lead ser criado.`}
+        actions={
+          <Link href={`/v2/campaigns/${campaignId}`}>
+            <Button variant="outline">← Campanha</Button>
+          </Link>
+        }
+      />
 
       <section className="grid gap-2 sm:grid-cols-4">
         {[
@@ -448,7 +471,86 @@ export default function V2Importer() {
                 )}
               </div>
               <div className="grid gap-3 md:hidden">
-                {mappings.map(mapping => <div key={mapping.sourceHeader} className="space-y-3 rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><span className="font-medium">{mapping.sourceHeader}</span><label className="flex items-center gap-2 text-xs text-muted-foreground"><Checkbox checked={mapping.isRequired} disabled={!mapping.targetKey} onCheckedChange={checked => updateMapping(mapping.sourceHeader, { isRequired: checked === true })} /> Obrigatório</label></div><label className="grid gap-1 text-xs font-medium">Destino<select className="h-9 rounded-md border bg-background px-2 text-sm font-normal" value={mapping.targetKey ? `${mapping.targetKind}:${mapping.targetKey}` : ""} onChange={event => selectTarget(mapping.sourceHeader, event.target.value)}><option value="">Não importar esta coluna</option><optgroup label="Campos do lead">{coreTargets.map(target => <option key={target.key} value={`core:${target.key}`}>{target.label}</option>)}</optgroup>{customFields.length > 0 && <optgroup label="Campos personalizados">{customFields.map(field => <option key={field.key} value={`custom:${field.key}`}>{field.label ?? field.key} · {field.key}</option>)}</optgroup>}</select></label><label className="grid gap-1 text-xs font-medium">Transformação<select className="h-9 rounded-md border bg-background px-2 text-sm font-normal" value={mapping.transformKey ?? ""} onChange={event => updateMapping(mapping.sourceHeader, { transformKey: event.target.value || null })}><option value="">Sem transformação</option><option value="trim">Remover espaços</option><option value="lowercase">Minúsculas</option><option value="uppercase">Maiúsculas</option><option value="digits_only">Somente dígitos</option></select></label></div>)}
+                {mappings.map(mapping => (
+                  <div
+                    key={mapping.sourceHeader}
+                    className="space-y-3 rounded-lg border p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">
+                        {mapping.sourceHeader}
+                      </span>
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Checkbox
+                          checked={mapping.isRequired}
+                          disabled={!mapping.targetKey}
+                          onCheckedChange={checked =>
+                            updateMapping(mapping.sourceHeader, {
+                              isRequired: checked === true,
+                            })
+                          }
+                        />{" "}
+                        Obrigatório
+                      </label>
+                    </div>
+                    <label className="grid gap-1 text-xs font-medium">
+                      Destino
+                      <select
+                        className="h-9 rounded-md border bg-background px-2 text-sm font-normal"
+                        value={
+                          mapping.targetKey
+                            ? `${mapping.targetKind}:${mapping.targetKey}`
+                            : ""
+                        }
+                        onChange={event =>
+                          selectTarget(mapping.sourceHeader, event.target.value)
+                        }
+                      >
+                        <option value="">Não importar esta coluna</option>
+                        <optgroup label="Campos do lead">
+                          {coreTargets.map(target => (
+                            <option
+                              key={target.key}
+                              value={`core:${target.key}`}
+                            >
+                              {target.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                        {customFields.length > 0 && (
+                          <optgroup label="Campos personalizados">
+                            {customFields.map(field => (
+                              <option
+                                key={field.key}
+                                value={`custom:${field.key}`}
+                              >
+                                {field.label ?? field.key} · {field.key}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-xs font-medium">
+                      Transformação
+                      <select
+                        className="h-9 rounded-md border bg-background px-2 text-sm font-normal"
+                        value={mapping.transformKey ?? ""}
+                        onChange={event =>
+                          updateMapping(mapping.sourceHeader, {
+                            transformKey: event.target.value || null,
+                          })
+                        }
+                      >
+                        <option value="">Sem transformação</option>
+                        <option value="trim">Remover espaços</option>
+                        <option value="lowercase">Minúsculas</option>
+                        <option value="uppercase">Maiúsculas</option>
+                        <option value="digits_only">Somente dígitos</option>
+                      </select>
+                    </label>
+                  </div>
+                ))}
               </div>
               <div className="hidden overflow-x-auto rounded-lg border md:block">
                 <table className="w-full text-left text-sm">
@@ -719,7 +821,25 @@ export default function V2Importer() {
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="grid gap-2 md:hidden">
-                  {preview.data?.items.map(row => <div key={row.rowNumber} className="rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><span className="font-medium">Linha {row.rowNumber}</span><Badge variant={row.status === "invalid" ? "destructive" : "outline"}>{row.status}</Badge></div><p className="mt-2 break-words font-mono text-xs text-muted-foreground">{row.mappedData ? JSON.stringify(row.mappedData) : "—"}</p></div>)}
+                  {preview.data?.items.map(row => (
+                    <div key={row.rowNumber} className="rounded-lg border p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">
+                          Linha {row.rowNumber}
+                        </span>
+                        <Badge
+                          variant={
+                            row.status === "invalid" ? "destructive" : "outline"
+                          }
+                        >
+                          {row.status}
+                        </Badge>
+                      </div>
+                      <p className="mt-2 break-words font-mono text-xs text-muted-foreground">
+                        {row.mappedData ? JSON.stringify(row.mappedData) : "—"}
+                      </p>
+                    </div>
+                  ))}
                 </div>
                 <div className="hidden overflow-x-auto rounded-lg border md:block">
                   <table className="w-full text-left text-sm">
@@ -794,9 +914,22 @@ export default function V2Importer() {
                 <p>
                   <strong>Recusados:</strong> {batch.data?.rejectedRows ?? 0}
                 </p>
-                <Link href={`/v2/leads?campaignId=${campaignId}`}>
-                  <Button className="mt-3">Abrir leads da campanha</Button>
-                </Link>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link href={`/v2/leads?campaignId=${campaignId}`}>
+                    <Button>Abrir leads da campanha</Button>
+                  </Link>
+                  {canManageDistribution ? (
+                    <Link href={`/v2/campaigns/${campaignId}#lead-management`}>
+                      <Button variant="outline">Gerenciar distribuição</Button>
+                    </Link>
+                  ) : (
+                    <Link href={`/v2/campaigns/${campaignId}`}>
+                      <Button variant="outline">
+                        Abrir campanha para ativar e distribuir
+                      </Button>
+                    </Link>
+                  )}
+                </div>
               </CardContent>
             </Card>
           )}

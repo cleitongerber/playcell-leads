@@ -14,13 +14,72 @@ import { Label } from "@/components/ui/label";
 import { v2trpc } from "@/lib/v2trpc";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
+import { FollowUpCancellationDialog } from "@/components/v2/FollowUpCancellationDialog";
 import { followUpStatusLabel } from "@/lib/followUpPresentation";
+import {
+  buildV2Path,
+  currentV2Path,
+  safeV2ReturnPath,
+} from "@/lib/operationalNavigation";
 import { presentTimelineEvent } from "@/lib/timelinePresentation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useRoute } from "wouter";
 
 type View = "available" | "mine" | "all";
+type AssignmentFilter = "assigned" | "unassigned";
+type FirstContactFilter = "missing" | "recorded";
+
+type LeadListState = {
+  view: View;
+  page: number;
+  search: string;
+  campaignId?: number;
+  pdvId?: number;
+  statusId?: number;
+  assignedMembershipId?: number;
+  assignment?: AssignmentFilter;
+  firstContact?: FirstContactFilter;
+};
+
+function positiveInteger(value: string | null) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function readLeadListState(): LeadListState {
+  const params =
+    typeof window === "undefined"
+      ? new URLSearchParams()
+      : new URLSearchParams(window.location.search);
+  const requestedView = params.get("view");
+  const view: View =
+    requestedView === "available" ||
+    requestedView === "mine" ||
+    requestedView === "all"
+      ? requestedView
+      : "available";
+  const requestedAssignment = params.get("assignment");
+  const requestedFirstContact = params.get("firstContact");
+  return {
+    view,
+    page: positiveInteger(params.get("page")) ?? 1,
+    search: params.get("search") ?? "",
+    campaignId: positiveInteger(params.get("campaignId")),
+    pdvId: positiveInteger(params.get("pdvId")),
+    statusId: positiveInteger(params.get("statusId")),
+    assignedMembershipId: positiveInteger(params.get("assignedMembershipId")),
+    assignment:
+      requestedAssignment === "assigned" || requestedAssignment === "unassigned"
+        ? requestedAssignment
+        : undefined,
+    firstContact:
+      requestedFirstContact === "missing" ||
+      requestedFirstContact === "recorded"
+        ? requestedFirstContact
+        : undefined,
+  };
+}
 
 function readFileAsBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -96,65 +155,166 @@ function EvidenceUploader({
 
 export default function V2Leads() {
   const [, navigate] = useLocation();
-  const initialParams =
-    typeof window === "undefined"
-      ? new URLSearchParams()
-      : new URLSearchParams(window.location.search);
-  const initialCampaign = Number(initialParams.get("campaignId")) || undefined;
-  const requestedView = initialParams.get("view");
-  const initialView: View =
-    requestedView === "available" ||
-    requestedView === "mine" ||
-    requestedView === "all"
-      ? requestedView
-      : "available";
-  const [view, setView] = useState<View>(initialView);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
+  const [listState, setListState] = useState<LeadListState>(readLeadListState);
+  const {
+    view,
+    page,
+    search,
+    campaignId,
+    pdvId,
+    statusId,
+    assignedMembershipId,
+    assignment,
+    firstContact,
+  } = listState;
+  const updateListState = (patch: Partial<LeadListState>) =>
+    setListState(current => ({ ...current, ...patch }));
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const target = buildV2Path("/v2/leads", {
+      view: view === "available" ? undefined : view,
+      page: page > 1 ? page : undefined,
+      search: search || undefined,
+      campaignId,
+      pdvId,
+      statusId,
+      assignedMembershipId,
+      assignment,
+      firstContact,
+    });
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (target !== current)
+      window.history.replaceState(window.history.state, "", target);
+  }, [
+    assignedMembershipId,
+    assignment,
+    campaignId,
+    firstContact,
+    page,
+    pdvId,
+    search,
+    statusId,
+    view,
+  ]);
   const list = v2trpc.leads.list.useQuery({
     view,
     page,
     pageSize: 25,
-    campaignId: initialCampaign,
+    campaignId,
+    pdvId,
+    statusId,
+    assignedMembershipId,
+    assignment,
+    firstContact,
     search: search || undefined,
   });
   const access = v2trpc.access.context.useQuery();
   const followUpAlerts = v2trpc.followUps.alerts.useQuery();
   return (
     <main className="v2-page space-y-6">
-      <V2PageHeader eyebrow="V2 / Operação" title="Leads" description="Fila disponível e carteira do vendedor usam paginação diretamente no banco." actions={(followUpAlerts.data?.overdue ?? 0) + (followUpAlerts.data?.today ?? 0) > 0 ? <Badge variant="destructive">{(followUpAlerts.data?.overdue ?? 0) + (followUpAlerts.data?.today ?? 0)} follow-up(s)</Badge> : undefined} />
+      <V2PageHeader
+        eyebrow="V2 / Operação"
+        title="Leads"
+        description="Fila disponível e carteira do vendedor usam paginação diretamente no banco."
+        actions={
+          (followUpAlerts.data?.overdue ?? 0) +
+            (followUpAlerts.data?.today ?? 0) >
+          0 ? (
+            <Link href="/v2/follow-ups?view=overdue">
+              <Badge className="cursor-pointer" variant="destructive">
+                {(followUpAlerts.data?.overdue ?? 0) +
+                  (followUpAlerts.data?.today ?? 0)}{" "}
+                follow-up(s) pendente(s)
+              </Badge>
+            </Link>
+          ) : undefined
+        }
+      />
       <Card>
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row">
-          <div className="min-w-0 flex-1 space-y-1.5"><Label htmlFor="leads-view">Visão</Label><Select
-            value={view}
-            onValueChange={value => {
-              setView(value as View);
-              setPage(1);
-            }}
-          >
-            <SelectTrigger id="leads-view" className="w-full sm:w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="available">Fila disponível</SelectItem>
-              <SelectItem value="mine">Minha carteira</SelectItem>
-              {access.data?.role !== "seller" && (
-                <SelectItem value="all">Todos no escopo</SelectItem>
-              )}
-            </SelectContent>
-          </Select></div>
-          <div className="min-w-0 flex-1 space-y-1.5"><Label htmlFor="leads-search">Busca</Label><Input
-            id="leads-search"
-            className="max-w-md"
-            placeholder="Buscar nome ou telefone"
-            value={search}
-            onChange={event => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
-          /></div>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Label htmlFor="leads-view">Visão</Label>
+            <Select
+              value={view}
+              onValueChange={value => {
+                updateListState({ view: value as View, page: 1 });
+              }}
+            >
+              <SelectTrigger id="leads-view" className="w-full sm:w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="available">Fila disponível</SelectItem>
+                <SelectItem value="mine">Minha carteira</SelectItem>
+                {access.data?.role !== "seller" && (
+                  <SelectItem value="all">Todos no escopo</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Label htmlFor="leads-search">Busca</Label>
+            <Input
+              id="leads-search"
+              className="max-w-md"
+              placeholder="Buscar nome ou telefone"
+              value={search}
+              onChange={event => {
+                updateListState({ search: event.target.value, page: 1 });
+              }}
+            />
+          </div>
         </CardContent>
       </Card>
+      {(campaignId ||
+        pdvId ||
+        statusId ||
+        assignedMembershipId ||
+        assignment ||
+        firstContact) && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-2 p-3 text-sm">
+            <span className="text-muted-foreground">Contexto aplicado:</span>
+            {campaignId && (
+              <Badge variant="outline">Campanha selecionada</Badge>
+            )}
+            {pdvId && <Badge variant="outline">PDV selecionado</Badge>}
+            {statusId && <Badge variant="outline">Status selecionado</Badge>}
+            {assignedMembershipId && (
+              <Badge variant="outline">Vendedor selecionado</Badge>
+            )}
+            {assignment === "assigned" && (
+              <Badge variant="outline">Com responsável</Badge>
+            )}
+            {assignment === "unassigned" && (
+              <Badge variant="outline">Sem responsável</Badge>
+            )}
+            {firstContact === "missing" && (
+              <Badge variant="outline">Sem primeiro contato</Badge>
+            )}
+            {firstContact === "recorded" && (
+              <Badge variant="outline">Com primeiro contato</Badge>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                updateListState({
+                  campaignId: undefined,
+                  pdvId: undefined,
+                  statusId: undefined,
+                  assignedMembershipId: undefined,
+                  assignment: undefined,
+                  firstContact: undefined,
+                  page: 1,
+                })
+              }
+            >
+              Limpar contexto
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>
@@ -169,13 +329,22 @@ export default function V2Leads() {
           {list.isLoading ? (
             <V2LoadingState label="Carregando leads" />
           ) : list.isError ? (
-            <V2ErrorState message="Não foi possível carregar os leads." onRetry={() => list.refetch()} />
+            <V2ErrorState
+              message="Não foi possível carregar os leads."
+              onRetry={() => list.refetch()}
+            />
           ) : list.data?.items.length ? (
             list.data.items.map(lead => (
               <button
                 key={lead.id}
                 className="flex w-full flex-col justify-between gap-2 rounded-lg border p-4 text-left hover:bg-muted/40 sm:flex-row sm:items-center"
-                onClick={() => navigate(`/v2/leads/${lead.id}`)}
+                onClick={() =>
+                  navigate(
+                    buildV2Path(`/v2/leads/${lead.id}`, {
+                      from: currentV2Path(),
+                    })
+                  )
+                }
               >
                 <div>
                   <p className="font-medium">{lead.name || "Lead sem nome"}</p>
@@ -196,7 +365,9 @@ export default function V2Leads() {
             ))
           ) : (
             <p className="p-8 text-center text-sm text-muted-foreground">
-              Nenhum lead encontrado.
+              {view === "available"
+                ? "Nenhum lead disponível neste contexto."
+                : "Nenhum lead encontrado neste contexto."}
             </p>
           )}
           <div className="flex items-center justify-between pt-3 text-sm text-muted-foreground">
@@ -206,7 +377,7 @@ export default function V2Leads() {
                 size="sm"
                 variant="outline"
                 disabled={page <= 1}
-                onClick={() => setPage(page - 1)}
+                onClick={() => updateListState({ page: page - 1 })}
               >
                 Anterior
               </Button>
@@ -216,7 +387,7 @@ export default function V2Leads() {
                 disabled={
                   !list.data || page * list.data.pageSize >= list.data.total
                 }
-                onClick={() => setPage(page + 1)}
+                onClick={() => updateListState({ page: page + 1 })}
               >
                 Próxima
               </Button>
@@ -231,6 +402,12 @@ export default function V2Leads() {
 export function V2LeadDetail() {
   const [, params] = useRoute("/v2/leads/:id");
   const id = Number(params?.id);
+  const returnTo = safeV2ReturnPath(
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("from"),
+    "/v2/leads"
+  );
   const detail = v2trpc.leads.get.useQuery(
     { id },
     { enabled: Number.isInteger(id) && id > 0 }
@@ -248,6 +425,7 @@ export function V2LeadDetail() {
     followUpNote: "",
   });
   const [followUp, setFollowUp] = useState({ dueAt: "", note: "" });
+  const [followUpToCancel, setFollowUpToCancel] = useState<number | null>(null);
   const refresh = () => {
     utils.leads.get.invalidate({ id });
     utils.leads.list.invalidate();
@@ -255,13 +433,17 @@ export function V2LeadDetail() {
     utils.followUps.list.invalidate();
   };
   const assume = v2trpc.leads.assume.useMutation({
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      toast.success("Lead assumido. Você já pode registrar a tratativa.");
+    },
     onError: error => toast.error(error.message),
   });
   const addNote = v2trpc.leads.note.useMutation({
     onSuccess: () => {
       setNote("");
       refresh();
+      toast.success("Nota adicionada à timeline.");
     },
     onError: error => toast.error(error.message),
   });
@@ -280,27 +462,40 @@ export function V2LeadDetail() {
         toast.warning(
           "Tratativa registrada como pendente: anexe a evidência solicitada na timeline."
         );
+      } else {
+        toast.success("Tratativa registrada.");
       }
     },
     onError: error => toast.error(error.message),
   });
   const changeStatus = v2trpc.leads.changeStatus.useMutation({
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      toast.success("Status do lead atualizado.");
+    },
     onError: error => toast.error(error.message),
   });
   const createFollowUp = v2trpc.followUps.create.useMutation({
     onSuccess: () => {
       setFollowUp({ dueAt: "", note: "" });
       refresh();
+      toast.success("Follow-up agendado.");
     },
     onError: error => toast.error(error.message),
   });
   const completeFollowUp = v2trpc.followUps.complete.useMutation({
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      toast.success("Follow-up concluído.");
+    },
     onError: error => toast.error(error.message),
   });
   const cancelFollowUp = v2trpc.followUps.cancel.useMutation({
-    onSuccess: refresh,
+    onSuccess: () => {
+      setFollowUpToCancel(null);
+      refresh();
+      toast.success("Follow-up cancelado.");
+    },
     onError: error => toast.error(error.message),
   });
   const downloadEvidence = v2trpc.evidences.download.useMutation({
@@ -308,13 +503,25 @@ export function V2LeadDetail() {
     onError: error => toast.error(error.message),
   });
   const removeEvidence = v2trpc.evidences.remove.useMutation({
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      toast.success("Evidência removida.");
+    },
     onError: error => toast.error(error.message),
   });
   const lead = detail.data?.lead;
-  if (detail.isLoading) return <main className="v2-page"><V2LoadingState label="Carregando lead" /></main>;
+  if (detail.isLoading)
+    return (
+      <main className="v2-page">
+        <V2LoadingState label="Carregando lead" />
+      </main>
+    );
   if (!lead)
-    return <main className="v2-page"><V2ErrorState message="Lead não encontrado ou sem acesso." /></main>;
+    return (
+      <main className="v2-page">
+        <V2ErrorState message="Lead não encontrado ou sem acesso." />
+      </main>
+    );
   const isSeller = access.data?.role === "seller";
   const isOwner = lead.assignedMembershipId === access.data?.membershipId;
   // A system Super Admin can supervise every tenant, but is not itself an
@@ -333,13 +540,30 @@ export function V2LeadDetail() {
   );
   return (
     <main className="v2-page space-y-6">
-      <V2PageHeader eyebrow="V2 / Lead" title={lead.name || "Lead sem nome"} description={`${lead.phone || "Sem telefone"} · ${detail.data?.campaign?.name} · ${detail.data?.pdv?.name} · Responsável: ${detail.data?.assignee?.name || "Não atribuído"}`} actions={<><Badge>{detail.data?.status?.label}</Badge>{canWork && <Button asChild><a href="#register-treatment">Registrar tratativa</a></Button>}<Link href="/v2/leads"><Button variant="outline">← Leads</Button></Link></>} />
+      <V2PageHeader
+        eyebrow="V2 / Lead"
+        title={lead.name || "Lead sem nome"}
+        description={`${lead.phone || "Sem telefone"} · ${detail.data?.campaign?.name} · ${detail.data?.pdv?.name} · Responsável: ${detail.data?.assignee?.name || "Não atribuído"}`}
+        actions={
+          <>
+            <Badge>{detail.data?.status?.label}</Badge>
+            {canWork && (
+              <Button asChild>
+                <a href="#register-treatment">Registrar tratativa</a>
+              </Button>
+            )}
+            <Link href={returnTo}>
+              <Button variant="outline">← Leads</Button>
+            </Link>
+          </>
+        }
+      />
       {!lead.assignedMembershipId && isSeller && (
         <Button
           onClick={() => assume.mutate({ id })}
           disabled={assume.isPending}
         >
-          Assumir lead
+          {assume.isPending ? "Assumindo…" : "Assumir lead"}
         </Button>
       )}
       <div className="grid gap-6 lg:grid-cols-[.9fr_1.1fr]">
@@ -383,7 +607,7 @@ export function V2LeadDetail() {
                       changeStatus.mutate({ id, statusId: Number(value) })
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger disabled={changeStatus.isPending}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -417,80 +641,111 @@ export function V2LeadDetail() {
                 >
                   <p className="text-sm font-medium">Registrar contato</p>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <div className="space-y-1.5"><Label htmlFor="contact-channel">Canal</Label><Input
-                      id="contact-channel"
-                      value={contact.channel}
-                      onChange={event =>
-                        setContact({ ...contact, channel: event.target.value })
-                      }
-                    /></div>
-                    <div className="space-y-1.5"><Label htmlFor="contact-outcome">Resultado</Label><Input
-                      id="contact-outcome"
-                      value={contact.outcome}
-                      onChange={event =>
-                        setContact({ ...contact, outcome: event.target.value })
-                      }
-                    /></div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="contact-channel">Canal</Label>
+                      <Input
+                        id="contact-channel"
+                        value={contact.channel}
+                        onChange={event =>
+                          setContact({
+                            ...contact,
+                            channel: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="contact-outcome">Resultado</Label>
+                      <Input
+                        id="contact-outcome"
+                        value={contact.outcome}
+                        onChange={event =>
+                          setContact({
+                            ...contact,
+                            outcome: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5"><Label htmlFor="contact-summary">Resumo {governance?.noteRequired && "(obrigatório)"}</Label><Textarea
-                    id="contact-summary"
-                    value={contact.summary}
-                    onChange={event =>
-                      setContact({ ...contact, summary: event.target.value })
-                    }
-                    placeholder={
-                      governance?.noteRequired
-                        ? "Resumo do contato (obrigatório)"
-                        : "Resumo do contato"
-                    }
-                    required={governance?.noteRequired}
-                  /></div>
-                  <div className="space-y-1.5"><Label htmlFor="contact-status">Status após contato</Label><Select
-                    value={contact.statusId || "unchanged"}
-                    onValueChange={value =>
-                      setContact({
-                        ...contact,
-                        statusId: value === "unchanged" ? "" : value,
-                      })
-                    }
-                  >
-                    <SelectTrigger id="contact-status">
-                      <SelectValue placeholder="Manter status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unchanged">Manter status</SelectItem>
-                      {configuration.data?.statuses.map(status => (
-                        <SelectItem key={status.id} value={String(status.id)}>
-                          {status.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select></div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="contact-summary">
+                      Resumo {governance?.noteRequired && "(obrigatório)"}
+                    </Label>
+                    <Textarea
+                      id="contact-summary"
+                      value={contact.summary}
+                      onChange={event =>
+                        setContact({ ...contact, summary: event.target.value })
+                      }
+                      placeholder={
+                        governance?.noteRequired
+                          ? "Resumo do contato (obrigatório)"
+                          : "Resumo do contato"
+                      }
+                      required={governance?.noteRequired}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="contact-status">Status após contato</Label>
+                    <Select
+                      value={contact.statusId || "unchanged"}
+                      onValueChange={value =>
+                        setContact({
+                          ...contact,
+                          statusId: value === "unchanged" ? "" : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger id="contact-status">
+                        <SelectValue placeholder="Manter status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unchanged">Manter status</SelectItem>
+                        {configuration.data?.statuses.map(status => (
+                          <SelectItem key={status.id} value={String(status.id)}>
+                            {status.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <div className="space-y-1.5"><Label htmlFor="contact-follow-up">Próximo follow-up {governance?.followUpRequired && "(obrigatório)"}</Label><Input
-                      id="contact-follow-up"
-                      type="datetime-local"
-                      value={contact.followUpDueAt}
-                      onChange={event =>
-                        setContact({
-                          ...contact,
-                          followUpDueAt: event.target.value,
-                        })
-                      }
-                      required={governance?.followUpRequired}
-                      aria-label="Próximo follow-up"
-                    /></div>
-                    <div className="space-y-1.5"><Label htmlFor="contact-follow-up-note">Motivo do follow-up</Label><Input
-                      id="contact-follow-up-note"
-                      value={contact.followUpNote}
-                      onChange={event =>
-                        setContact({
-                          ...contact,
-                          followUpNote: event.target.value,
-                        })
-                      }
-                      placeholder="Motivo do follow-up"
-                    /></div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="contact-follow-up">
+                        Próximo follow-up{" "}
+                        {governance?.followUpRequired && "(obrigatório)"}
+                      </Label>
+                      <Input
+                        id="contact-follow-up"
+                        type="datetime-local"
+                        value={contact.followUpDueAt}
+                        onChange={event =>
+                          setContact({
+                            ...contact,
+                            followUpDueAt: event.target.value,
+                          })
+                        }
+                        required={governance?.followUpRequired}
+                        aria-label="Próximo follow-up"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="contact-follow-up-note">
+                        Motivo do follow-up
+                      </Label>
+                      <Input
+                        id="contact-follow-up-note"
+                        value={contact.followUpNote}
+                        onChange={event =>
+                          setContact({
+                            ...contact,
+                            followUpNote: event.target.value,
+                          })
+                        }
+                        placeholder="Motivo do follow-up"
+                      />
+                    </div>
                   </div>
                   {governance?.followUpRequired && (
                     <p className="text-xs text-muted-foreground">
@@ -498,7 +753,7 @@ export function V2LeadDetail() {
                     </p>
                   )}
                   <Button disabled={addContact.isPending}>
-                    Salvar contato
+                    {addContact.isPending ? "Registrando…" : "Salvar contato"}
                   </Button>
                 </form>
                 <form
@@ -518,7 +773,7 @@ export function V2LeadDetail() {
                     variant="outline"
                     disabled={!note.trim() || addNote.isPending}
                   >
-                    Salvar nota
+                    {addNote.isPending ? "Salvando…" : "Salvar nota"}
                   </Button>
                 </form>
                 <form
@@ -534,7 +789,9 @@ export function V2LeadDetail() {
                   }}
                 >
                   <p className="text-sm font-medium">Agendar follow-up</p>
+                  <Label htmlFor="follow-up-due-at">Data e hora</Label>
                   <Input
+                    id="follow-up-due-at"
                     type="datetime-local"
                     value={followUp.dueAt}
                     onChange={event =>
@@ -542,7 +799,9 @@ export function V2LeadDetail() {
                     }
                     required
                   />
+                  <Label htmlFor="follow-up-note">Motivo ou observação</Label>
                   <Textarea
+                    id="follow-up-note"
                     value={followUp.note}
                     onChange={event =>
                       setFollowUp({ ...followUp, note: event.target.value })
@@ -552,7 +811,9 @@ export function V2LeadDetail() {
                   <Button
                     disabled={createFollowUp.isPending || !followUp.dueAt}
                   >
-                    Criar follow-up
+                    {createFollowUp.isPending
+                      ? "Agendando…"
+                      : "Criar follow-up"}
                   </Button>
                 </form>
               </>
@@ -649,6 +910,7 @@ export function V2LeadDetail() {
                         <Button
                           size="sm"
                           variant="ghost"
+                          disabled={removeEvidence.isPending}
                           onClick={() =>
                             removeEvidence.mutate({ id: evidence.id })
                           }
@@ -709,14 +971,16 @@ export function V2LeadDetail() {
                 <div className="flex gap-2">
                   <Button
                     size="sm"
+                    disabled={completeFollowUp.isPending}
                     onClick={() => completeFollowUp.mutate({ id: item.id })}
                   >
-                    Concluir
+                    {completeFollowUp.isPending ? "Concluindo…" : "Concluir"}
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => cancelFollowUp.mutate({ id: item.id })}
+                    disabled={cancelFollowUp.isPending}
+                    onClick={() => setFollowUpToCancel(item.id)}
                   >
                     Cancelar
                   </Button>
@@ -736,6 +1000,17 @@ export function V2LeadDetail() {
           </Link>
         </CardContent>
       </Card>
+      <FollowUpCancellationDialog
+        open={followUpToCancel !== null}
+        onOpenChange={open => !open && setFollowUpToCancel(null)}
+        leadName={lead.name || "este Lead"}
+        pending={cancelFollowUp.isPending}
+        onConfirm={() => {
+          if (followUpToCancel !== null) {
+            cancelFollowUp.mutate({ id: followUpToCancel });
+          }
+        }}
+      />
     </main>
   );
 }

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -25,7 +26,11 @@ const roleLabel: Record<Role, string> = {
 
 export default function V2Administration() {
   const session = useV2Session();
-  return <V2AdministrationContent isSuperAdmin={session.systemRole === "super_admin"} />;
+  return (
+    <V2AdministrationContent
+      isSuperAdmin={session.systemRole === "super_admin"}
+    />
+  );
 }
 
 function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
@@ -74,6 +79,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     utils.users.list.invalidate();
   };
   const selectPartner = (value: string) => {
+    if (value === partnerId) return;
     try {
       if (value) localStorage.setItem("v2-active-partner", value);
       else localStorage.removeItem("v2-active-partner");
@@ -81,7 +87,10 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       /* browser storage is optional */
     }
     setPartnerId(value);
-    refresh();
+    // The shell and tRPC cache both derive their tenant context from this
+    // value. Reloading makes the visible partner and every query switch as one
+    // operation, rather than leaving Administration in a different context.
+    if (typeof window !== "undefined") window.location.reload();
   };
   useEffect(() => {
     if (!selectablePartners.data) return;
@@ -103,8 +112,8 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     onSuccess: id => {
       setPartnerForm({ code: "", name: "" });
       utils.partners.available.invalidate();
+      toast.success("Parceiro criado. Abrindo o novo contexto.");
       selectPartner(String(id));
-      toast.success("Parceiro criado");
     },
     onError: error => toast.error(error.message),
   });
@@ -353,50 +362,65 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     createUser.mutate(userForm);
                   }}
                 >
-                  <Input
-                    required
-                    placeholder="Nome"
-                    value={userForm.name}
-                    onChange={event =>
-                      setUserForm({ ...userForm, name: event.target.value })
-                    }
-                  />
-                  <Input
-                    required
-                    type="email"
-                    placeholder="E-mail"
-                    value={userForm.email}
-                    onChange={event =>
-                      setUserForm({ ...userForm, email: event.target.value })
-                    }
-                  />
-                  <Input
-                    required
-                    type="password"
-                    minLength={8}
-                    placeholder="Senha inicial"
-                    value={userForm.password}
-                    onChange={event =>
-                      setUserForm({ ...userForm, password: event.target.value })
-                    }
-                  />
-                  <Select
-                    value={userForm.role}
-                    onValueChange={value =>
-                      setUserForm({ ...userForm, role: value as Role })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(roleLabel).map(([role, label]) => (
-                        <SelectItem key={role} value={role}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-user-name">Nome</Label>
+                    <Input
+                      id="new-user-name"
+                      required
+                      value={userForm.name}
+                      onChange={event =>
+                        setUserForm({ ...userForm, name: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-user-email">E-mail</Label>
+                    <Input
+                      id="new-user-email"
+                      required
+                      type="email"
+                      value={userForm.email}
+                      onChange={event =>
+                        setUserForm({ ...userForm, email: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-user-password">Senha inicial</Label>
+                    <Input
+                      id="new-user-password"
+                      required
+                      type="password"
+                      minLength={8}
+                      value={userForm.password}
+                      onChange={event =>
+                        setUserForm({
+                          ...userForm,
+                          password: event.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-user-role">Perfil de acesso</Label>
+                    <Select
+                      value={userForm.role}
+                      onValueChange={value =>
+                        setUserForm({ ...userForm, role: value as Role })
+                      }
+                    >
+                      <SelectTrigger id="new-user-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(roleLabel).map(([role, label]) => (
+                          <SelectItem key={role} value={role}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <PdvChecklist
                     pdvs={activePdvs}
                     selected={userForm.pdvIds}
@@ -409,7 +433,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Editar escopo da membership</CardTitle>
+                <CardTitle>Editar acesso do usuário</CardTitle>
               </CardHeader>
               <CardContent>
                 {editing ? (
@@ -420,6 +444,10 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                       updateMembership.mutate(editing);
                     }}
                   >
+                    <p className="text-sm text-muted-foreground">
+                      A alteração vale para os próximos acessos e não modifica o
+                      histórico comercial já registrado.
+                    </p>
                     <Select
                       value={editing.role}
                       onValueChange={value =>
@@ -580,6 +608,10 @@ function PdvChecklist({
   return (
     <div className="rounded-lg border p-3">
       <p className="mb-2 text-sm font-medium">PDVs atribuídos</p>
+      <p className="mb-3 text-xs text-muted-foreground">
+        O usuário verá e poderá trabalhar apenas os Leads destes PDVs, conforme
+        o perfil selecionado.
+      </p>
       <div className="grid gap-2 sm:grid-cols-2">
         {pdvs.map(pdv => (
           <label key={pdv.id} className="flex items-center gap-2 text-sm">

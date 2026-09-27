@@ -69,8 +69,7 @@ export async function listFollowUpFilters(context: PartnerContext) {
     .where(and(...pdvConditions))
     .orderBy(asc(pdvs.name));
   const accessiblePdvIds = accessiblePdvs.map(pdv => pdv.id);
-  if (!accessiblePdvIds.length)
-    return { pdvs: accessiblePdvs, owners: [] };
+  if (!accessiblePdvIds.length) return { pdvs: accessiblePdvs, owners: [] };
 
   const ownerRows = await db
     .select({
@@ -516,6 +515,7 @@ export async function listFollowUps(
     pageSize: number;
     ownerMembershipId?: number;
     pdvId?: number;
+    campaignId?: number;
   }
 ) {
   const db = await getV2Db();
@@ -541,6 +541,7 @@ export async function listFollowUps(
   if (input.ownerMembershipId && context.role !== "seller")
     conditions.push(eq(followUps.ownerMembershipId, input.ownerMembershipId));
   if (input.pdvId) conditions.push(eq(leads.pdvId, input.pdvId));
+  if (input.campaignId) conditions.push(eq(leads.campaignId, input.campaignId));
   if (input.view === "overdue")
     conditions.push(eq(followUps.status, "pending"), lt(followUps.dueAt, now));
   if (input.view === "today")
