@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -19,6 +19,28 @@ describe("FLUXO visual identity contracts", () => {
     expect(manifest.theme_color).toBe("#0F4C5C");
     expect(manifest.background_color).toBe("#F4F6F8");
     expect(manifest.display).toBe("standalone");
+    expect(manifest.icons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          src: "/icons/fluxo-symbol-192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any",
+        }),
+        expect.objectContaining({
+          src: "/icons/fluxo-symbol-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any",
+        }),
+        expect.objectContaining({
+          src: "/icons/fluxo-symbol-maskable-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "maskable",
+        }),
+      ])
+    );
   });
 
   it("centralizes the approved palette and typography in visual tokens", () => {
@@ -39,13 +61,34 @@ describe("FLUXO visual identity contracts", () => {
     }
   });
 
-  it("renders the V2 shell with the new textual brand without fabricating a symbol", () => {
+  it("uses only derivations of the official FLUXO asset for visible marks and PWA icons", () => {
     const shell = readProjectFile("client/src/components/v2/V2AppShell.tsx");
     const brand = readProjectFile("client/src/components/v2/FluxoBrand.tsx");
+    const index = readProjectFile("client/index.html");
+    const serviceWorker = readProjectFile("client/public/sw.js");
 
     expect(shell).toContain("<FluxoBrand");
     expect(shell).not.toContain("Playcell Leads");
-    expect(brand).toContain("FLUXO");
-    expect(brand).toContain("avoids fabricating");
+    expect(brand).toContain('"/brand/fluxo-logo.png"');
+    expect(brand).toContain('"/brand/fluxo-symbol.png"');
+    expect(index).toContain('/icons/apple-touch-icon.png');
+    expect(index).toContain('/icons/favicon-32.png');
+    expect(serviceWorker).toContain('const CACHE = "fluxo-app-v2"');
+    expect(serviceWorker).not.toContain("icon-192.svg");
+    expect(serviceWorker).not.toContain("icon-512.svg");
+
+    for (const asset of [
+      "client/public/brand/fluxo-logo-oficial.jpg",
+      "client/public/brand/fluxo-logo.png",
+      "client/public/brand/fluxo-symbol.png",
+      "client/public/icons/favicon-16.png",
+      "client/public/icons/favicon-32.png",
+      "client/public/icons/apple-touch-icon.png",
+      "client/public/icons/fluxo-symbol-192.png",
+      "client/public/icons/fluxo-symbol-512.png",
+      "client/public/icons/fluxo-symbol-maskable-512.png",
+    ]) {
+      expect(existsSync(resolve(process.cwd(), asset))).toBe(true);
+    }
   });
 });

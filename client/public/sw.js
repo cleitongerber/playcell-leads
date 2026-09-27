@@ -1,5 +1,5 @@
-const CACHE = "fluxo-app-v1";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.svg", "/icons/icon-512.svg"];
+const CACHE = "fluxo-app-v2";
+const APP_SHELL = ["/", "/manifest.webmanifest", "/brand/fluxo-logo.png", "/brand/fluxo-symbol.png", "/icons/favicon-16.png", "/icons/favicon-32.png", "/icons/apple-touch-icon.png", "/icons/fluxo-symbol-192.png", "/icons/fluxo-symbol-512.png", "/icons/fluxo-symbol-maskable-512.png"];
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL))));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener("message", (event) => {

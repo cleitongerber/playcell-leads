@@ -176,6 +176,12 @@
     gap: 0.125rem;
     color: var(--brand-primary);
   }
+  .fluxo-brand-logo {
+    display: block;
+    width: 12.25rem;
+    max-width: 100%;
+    height: auto;
+  }
   .fluxo-wordmark {
     display: block;
     font-family: var(--font-manrope);
@@ -192,7 +198,8 @@
     font-weight: 500;
     line-height: 1.3;
   }
-  .fluxo-brand-compact { display: inline-grid; }
+  .fluxo-brand-compact { display: inline-grid; align-items: center; }
+  .fluxo-brand-symbol { width: 1.875rem; max-width: none; }
   .fluxo-brand-compact .fluxo-wordmark { font-size: 0.8125rem; letter-spacing: 0.1em; }
   .fluxo-brand-inverse { color: #ffffff; }
   .fluxo-brand-inverse .fluxo-brand-descriptor { color: color-mix(in srgb, #ffffff 70%, transparent); }
