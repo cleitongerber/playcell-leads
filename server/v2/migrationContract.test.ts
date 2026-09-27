@@ -124,4 +124,14 @@ describe("V2 migration tenant-key contract", () => {
       )
     ).toBe(true);
   });
+
+  it("uses the official V2 migrator as the Render Free build gate", () => {
+    const renderBlueprint = readFileSync(
+      resolve(process.cwd(), "render.yaml"),
+      "utf8"
+    );
+
+    expect(renderBlueprint).toContain("pnpm db:migrate");
+    expect(renderBlueprint).not.toContain("db:push");
+  });
 });

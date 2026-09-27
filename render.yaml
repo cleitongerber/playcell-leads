@@ -5,7 +5,10 @@ services:
     # Start on Render's free instance; upgrade after validating production traffic.
     plan: free
     # Render's pnpm version may normalize overrides differently from the lockfile.
-    buildCommand: pnpm install --no-frozen-lockfile && pnpm build
+    # Free services do not support Render pre-deploy commands. Running the
+    # official Drizzle migrator in the existing build gate applies only ledger
+    # migrations and keeps the currently live release in place on failure.
+    buildCommand: pnpm install --no-frozen-lockfile && pnpm db:migrate && pnpm build
     startCommand: pnpm start
     healthCheckPath: /
     autoDeployTrigger: commit
