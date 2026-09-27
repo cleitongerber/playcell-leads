@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
+import { DEFAULT_WHATSAPP_INITIAL_MESSAGE_TEMPLATE } from "../shared/whatsappContact";
 
 export const systemRole = ["none", "super_admin"] as const;
 export const membershipRole = ["partner_admin", "manager", "seller"] as const;
@@ -154,6 +155,11 @@ export const partnerSettings = mysqlTable(
     claimSlaMinutes: int("claimSlaMinutes").notNull().default(5),
     firstContactSlaMinutes: int("firstContactSlaMinutes").notNull().default(15),
     staleLeadMinutes: int("staleLeadMinutes").notNull().default(1440),
+    whatsappInitialMessageTemplate: varchar("whatsappInitialMessageTemplate", {
+      length: 4000,
+    })
+      .notNull()
+      .default(DEFAULT_WHATSAPP_INITIAL_MESSAGE_TEMPLATE),
     notificationSettings: json("notificationSettings"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
@@ -763,6 +769,8 @@ export const partnerGovernanceRules = mysqlTable(
     evidenceRequired: boolean("evidenceRequired").notNull().default(false),
     noteRequired: boolean("noteRequired").notNull().default(false),
     followUpRequired: boolean("followUpRequired").notNull().default(false),
+    /** Optional channel-specific evidence requirement; global remains the default. */
+    evidenceRequiredChannels: json("evidenceRequiredChannels"),
     allowedChannels: json("allowedChannels"),
     allowedOutcomes: json("allowedOutcomes"),
     allowedEvidenceMimeTypes: json("allowedEvidenceMimeTypes"),
@@ -796,6 +804,7 @@ export const campaignGovernanceOverrides = mysqlTable(
     evidenceRequired: boolean("evidenceRequired").notNull().default(false),
     noteRequired: boolean("noteRequired").notNull().default(false),
     followUpRequired: boolean("followUpRequired").notNull().default(false),
+    evidenceRequiredChannels: json("evidenceRequiredChannels"),
     allowedChannels: json("allowedChannels"),
     allowedOutcomes: json("allowedOutcomes"),
     allowedEvidenceMimeTypes: json("allowedEvidenceMimeTypes"),

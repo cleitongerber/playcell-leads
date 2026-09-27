@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 export type GovernanceRuleFormValue = {
   evidenceRequired: boolean;
+  evidenceRequiredChannels: string;
   noteRequired: boolean;
   followUpRequired: boolean;
   allowedChannels: string;
@@ -22,6 +23,7 @@ export const supportedEvidenceTypes = [
 
 export const blankGovernanceRule: GovernanceRuleFormValue = {
   evidenceRequired: false,
+  evidenceRequiredChannels: "",
   noteRequired: false,
   followUpRequired: false,
   allowedChannels: "",
@@ -33,6 +35,7 @@ export const blankGovernanceRule: GovernanceRuleFormValue = {
 
 type ApiRule = {
   evidenceRequired: boolean;
+  evidenceRequiredChannels: string[] | null;
   noteRequired: boolean;
   followUpRequired: boolean;
   allowedChannels: string[] | null;
@@ -45,6 +48,7 @@ type ApiRule = {
 export function governanceRuleToForm(rule: ApiRule): GovernanceRuleFormValue {
   return {
     evidenceRequired: rule.evidenceRequired,
+    evidenceRequiredChannels: rule.evidenceRequiredChannels?.join(", ") ?? "",
     noteRequired: rule.noteRequired,
     followUpRequired: rule.followUpRequired,
     allowedChannels: rule.allowedChannels?.join(", ") ?? "",
@@ -69,6 +73,7 @@ export function governanceFormToInput(value: GovernanceRuleFormValue) {
   );
   return {
     evidenceRequired: value.evidenceRequired,
+    evidenceRequiredChannels: commaList(value.evidenceRequiredChannels),
     noteRequired: value.noteRequired,
     followUpRequired: value.followUpRequired,
     allowedChannels: commaList(value.allowedChannels),
@@ -132,6 +137,18 @@ export function GovernanceRuleEditor({
         </label>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
+        <Textarea
+          disabled={disabled}
+          value={value.evidenceRequiredChannels}
+          onChange={event =>
+            onChange({
+              ...value,
+              evidenceRequiredChannels: event.target.value,
+            })
+          }
+          placeholder="Canais que exigem evidência, separados por vírgula. Vazio = somente a regra global."
+          aria-label="Canais que exigem evidência"
+        />
         <Textarea
           disabled={disabled}
           value={value.allowedChannels}

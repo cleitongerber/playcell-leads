@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -14,7 +15,12 @@ import {
 import { v2trpc } from "@/lib/v2trpc";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { useV2Session } from "@/components/v2/V2AppShell";
-import { useEffect, useMemo, useState } from "react";
+import {
+  DEFAULT_WHATSAPP_INITIAL_MESSAGE_TEMPLATE,
+  WHATSAPP_TEMPLATE_VARIABLES,
+  renderWhatsAppInitialMessage,
+} from "@shared/whatsappContact";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type Role = "partner_admin" | "manager" | "seller";
@@ -62,6 +68,8 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     isActive: boolean;
     pdvIds: number[];
   } | null>(null);
+  const [whatsappTemplate, setWhatsappTemplate] = useState("");
+  const whatsappTemplateInputRef = useRef<HTMLTextAreaElement>(null);
   const enabled = Boolean(partnerId);
   const selectablePartners = v2trpc.partners.available.useQuery();
   const partnerAccess = v2trpc.access.context.useQuery(undefined, { enabled });
@@ -74,10 +82,19 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const users = v2trpc.users.list.useQuery(undefined, {
     enabled: enabled && canAdminister,
   });
+  const whatsappTemplateQuery =
+    v2trpc.partnerSettings.whatsappTemplate.useQuery(undefined, {
+      enabled: enabled && canAdminister,
+    });
   const refresh = () => {
     utils.pdvs.list.invalidate();
     utils.users.list.invalidate();
   };
+  useEffect(() => {
+    if (whatsappTemplateQuery.data?.template) {
+      setWhatsappTemplate(whatsappTemplateQuery.data.template);
+    }
+  }, [whatsappTemplateQuery.data?.template]);
   const selectPartner = (value: string) => {
     if (value === partnerId) return;
     try {
@@ -155,6 +172,15 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     onSuccess: refresh,
     onError: error => toast.error(error.message),
   });
+  const saveWhatsappTemplate =
+    v2trpc.partnerSettings.updateWhatsappTemplate.useMutation({
+      onSuccess: data => {
+        setWhatsappTemplate(data.template);
+        utils.partnerSettings.whatsappTemplate.setData(undefined, data);
+        toast.success("Mensagem inicial do WhatsApp atualizada");
+      },
+      onError: error => toast.error(error.message),
+    });
   const activePdvs = useMemo(
     () => (pdvs.data ?? []).filter(pdv => pdv.isActive),
     [pdvs.data]
@@ -169,6 +195,27 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         ? selected.filter(item => item !== id)
         : [...selected, id]
     );
+  const insertWhatsappVariable = (placeholder: string) => {
+    const input = whatsappTemplateInputRef.current;
+    const start = input?.selectionStart ?? whatsappTemplate.length;
+    const end = input?.selectionEnd ?? whatsappTemplate.length;
+    const next = `${whatsappTemplate.slice(0, start)}${placeholder}${whatsappTemplate.slice(end)}`;
+    setWhatsappTemplate(next);
+    requestAnimationFrame(() => {
+      input?.focus();
+      const cursor = start + placeholder.length;
+      input?.setSelectionRange(cursor, cursor);
+    });
+  };
+  const whatsappPreview = renderWhatsAppInitialMessage(
+    whatsappTemplate || DEFAULT_WHATSAPP_INITIAL_MESSAGE_TEMPLATE,
+    {
+      nome: "Maria da Silva",
+      vendedor: "João",
+      pdv: "Loja Centro",
+      campanha: "Campanha Setembro",
+    }
+  );
   return (
     <main className="v2-page">
       <V2PageHeader
@@ -349,6 +396,83 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
               </CardContent>
             </Card>
           </section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Mensagem inicial do WhatsApp</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Esta mensagem é preparada no atalho do Lead. O vendedor sempre
+                revisa e envia a mensagem dentro do WhatsApp.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="whatsapp-initial-template">
+                  Mensagem do parceiro
+                </Label>
+                <Textarea
+                  ref={whatsappTemplateInputRef}
+                  id="whatsapp-initial-template"
+                  value={whatsappTemplate}
+                  disabled={whatsappTemplateQuery.isLoading}
+                  maxLength={4000}
+                  rows={5}
+                  onChange={event => setWhatsappTemplate(event.target.value)}
+                  aria-describedby="whatsapp-template-help"
+                />
+                <p
+                  id="whatsapp-template-help"
+                  className="text-xs text-muted-foreground"
+                >
+                  Use somente as variáveis disponíveis. Campos personalizados
+                  ainda não participam desta mensagem.
+                </p>
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium">Inserir variável</p>
+                <div className="flex flex-wrap gap-2">
+                  {WHATSAPP_TEMPLATE_VARIABLES.map(variable => (
+                    <Button
+                      key={variable.key}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={whatsappTemplateQuery.isLoading}
+                      onClick={() =>
+                        insertWhatsappVariable(variable.placeholder)
+                      }
+                    >
+                      {variable.placeholder} · {variable.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-md border bg-muted/30 p-3">
+                <p className="text-sm font-medium">Pré-visualização</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                  {whatsappPreview ||
+                    "A mensagem ficará vazia com este modelo."}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Exemplo seguro: Maria, João, Loja Centro e Campanha Setembro.
+                </p>
+              </div>
+              <Button
+                type="button"
+                disabled={
+                  whatsappTemplateQuery.isLoading ||
+                  saveWhatsappTemplate.isPending ||
+                  !whatsappTemplate.trim()
+                }
+                onClick={() =>
+                  saveWhatsappTemplate.mutate({ template: whatsappTemplate })
+                }
+              >
+                {saveWhatsappTemplate.isPending
+                  ? "Salvando…"
+                  : "Salvar mensagem inicial"}
+              </Button>
+            </CardContent>
+          </Card>
           <section className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>

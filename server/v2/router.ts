@@ -78,6 +78,10 @@ import {
   setPartnerActive,
 } from "./partnerService";
 import {
+  getWhatsAppInitialMessageTemplate,
+  updateWhatsAppInitialMessageTemplate,
+} from "./whatsappTemplateService";
+import {
   createPdv,
   listAccessiblePdvs,
   setPdvActive,
@@ -109,6 +113,10 @@ import {
 
 const governanceRuleInput = z.object({
   evidenceRequired: z.boolean(),
+  evidenceRequiredChannels: z
+    .array(z.string().min(1).max(48))
+    .max(50)
+    .nullable(),
   noteRequired: z.boolean(),
   followUpRequired: z.boolean(),
   allowedChannels: z.array(z.string().min(1).max(48)).max(50).nullable(),
@@ -294,6 +302,16 @@ export const v2FoundationRouter = v2Router({
           input.partnerId,
           input.isActive
         )
+      ),
+  }),
+  partnerSettings: v2Router({
+    whatsappTemplate: v2PartnerProcedure.query(({ ctx }) =>
+      getWhatsAppInitialMessageTemplate(ctx.partner)
+    ),
+    updateWhatsappTemplate: v2PartnerAdminProcedure
+      .input(z.object({ template: z.string().min(1).max(4000) }))
+      .mutation(({ ctx, input }) =>
+        updateWhatsAppInitialMessageTemplate(ctx.partner, input.template)
       ),
   }),
   pdvs: v2Router({

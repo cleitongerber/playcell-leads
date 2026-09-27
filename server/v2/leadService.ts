@@ -33,6 +33,7 @@ import { transferLeadResponsibility } from "./distributionService";
 import {
   assertContactGovernance,
   evaluateTreatmentGovernance,
+  resolveGovernanceForContact,
 } from "./governancePolicy";
 import { resolveEffectiveGovernance } from "./governanceService";
 import {
@@ -771,7 +772,14 @@ export async function recordLeadContact(
       context.partnerId,
       lead.campaignId
     );
-    assertContactGovernance(effectiveGovernance.rule, input);
+    // The immutable treatment snapshot resolves a channel-specific evidence
+    // requirement now. A later policy edit cannot retroactively complete or
+    // reopen this recorded treatment.
+    const appliedGovernanceRule = resolveGovernanceForContact(
+      effectiveGovernance.rule,
+      input.channel
+    );
+    assertContactGovernance(appliedGovernanceRule, input);
     const occurredAt = input.occurredAt ?? new Date();
     if (input.followUpDueAt && input.followUpDueAt.getTime() <= Date.now()) {
       throw new Error(
@@ -892,7 +900,7 @@ export async function recordLeadContact(
         followUpId,
       },
     });
-    const evaluation = evaluateTreatmentGovernance(effectiveGovernance.rule, {
+    const evaluation = evaluateTreatmentGovernance(appliedGovernanceRule, {
       hasNote: Boolean(input.summary?.trim()),
       hasFollowUp: Boolean(followUpId),
       hasEvidence: false,
@@ -902,7 +910,7 @@ export async function recordLeadContact(
       leadId,
       timelineEventId: contactTimelineEventId,
       ruleSource: effectiveGovernance.source,
-      appliedRuleJson: effectiveGovernance.rule,
+      appliedRuleJson: appliedGovernanceRule,
       ...evaluation,
       completedAt: evaluation.isComplete ? new Date() : null,
     });

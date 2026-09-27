@@ -7,7 +7,10 @@ import {
   leadContacts,
   leadTimelineEvents,
   leads,
+  campaignGovernanceOverrides,
   followUps,
+  partnerGovernanceRules,
+  partnerSettings,
 } from "../../drizzle-v2/schema";
 
 describe("V2 migration tenant-key contract", () => {
@@ -94,5 +97,31 @@ describe("V2 migration tenant-key contract", () => {
     expect(
       getTableConfig(followUps).indexes.map(index => index.config.name)
     ).toContain("follow_ups_partner_owner_completed_idx");
+  });
+
+  it("adds direct-contact configuration incrementally without creating a second evidence model", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle-v2/0010_v2_direct_contact_templates.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("whatsappInitialMessageTemplate");
+    expect(migration).toContain("evidenceRequiredChannels");
+    expect(migration).not.toContain("CREATE TABLE `lead_contact");
+
+    expect(
+      getTableConfig(partnerSettings).columns.some(
+        column => column.name === "whatsappInitialMessageTemplate"
+      )
+    ).toBe(true);
+    expect(
+      getTableConfig(partnerGovernanceRules).columns.some(
+        column => column.name === "evidenceRequiredChannels"
+      )
+    ).toBe(true);
+    expect(
+      getTableConfig(campaignGovernanceOverrides).columns.some(
+        column => column.name === "evidenceRequiredChannels"
+      )
+    ).toBe(true);
   });
 });

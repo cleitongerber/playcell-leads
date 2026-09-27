@@ -514,6 +514,7 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
 
   await updatePartnerGovernance(superAdminContext, {
     evidenceRequired: false,
+    evidenceRequiredChannels: null,
     noteRequired: false,
     followUpRequired: false,
     allowedChannels: ["whatsapp", "telefone", "email"],
@@ -761,8 +762,6 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
       today,
       completed,
       ...distributionLeads,
-    ].filter(
-      lead => lead.created
-    ).length,
+    ].filter(lead => lead.created).length,
   };
 }

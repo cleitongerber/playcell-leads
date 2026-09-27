@@ -28,6 +28,7 @@ function fromRuleRow(row: RuleRow | OverrideRow | undefined): GovernanceRule {
   if (!row) return { ...defaultGovernanceRule };
   return normalizeRule({
     evidenceRequired: row.evidenceRequired,
+    evidenceRequiredChannels: toStringList(row.evidenceRequiredChannels),
     noteRequired: row.noteRequired,
     followUpRequired: row.followUpRequired,
     allowedChannels: toStringList(row.allowedChannels),
@@ -104,6 +105,7 @@ export async function updatePartnerGovernance(
       entityId: context.partnerId,
       metadata: {
         evidenceRequired: rule.evidenceRequired,
+        evidenceRequiredChannels: rule.evidenceRequiredChannels,
         noteRequired: rule.noteRequired,
         followUpRequired: rule.followUpRequired,
         retentionDays: rule.retentionDays,
@@ -200,6 +202,7 @@ export async function setCampaignGovernance(
       metadata: {
         mode: "override",
         evidenceRequired: rule.evidenceRequired,
+        evidenceRequiredChannels: rule.evidenceRequiredChannels,
         noteRequired: rule.noteRequired,
         followUpRequired: rule.followUpRequired,
         retentionDays: rule.retentionDays,

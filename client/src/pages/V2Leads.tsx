@@ -16,19 +16,79 @@ import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { FollowUpCancellationDialog } from "@/components/v2/FollowUpCancellationDialog";
 import { followUpStatusLabel } from "@/lib/followUpPresentation";
+import { useV2Session } from "@/components/v2/V2AppShell";
 import {
   buildV2Path,
   currentV2Path,
   safeV2ReturnPath,
 } from "@/lib/operationalNavigation";
 import { presentTimelineEvent } from "@/lib/timelinePresentation";
-import { FormEvent, useEffect, useState } from "react";
+import {
+  DEFAULT_WHATSAPP_INITIAL_MESSAGE_TEMPLATE,
+  buildTelephoneUrl,
+  buildWhatsAppUrl,
+  renderWhatsAppInitialMessage,
+} from "@shared/whatsappContact";
+import { MessageCircle, PhoneCall } from "lucide-react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation, useRoute } from "wouter";
 
 type View = "available" | "mine" | "all";
 type AssignmentFilter = "assigned" | "unassigned";
 type FirstContactFilter = "missing" | "recorded";
+
+type ExternalContactChannel = "whatsapp" | "phone";
+
+const externalContactStorageKey = (leadId: number) =>
+  `v2-external-contact-action:${leadId}`;
+
+function preferredShortcutChannel(
+  action: ExternalContactChannel,
+  allowedChannels: string[] | null | undefined
+) {
+  const candidates =
+    action === "whatsapp"
+      ? ["whatsapp", "whats app"]
+      : ["ligação", "ligacao", "telefone", "phone"];
+  const configured = allowedChannels?.find(channel =>
+    candidates.includes(channel.trim().toLowerCase())
+  );
+  return configured ?? (action === "whatsapp" ? "whatsapp" : "ligação");
+}
+
+function isShortcutChannelAllowed(
+  action: ExternalContactChannel,
+  allowedChannels: string[] | null | undefined
+) {
+  if (!allowedChannels?.length) return true;
+  const candidates =
+    action === "whatsapp"
+      ? ["whatsapp", "whats app"]
+      : ["ligação", "ligacao", "telefone", "phone"];
+  return allowedChannels.some(channel =>
+    candidates.includes(channel.trim().toLowerCase())
+  );
+}
+
+function evidenceRequiredForCurrentChannel(
+  rule:
+    | {
+        evidenceRequired: boolean;
+        evidenceRequiredChannels?: string[] | null;
+      }
+    | null
+    | undefined,
+  channel: string
+) {
+  if (!rule) return false;
+  if (rule.evidenceRequired) return true;
+  return Boolean(
+    rule.evidenceRequiredChannels?.some(
+      item => item.trim().toLowerCase() === channel.trim().toLowerCase()
+    )
+  );
+}
 
 type LeadListState = {
   view: View;
@@ -402,6 +462,7 @@ export default function V2Leads() {
 export function V2LeadDetail() {
   const [, params] = useRoute("/v2/leads/:id");
   const id = Number(params?.id);
+  const session = useV2Session();
   const returnTo = safeV2ReturnPath(
     typeof window === "undefined"
       ? null
@@ -414,11 +475,12 @@ export function V2LeadDetail() {
   );
   const configuration = v2trpc.leads.configuration.useQuery();
   const access = v2trpc.access.context.useQuery();
+  const whatsappTemplate = v2trpc.partnerSettings.whatsappTemplate.useQuery();
   const utils = v2trpc.useUtils();
   const [note, setNote] = useState("");
   const [contact, setContact] = useState({
     channel: "whatsapp",
-    outcome: "contacted",
+    outcome: "",
     summary: "",
     statusId: "",
     followUpDueAt: "",
@@ -426,6 +488,9 @@ export function V2LeadDetail() {
   });
   const [followUp, setFollowUp] = useState({ dueAt: "", note: "" });
   const [followUpToCancel, setFollowUpToCancel] = useState<number | null>(null);
+  const [externalContactHint, setExternalContactHint] =
+    useState<ExternalContactChannel | null>(null);
+  const restoredExternalContactForLead = useRef<number | null>(null);
   const refresh = () => {
     utils.leads.get.invalidate({ id });
     utils.leads.list.invalidate();
@@ -451,12 +516,18 @@ export function V2LeadDetail() {
     onSuccess: result => {
       setContact({
         channel: "whatsapp",
-        outcome: "contacted",
+        outcome: "",
         summary: "",
         statusId: "",
         followUpDueAt: "",
         followUpNote: "",
       });
+      try {
+        sessionStorage.removeItem(externalContactStorageKey(id));
+      } catch {
+        // A restored shortcut is only UX assistance; storage is optional.
+      }
+      setExternalContactHint(null);
       refresh();
       if (!result.governance.isComplete) {
         toast.warning(
@@ -509,6 +580,47 @@ export function V2LeadDetail() {
     },
     onError: error => toast.error(error.message),
   });
+  const contactGovernance = detail.data?.effectiveGovernance.rule;
+  useEffect(() => {
+    if (
+      detail.isLoading ||
+      !Number.isInteger(id) ||
+      id < 1 ||
+      restoredExternalContactForLead.current === id
+    ) {
+      return;
+    }
+    restoredExternalContactForLead.current = id;
+    try {
+      const raw = sessionStorage.getItem(externalContactStorageKey(id));
+      if (!raw) return;
+      const persisted = JSON.parse(raw) as {
+        action?: ExternalContactChannel;
+        at?: number;
+      };
+      const action = persisted.action;
+      if (
+        (action !== "whatsapp" && action !== "phone") ||
+        !persisted.at ||
+        Date.now() - persisted.at > 30 * 60 * 1000
+      ) {
+        sessionStorage.removeItem(externalContactStorageKey(id));
+        return;
+      }
+      setContact(current => ({
+        ...current,
+        channel: preferredShortcutChannel(
+          action,
+          contactGovernance?.allowedChannels
+        ),
+        outcome: "",
+      }));
+      setExternalContactHint(action);
+    } catch {
+      // An unavailable or malformed browser storage value must never affect a
+      // Lead or create a commercial event.
+    }
+  }, [id, detail.isLoading, contactGovernance?.allowedChannels]);
   const lead = detail.data?.lead;
   if (detail.isLoading)
     return (
@@ -532,12 +644,81 @@ export function V2LeadDetail() {
   const canManageEvidence =
     access.data?.role === "super_admin" ||
     access.data?.role === "partner_admin";
-  const governance = detail.data?.effectiveGovernance.rule;
+  const governance = contactGovernance;
+  const directPhone = lead.phone || lead.normalizedPhone;
+  const telephoneUrl = buildTelephoneUrl(directPhone);
+  const selectedChannelRequiresEvidence = evidenceRequiredForCurrentChannel(
+    governance,
+    contact.channel
+  );
   const hasGovernanceRequirements = Boolean(
-    governance?.evidenceRequired ||
+    selectedChannelRequiresEvidence ||
       governance?.noteRequired ||
       governance?.followUpRequired
   );
+  const shortcutChannel = (action: ExternalContactChannel) =>
+    preferredShortcutChannel(action, governance?.allowedChannels);
+  const canRegisterWhatsApp = isShortcutChannelAllowed(
+    "whatsapp",
+    governance?.allowedChannels
+  );
+  const canRegisterPhone = isShortcutChannelAllowed(
+    "phone",
+    governance?.allowedChannels
+  );
+  const rememberExternalContact = (action: ExternalContactChannel) => {
+    setContact(current => ({
+      ...current,
+      channel: shortcutChannel(action),
+      // The user must explicitly declare what happened; opening an app is not
+      // a successful contact and should not be silently saved as one.
+      outcome: "",
+    }));
+    setExternalContactHint(action);
+    try {
+      sessionStorage.setItem(
+        externalContactStorageKey(id),
+        JSON.stringify({ action, at: Date.now() })
+      );
+    } catch {
+      // Do not make an external contact action depend on web storage.
+    }
+  };
+  const openWhatsApp = () => {
+    const message = renderWhatsAppInitialMessage(
+      whatsappTemplate.data?.template ??
+        DEFAULT_WHATSAPP_INITIAL_MESSAGE_TEMPLATE,
+      {
+        nome: lead.name,
+        vendedor: session.name,
+        pdv: detail.data?.pdv?.name,
+        campanha: detail.data?.campaign?.name,
+      }
+    );
+    const url = buildWhatsAppUrl(directPhone, message);
+    if (!url) {
+      toast.error("O telefone deste Lead não é válido para abrir o WhatsApp.");
+      return;
+    }
+    rememberExternalContact("whatsapp");
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    if (isMobile) {
+      window.location.assign(url);
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  };
+  const openTelephone = () => {
+    const url = buildTelephoneUrl(directPhone);
+    if (!url) {
+      toast.error(
+        "O telefone deste Lead não é válido para realizar uma ligação."
+      );
+      return;
+    }
+    rememberExternalContact("phone");
+    window.location.assign(url);
+  };
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
@@ -578,6 +759,75 @@ export function V2LeadDetail() {
               </p>
             ) : canWork ? (
               <>
+                <div className="rounded-md border bg-muted/30 p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Contato direto</p>
+                      <p className="text-sm text-muted-foreground">
+                        {lead.phone || "Telefone não informado"}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={
+                          !telephoneUrl ||
+                          !canRegisterWhatsApp ||
+                          whatsappTemplate.isLoading ||
+                          whatsappTemplate.isError
+                        }
+                        onClick={openWhatsApp}
+                      >
+                        <MessageCircle className="mr-2 size-4" />
+                        {whatsappTemplate.isLoading
+                          ? "Preparando mensagem…"
+                          : "Abrir WhatsApp"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={!telephoneUrl || !canRegisterPhone}
+                        onClick={openTelephone}
+                      >
+                        <PhoneCall className="mr-2 size-4" />
+                        Ligar para o Lead
+                      </Button>
+                    </div>
+                  </div>
+                  {!telephoneUrl ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Informe um telefone válido com DDD para usar os atalhos de
+                      contato.
+                    </p>
+                  ) : !canRegisterWhatsApp || !canRegisterPhone ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      O atalho fica disponível quando o respectivo canal estiver
+                      autorizado pela governança desta campanha.
+                    </p>
+                  ) : whatsappTemplate.isError ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Não foi possível carregar a mensagem configurada do
+                      parceiro. Tente recarregar antes de abrir o WhatsApp.
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Abrir o aplicativo não registra um contato. Ao retornar,
+                      informe o resultado real da tentativa.
+                    </p>
+                  )}
+                </div>
+                {externalContactHint && (
+                  <div
+                    className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950"
+                    role="status"
+                  >
+                    {externalContactHint === "whatsapp"
+                      ? "WhatsApp preparado. Registre o resultado da tentativa de contato pelo WhatsApp."
+                      : "Ligação iniciada. Registre o resultado real da tentativa de ligação."}
+                  </div>
+                )}
                 {hasGovernanceRequirements && (
                   <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
                     <p className="font-medium">Exigências desta tratativa</p>
@@ -585,13 +835,13 @@ export function V2LeadDetail() {
                       {[
                         governance?.noteRequired && "observação",
                         governance?.followUpRequired && "próximo follow-up",
-                        governance?.evidenceRequired && "evidência anexada",
+                        selectedChannelRequiresEvidence && "evidência anexada",
                       ]
                         .filter(Boolean)
                         .join(" · ")}
                       .
                     </p>
-                    {governance?.evidenceRequired && (
+                    {selectedChannelRequiresEvidence && (
                       <p className="mt-1 text-xs">
                         A evidência é vinculada ao evento após salvar o contato;
                         até isso a tratativa fica sinalizada como pendente.
@@ -659,12 +909,14 @@ export function V2LeadDetail() {
                       <Input
                         id="contact-outcome"
                         value={contact.outcome}
+                        required
                         onChange={event =>
                           setContact({
                             ...contact,
                             outcome: event.target.value,
                           })
                         }
+                        placeholder="Ex.: atendido, sem resposta, retorno solicitado"
                       />
                     </div>
                   </div>

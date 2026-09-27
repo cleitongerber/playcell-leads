@@ -3,6 +3,8 @@ import {
   assertContactGovernance,
   defaultGovernanceRule,
   evaluateTreatmentGovernance,
+  isEvidenceRequiredForChannel,
+  resolveGovernanceForContact,
   selectEffectiveGovernance,
   type GovernanceRule,
 } from "./governancePolicy";
@@ -80,5 +82,31 @@ describe("V2 governance policy", () => {
       source: "campaign",
       rule: campaign,
     });
+  });
+
+  it("allows evidence to be required only for configured channels and snapshots that decision", () => {
+    const rule: GovernanceRule = {
+      ...defaultGovernanceRule,
+      evidenceRequiredChannels: ["whatsapp", "ligação"],
+    };
+    expect(isEvidenceRequiredForChannel(rule, "WhatsApp")).toBe(true);
+    expect(isEvidenceRequiredForChannel(rule, "telefone")).toBe(false);
+    expect(resolveGovernanceForContact(rule, "whatsapp")).toMatchObject({
+      evidenceRequired: true,
+      evidenceRequiredChannels: null,
+    });
+    expect(resolveGovernanceForContact(rule, "telefone")).toMatchObject({
+      evidenceRequired: false,
+      evidenceRequiredChannels: null,
+    });
+  });
+
+  it("keeps the existing global evidence rule stronger than channel selection", () => {
+    const rule: GovernanceRule = {
+      ...defaultGovernanceRule,
+      evidenceRequired: true,
+      evidenceRequiredChannels: ["whatsapp"],
+    };
+    expect(isEvidenceRequiredForChannel(rule, "telefone")).toBe(true);
   });
 });

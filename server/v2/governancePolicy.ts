@@ -10,6 +10,12 @@ export const ABSOLUTE_MAX_EVIDENCE_SIZE_BYTES = 10 * 1024 * 1024;
 
 export type GovernanceRule = {
   evidenceRequired: boolean;
+  /**
+   * Optional exception to the global evidence rule. When the global flag is
+   * false, a contact is still evidence-required if its normalized channel is
+   * listed here. A global true continues to require evidence for every channel.
+   */
+  evidenceRequiredChannels: string[] | null;
   noteRequired: boolean;
   followUpRequired: boolean;
   allowedChannels: string[] | null;
@@ -21,6 +27,7 @@ export type GovernanceRule = {
 
 export const defaultGovernanceRule: GovernanceRule = {
   evidenceRequired: false,
+  evidenceRequiredChannels: null,
   noteRequired: false,
   followUpRequired: false,
   allowedChannels: null,
@@ -42,6 +49,30 @@ export function selectEffectiveGovernance(
 function normalizedSet(values: string[] | null | undefined) {
   if (!values?.length) return null;
   return new Set(values.map(value => value.trim().toLowerCase()));
+}
+
+export function isEvidenceRequiredForChannel(
+  rule: GovernanceRule,
+  channel: string
+) {
+  if (rule.evidenceRequired) return true;
+  const requiredChannels = normalizedSet(rule.evidenceRequiredChannels);
+  return Boolean(requiredChannels?.has(channel.trim().toLowerCase()));
+}
+
+/**
+ * A treatment stores the precise rule that applied at registration time. This
+ * avoids a later channel-policy edit changing whether an old event is pending.
+ */
+export function resolveGovernanceForContact(
+  rule: GovernanceRule,
+  channel: string
+): GovernanceRule {
+  return {
+    ...rule,
+    evidenceRequired: isEvidenceRequiredForChannel(rule, channel),
+    evidenceRequiredChannels: null,
+  };
 }
 
 export function assertContactGovernance(
@@ -123,6 +154,7 @@ export function normalizeRule(input: Partial<GovernanceRule>): GovernanceRule {
   }
   return {
     evidenceRequired: input.evidenceRequired ?? false,
+    evidenceRequiredChannels: normalizeList(input.evidenceRequiredChannels),
     noteRequired: input.noteRequired ?? false,
     followUpRequired: input.followUpRequired ?? false,
     allowedChannels: normalizeList(input.allowedChannels),

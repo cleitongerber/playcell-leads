@@ -21,6 +21,7 @@ import {
   assertEvidenceTimelineTarget,
 } from "./evidencePolicy";
 import { getV2Db, type V2Database } from "./database";
+import { normalizeRule, type GovernanceRule } from "./governancePolicy";
 import { resolveEffectiveGovernance } from "./governanceService";
 import { writeV2Audit } from "./partnerService";
 
@@ -128,12 +129,27 @@ export async function uploadLeadEvidence(
   const db = await getV2Db();
   const lead = await loadAccessibleLead(db, context, input.leadId);
   await assertTimelineEventForLead(db, context, lead.id, input.timelineEventId);
-  const effective = await resolveEffectiveGovernance(
-    db,
-    context.partnerId,
-    lead.campaignId
-  );
-  const upload = validateEvidenceUpload(input, effective.rule);
+  const treatmentSnapshot = (
+    await db
+      .select({ appliedRuleJson: leadTreatmentGovernance.appliedRuleJson })
+      .from(leadTreatmentGovernance)
+      .where(
+        and(
+          eq(leadTreatmentGovernance.partnerId, context.partnerId),
+          eq(leadTreatmentGovernance.timelineEventId, input.timelineEventId)
+        )
+      )
+      .limit(1)
+  )[0];
+  // Contacts retain the governance snapshot that applied when they were
+  // registered. A later policy edit must not invalidate a pending treatment.
+  const evidenceRule = treatmentSnapshot
+    ? normalizeRule(
+        treatmentSnapshot.appliedRuleJson as Partial<GovernanceRule>
+      )
+    : (await resolveEffectiveGovernance(db, context.partnerId, lead.campaignId))
+        .rule;
+  const upload = validateEvidenceUpload(input, evidenceRule);
   const storageKey = createEvidenceStorageKey(context.partnerId);
   const evidenceId = await db.transaction(async tx => {
     const inserted = await tx.insert(leadEvidences).values({
