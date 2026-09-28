@@ -3,10 +3,12 @@ import {
   useAnalyticsUrlFilters,
 } from "@/components/v2/AnalyticsFilters";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { v2trpc } from "@/lib/v2trpc";
+import { useState } from "react";
 
 function number(value: number | undefined | null) {
   return new Intl.NumberFormat("pt-BR").format(value ?? 0);
@@ -29,8 +31,145 @@ function duration(seconds: number | null | undefined) {
   return hours ? `${hours}h ${minutes}min` : `${minutes}min`;
 }
 
+type ProductivitySeller = {
+  membershipId: number;
+  name: string;
+  pdvNames: string[];
+  leadsInPortfolio: number;
+  leadsAssignedInPeriod: number;
+  leadsTreated: number;
+  treatmentRate: number | null;
+  contacts: number;
+  leadsCompleted: number;
+  conversions: number;
+  followUpsCreated: number;
+  followUpsCompleted: number;
+  followUpsOverdue: number;
+  followUpCompletionRate: number | null;
+  firstContactAverageSeconds: number | null;
+  leadsWithoutFirstContact: number;
+  governanceComplete: number;
+  governancePending: number;
+  lastActivityAt: Date | string | null;
+};
+
+function MobileSellerCard({
+  row,
+  expanded,
+  onToggle,
+  onSelect,
+}: {
+  row: ProductivitySeller;
+  expanded: boolean;
+  onToggle: () => void;
+  onSelect?: () => void;
+}) {
+  const detailsId = `seller-details-${row.membershipId}`;
+  return (
+    <article className="v2-mobile-record rounded-lg border p-3">
+      <div className="flex items-start justify-between gap-3">
+        {onSelect ? (
+          <button
+            type="button"
+            className="min-w-0 text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onSelect}
+          >
+            {row.name}
+          </button>
+        ) : (
+          <p className="min-w-0 font-medium">{row.name}</p>
+        )}
+        {row.followUpsOverdue ? (
+          <Badge variant="destructive">
+            {row.followUpsOverdue} FU vencidos
+          </Badge>
+        ) : (
+          <Badge variant="secondary">Sem FU vencido</Badge>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {row.pdvNames.join(", ") || "Sem PDV"}
+      </p>
+      <div className="v2-mobile-detail-grid text-sm text-muted-foreground">
+        <span>
+          Carteira <strong>{number(row.leadsInPortfolio)}</strong>
+        </span>
+        <span>
+          Atribuídos <strong>{number(row.leadsAssignedInPeriod)}</strong>
+        </span>
+        <span>
+          Taxa de tratamento <strong>{percent(row.treatmentRate)}</strong>
+        </span>
+        <span>
+          Conversões <strong>{number(row.conversions)}</strong>
+        </span>
+        <span className="col-span-2">
+          Tempo até 1º contato{" "}
+          <strong>{duration(row.firstContactAverageSeconds)}</strong>
+        </span>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        className="v2-mobile-disclosure-trigger w-full justify-between px-2"
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+        onClick={onToggle}
+      >
+        {expanded ? "Ocultar detalhes" : "Ver detalhes"}
+        <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+      </Button>
+      {expanded && (
+        <div
+          id={detailsId}
+          className="v2-mobile-detail-grid border-t pt-3 text-sm text-muted-foreground"
+        >
+          <span>
+            Leads tratados <strong>{number(row.leadsTreated)}</strong>
+          </span>
+          <span>
+            Contatos <strong>{number(row.contacts)}</strong>
+          </span>
+          <span>
+            Leads concluídos <strong>{number(row.leadsCompleted)}</strong>
+          </span>
+          <span>
+            FU criados <strong>{number(row.followUpsCreated)}</strong>
+          </span>
+          <span>
+            FU concluídos <strong>{number(row.followUpsCompleted)}</strong>
+          </span>
+          <span>
+            Taxa de FU <strong>{percent(row.followUpCompletionRate)}</strong>
+          </span>
+          <span>
+            Sem 1º contato{" "}
+            <strong>{number(row.leadsWithoutFirstContact)}</strong>
+          </span>
+          <span>
+            Governança{" "}
+            <strong>
+              {row.governanceComplete} completa(s) · {row.governancePending}{" "}
+              pendente(s)
+            </strong>
+          </span>
+          <span className="col-span-2">
+            Última atividade{" "}
+            <strong>
+              {row.lastActivityAt
+                ? new Date(row.lastActivityAt).toLocaleString("pt-BR")
+                : "—"}
+            </strong>
+          </span>
+        </div>
+      )}
+    </article>
+  );
+}
+
 export default function V2Productivity() {
   const [filters, setFilters] = useAnalyticsUrlFilters();
+  const [expandedSellerIds, setExpandedSellerIds] = useState<number[]>([]);
   const canQuery =
     filters.preset !== "custom" || Boolean(filters.fromDate && filters.toDate);
   const productivity = v2trpc.analytics.productivity.useQuery(filters, {
@@ -63,7 +202,7 @@ export default function V2Productivity() {
         />
       ) : productivity.data ? (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="v2-metric-grid sm:grid-cols-2 xl:grid-cols-4">
             <Summary
               title="Vendedores visíveis"
               value={number(productivity.data.totals.sellers)}
@@ -96,107 +235,27 @@ export default function V2Productivity() {
                 <>
                   <div className="grid gap-3 md:hidden">
                     {productivity.data.sellers.map(row => (
-                      <div
+                      <MobileSellerCard
                         key={row.membershipId}
-                        className="v2-mobile-record rounded-lg border p-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <button
-                            className="text-left font-medium hover:underline"
-                            onClick={() =>
-                              access.data?.role !== "seller" &&
-                              setFilters({
-                                ...filters,
-                                sellerMembershipId: row.membershipId,
-                              })
-                            }
-                          >
-                            {row.name}
-                          </button>
-                          {row.followUpsOverdue ? (
-                            <Badge variant="destructive">
-                              {row.followUpsOverdue} FU vencidos
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary">Sem FU vencido</Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {row.pdvNames.join(", ") || "Sem PDV"}
-                        </p>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                          <span>
-                            Carteira{" "}
-                            <strong className="text-foreground">
-                              {number(row.leadsInPortfolio)}
-                            </strong>
-                          </span>
-                          <span>
-                            Atribuídos{" "}
-                            <strong className="text-foreground">
-                              {number(row.leadsAssignedInPeriod)}
-                            </strong>
-                          </span>
-                          <span>
-                            Tratados{" "}
-                            <strong className="text-foreground">
-                              {number(row.leadsTreated)}
-                            </strong>
-                          </span>
-                          <span>
-                            Taxa{" "}
-                            <strong className="text-foreground">
-                              {percent(row.treatmentRate)}
-                            </strong>
-                          </span>
-                          <span>
-                            Contatos{" "}
-                            <strong className="text-foreground">
-                              {number(row.contacts)}
-                            </strong>
-                          </span>
-                          <span>
-                            Conversões{" "}
-                            <strong className="text-foreground">
-                              {number(row.conversions)}
-                            </strong>
-                          </span>
-                          <span>
-                            FU concluídos{" "}
-                            <strong className="text-foreground">
-                              {number(row.followUpsCompleted)}
-                            </strong>
-                          </span>
-                          <span>
-                            Taxa FU{" "}
-                            <strong className="text-foreground">
-                              {percent(row.followUpCompletionRate)}
-                            </strong>
-                          </span>
-                          <span>
-                            1º contato{" "}
-                            <strong className="text-foreground">
-                              {duration(row.firstContactAverageSeconds)}
-                            </strong>
-                          </span>
-                          <span>
-                            Sem 1º contato{" "}
-                            <strong className="text-foreground">
-                              {number(row.leadsWithoutFirstContact)}
-                            </strong>
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Governança: {row.governanceComplete} completa(s) ·{" "}
-                          {row.governancePending} pendente(s) · Última
-                          atividade:{" "}
-                          {row.lastActivityAt
-                            ? new Date(row.lastActivityAt).toLocaleString(
-                                "pt-BR"
-                              )
-                            : "—"}
-                        </p>
-                      </div>
+                        row={row}
+                        expanded={expandedSellerIds.includes(row.membershipId)}
+                        onToggle={() =>
+                          setExpandedSellerIds(current =>
+                            current.includes(row.membershipId)
+                              ? current.filter(id => id !== row.membershipId)
+                              : [...current, row.membershipId]
+                          )
+                        }
+                        onSelect={
+                          access.data?.role !== "seller"
+                            ? () =>
+                                setFilters({
+                                  ...filters,
+                                  sellerMembershipId: row.membershipId,
+                                })
+                            : undefined
+                        }
+                      />
                     ))}
                   </div>
                   <div className="v2-table-scroll hidden md:block">

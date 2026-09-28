@@ -355,7 +355,7 @@ export default function V2Importer() {
         }
       />
 
-      <section className="grid gap-2 sm:grid-cols-4">
+      <section className="v2-import-step-grid sm:grid-cols-4">
         {[
           [1, "Arquivo"],
           [2, "Mapeamento"],
@@ -774,8 +774,8 @@ export default function V2Importer() {
 
       {step >= 3 && batchId && (
         <>
-          <section className="grid gap-3 sm:grid-cols-4">
-            <Card>
+          <section className="v2-metric-grid sm:grid-cols-4">
+            <Card className="v2-metric-card">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Linhas</p>
                 <p className="text-2xl font-semibold">
@@ -783,7 +783,7 @@ export default function V2Importer() {
                 </p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="v2-metric-card">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Válidas</p>
                 <p className="text-2xl font-semibold">
@@ -791,7 +791,7 @@ export default function V2Importer() {
                 </p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="v2-metric-card">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Inválidas</p>
                 <p className="text-2xl font-semibold">
@@ -799,7 +799,7 @@ export default function V2Importer() {
                 </p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="v2-metric-card">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">
                   Possíveis duplicidades

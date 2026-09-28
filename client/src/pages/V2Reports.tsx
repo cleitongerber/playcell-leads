@@ -44,6 +44,7 @@ export default function V2Reports() {
   const [filters, setFilters] = useAnalyticsUrlFilters();
   const [type, setType] = useState<ReportType>("leads");
   const [page, setPage] = useState(1);
+  const [expandedRows, setExpandedRows] = useState<number[]>([]);
   const access = v2trpc.access.context.useQuery();
   const canQuery =
     filters.preset !== "custom" || Boolean(filters.fromDate && filters.toDate);
@@ -68,6 +69,7 @@ export default function V2Reports() {
   const updateFilters = (next: AnalyticsUiFilters) => {
     setFilters(next);
     setPage(1);
+    setExpandedRows([]);
   };
 
   return (
@@ -89,6 +91,7 @@ export default function V2Reports() {
               onValueChange={value => {
                 setType(value as ReportType);
                 setPage(1);
+                setExpandedRows([]);
               }}
             >
               <SelectTrigger id="report-type">
@@ -146,29 +149,80 @@ export default function V2Reports() {
             {report.data.rows.length ? (
               <>
                 <div className="grid gap-3 md:hidden">
-                  {report.data.rows.map((row, index) => (
-                    <div
-                      key={index}
-                      className="v2-mobile-record rounded-lg border p-3"
-                    >
-                      {report.data.columns.map(column => (
-                        <div
-                          key={column.key}
-                          className="flex items-start justify-between gap-3 border-b py-1.5 last:border-0"
-                        >
-                          <span className="text-xs text-muted-foreground">
-                            {column.label}
-                          </span>
-                          <span
-                            className="max-w-[65%] text-right text-sm"
-                            title={display(row[column.key])}
+                  {report.data.rows.map((row, index) => {
+                    const primaryColumns = report.data.columns.slice(0, 4);
+                    const detailColumns = report.data.columns.slice(4);
+                    const expanded = expandedRows.includes(index);
+                    const detailsId = `report-row-${page}-${index}-details`;
+                    const toggleRow = () =>
+                      setExpandedRows(current =>
+                        current.includes(index)
+                          ? current.filter(rowIndex => rowIndex !== index)
+                          : [...current, index]
+                      );
+                    return (
+                      <article
+                        key={index}
+                        className="v2-mobile-record rounded-lg border p-3"
+                      >
+                        {primaryColumns.map(column => (
+                          <div
+                            key={column.key}
+                            className="v2-report-mobile-field"
                           >
-                            {display(row[column.key])}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
+                            <span className="v2-report-mobile-field-label">
+                              {column.label}
+                            </span>
+                            <span
+                              className="v2-report-mobile-field-value"
+                              title={display(row[column.key])}
+                            >
+                              {display(row[column.key])}
+                            </span>
+                          </div>
+                        ))}
+                        {detailColumns.length > 0 && (
+                          <>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="v2-mobile-disclosure-trigger w-full justify-between px-2"
+                              aria-expanded={expanded}
+                              aria-controls={detailsId}
+                              onClick={toggleRow}
+                            >
+                              {expanded
+                                ? "Ocultar detalhes"
+                                : `Ver mais ${detailColumns.length} campo(s)`}
+                              <span aria-hidden="true">
+                                {expanded ? "−" : "+"}
+                              </span>
+                            </Button>
+                            {expanded && (
+                              <div id={detailsId} className="border-t pt-2">
+                                {detailColumns.map(column => (
+                                  <div
+                                    key={column.key}
+                                    className="v2-report-mobile-field"
+                                  >
+                                    <span className="v2-report-mobile-field-label">
+                                      {column.label}
+                                    </span>
+                                    <span
+                                      className="v2-report-mobile-field-value"
+                                      title={display(row[column.key])}
+                                    >
+                                      {display(row[column.key])}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </article>
+                    );
+                  })}
                 </div>
                 <div className="v2-table-scroll hidden md:block">
                   <table className="w-full text-sm">
@@ -214,7 +268,10 @@ export default function V2Reports() {
                   size="sm"
                   variant="outline"
                   disabled={page <= 1}
-                  onClick={() => setPage(page - 1)}
+                  onClick={() => {
+                    setExpandedRows([]);
+                    setPage(page - 1);
+                  }}
                 >
                   Anterior
                 </Button>
@@ -222,7 +279,10 @@ export default function V2Reports() {
                   size="sm"
                   variant="outline"
                   disabled={page * report.data.pageSize >= report.data.total}
-                  onClick={() => setPage(page + 1)}
+                  onClick={() => {
+                    setExpandedRows([]);
+                    setPage(page + 1);
+                  }}
                 >
                   Próxima
                 </Button>

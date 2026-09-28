@@ -71,6 +71,7 @@ export default function V2FollowUps() {
     queryId(initialParams.get("campaignId"))
   );
   const [reschedule, setReschedule] = useState<Record<number, string>>({});
+  const [rescheduleOpen, setRescheduleOpen] = useState<number[]>([]);
   const [cancelTarget, setCancelTarget] = useState<{
     id: number;
     leadName: string;
@@ -128,6 +129,7 @@ export default function V2FollowUps() {
   const rescheduleFollowUp = v2trpc.followUps.reschedule.useMutation({
     onSuccess: () => {
       setReschedule({});
+      setRescheduleOpen([]);
       refresh();
       toast.success("Follow-up reagendado.");
     },
@@ -142,8 +144,10 @@ export default function V2FollowUps() {
         description={`Agenda do parceiro em ${alerts.data?.timezone ?? "…"}. Vencimento é calculado no servidor, não no navegador.`}
       />
 
-      <section className="grid gap-3 sm:grid-cols-3">
-        <Card className={alerts.data?.overdue ? "border-destructive" : ""}>
+      <section className="v2-metric-grid sm:grid-cols-3">
+        <Card
+          className={`v2-metric-card ${alerts.data?.overdue ? "border-destructive" : ""}`}
+        >
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Vencidos</p>
             <p className="text-2xl font-semibold">
@@ -151,13 +155,13 @@ export default function V2FollowUps() {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="v2-metric-card">
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Para hoje</p>
             <p className="text-2xl font-semibold">{alerts.data?.today ?? 0}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="v2-metric-card">
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Próxima pendência</p>
             <p className="text-sm font-medium">
@@ -269,8 +273,13 @@ export default function V2FollowUps() {
             const proposedAt =
               reschedule[item.id] ?? asDateTimeLocal(item.dueAt);
             const isPending = item.status === "pending";
+            const isRescheduleOpen = rescheduleOpen.includes(item.id);
+            const rescheduleId = `follow-up-reschedule-${item.id}`;
             return (
-              <article key={item.id} className="rounded-lg border p-4">
+              <article
+                key={item.id}
+                className="v2-follow-up-record rounded-lg border p-4"
+              >
                 <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
                   <div>
                     <Link
@@ -307,51 +316,78 @@ export default function V2FollowUps() {
                   </div>
                 </div>
                 {isPending && (
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <Button
-                      size="sm"
-                      disabled={complete.isPending}
-                      onClick={() => complete.mutate({ id: item.id })}
-                    >
-                      {complete.isPending ? "Concluindo…" : "Concluir"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={cancel.isPending}
-                      onClick={() =>
-                        setCancelTarget({
-                          id: item.id,
-                          leadName: item.leadName || "este Lead",
-                        })
-                      }
-                    >
-                      Cancelar
-                    </Button>
-                    <Input
-                      className="sm:max-w-xs"
-                      type="datetime-local"
-                      value={proposedAt}
-                      onChange={event =>
-                        setReschedule(current => ({
-                          ...current,
-                          [item.id]: event.target.value,
-                        }))
-                      }
-                    />
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={rescheduleFollowUp.isPending || !proposedAt}
-                      onClick={() =>
-                        rescheduleFollowUp.mutate({
-                          id: item.id,
-                          dueAt: new Date(proposedAt),
-                        })
-                      }
-                    >
-                      Reagendar
-                    </Button>
+                  <div className="mt-3 space-y-2">
+                    <div className="v2-follow-up-actions">
+                      <Button
+                        size="sm"
+                        disabled={complete.isPending}
+                        onClick={() => complete.mutate({ id: item.id })}
+                      >
+                        {complete.isPending ? "Concluindo…" : "Concluir"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        aria-expanded={isRescheduleOpen}
+                        aria-controls={rescheduleId}
+                        onClick={() =>
+                          setRescheduleOpen(current =>
+                            current.includes(item.id)
+                              ? current.filter(id => id !== item.id)
+                              : [...current, item.id]
+                          )
+                        }
+                      >
+                        {isRescheduleOpen
+                          ? "Fechar reagendamento"
+                          : "Reagendar"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={cancel.isPending}
+                        onClick={() =>
+                          setCancelTarget({
+                            id: item.id,
+                            leadName: item.leadName || "este Lead",
+                          })
+                        }
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                    {isRescheduleOpen && (
+                      <div
+                        id={rescheduleId}
+                        className="v2-follow-up-reschedule"
+                      >
+                        <Input
+                          className="sm:max-w-xs"
+                          type="datetime-local"
+                          value={proposedAt}
+                          onChange={event =>
+                            setReschedule(current => ({
+                              ...current,
+                              [item.id]: event.target.value,
+                            }))
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={rescheduleFollowUp.isPending || !proposedAt}
+                          onClick={() =>
+                            rescheduleFollowUp.mutate({
+                              id: item.id,
+                              dueAt: new Date(proposedAt),
+                            })
+                          }
+                        >
+                          Confirmar reagendamento
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </article>

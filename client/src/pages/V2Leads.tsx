@@ -397,7 +397,7 @@ export default function V2Leads() {
             list.data.items.map(lead => (
               <button
                 key={lead.id}
-                className="flex w-full flex-col justify-between gap-2 rounded-lg border p-4 text-left hover:bg-muted/40 sm:flex-row sm:items-center"
+                className="v2-lead-list-item flex w-full flex-col justify-between gap-2 rounded-lg border p-4 text-left hover:bg-muted/40 sm:flex-row sm:items-center"
                 onClick={() =>
                   navigate(
                     buildV2Path(`/v2/leads/${lead.id}`, {
@@ -748,7 +748,7 @@ export function V2LeadDetail() {
         </Button>
       )}
       <div className="grid gap-6 xl:grid-cols-[.9fr_1.1fr]">
-        <Card>
+        <Card className="v2-lead-treatment-card">
           <CardHeader>
             <CardTitle>Tratativa</CardTitle>
           </CardHeader>
@@ -767,7 +767,7 @@ export function V2LeadDetail() {
                         {lead.phone || "Telefone não informado"}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="v2-contact-shortcuts flex flex-wrap gap-2">
                       <Button
                         type="button"
                         size="sm"
@@ -889,7 +889,7 @@ export function V2LeadDetail() {
                     });
                   }}
                 >
-                  <p className="text-sm font-medium">Registrar contato</p>
+                  <p className="text-sm font-medium">Registrar tratativa</p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <Label htmlFor="contact-channel">Canal</Label>
@@ -1005,7 +1005,7 @@ export function V2LeadDetail() {
                     </p>
                   )}
                   <Button disabled={addContact.isPending}>
-                    {addContact.isPending ? "Registrando…" : "Salvar contato"}
+                    {addContact.isPending ? "Registrando…" : "Salvar tratativa"}
                   </Button>
                 </form>
                 <form
@@ -1101,7 +1101,10 @@ export function V2LeadDetail() {
               const canAttach =
                 event.type === "contact" || event.type === "note";
               return (
-                <div key={event.id} className="border-l-2 border-brand-accent pl-4">
+                <div
+                  key={event.id}
+                  className="border-l-2 border-brand-accent pl-4"
+                >
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium">{presentation.title}</p>
                     {uploadedEvidences.length > 0 && (

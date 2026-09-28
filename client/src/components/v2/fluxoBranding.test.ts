@@ -73,9 +73,9 @@ describe("FLUXO visual identity contracts", () => {
     expect(brand).toContain('"/brand/fluxo-logo.png"');
     expect(brand).toContain('"/brand/fluxo-symbol.png"');
     expect(brand).toContain("fluxo-brand-sidebar-symbol");
-    expect(index).toContain('/icons/apple-touch-icon.png');
-    expect(index).toContain('/icons/favicon-32.png');
-    expect(serviceWorker).toContain('const CACHE = "fluxo-app-v3"');
+    expect(index).toContain("/icons/apple-touch-icon.png");
+    expect(index).toContain("/icons/favicon-32.png");
+    expect(serviceWorker).toContain('const CACHE = "fluxo-app-v4"');
     expect(serviceWorker).not.toContain("icon-192.svg");
     expect(serviceWorker).not.toContain("icon-512.svg");
 

@@ -430,7 +430,7 @@ export function CampaignLeadManagement({
           />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="v2-metric-grid sm:grid-cols-2 xl:grid-cols-5">
           {[
             ["Total", management.data?.summary.total ?? 0],
             ["Sem responsável", management.data?.summary.available ?? 0],
@@ -438,7 +438,10 @@ export function CampaignLeadManagement({
             ["Em tratamento", management.data?.summary.inTreatment ?? 0],
             ["Concluídos", management.data?.summary.completed ?? 0],
           ].map(([label, total]) => (
-            <div key={String(label)} className="rounded-md border p-3">
+            <div
+              key={String(label)}
+              className="v2-metric-card rounded-md border p-3"
+            >
               <p className="text-xs text-muted-foreground">{label}</p>
               <p className="mt-1 text-2xl font-semibold">{total}</p>
             </div>

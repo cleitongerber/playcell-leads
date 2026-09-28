@@ -208,7 +208,11 @@ function PartnerSelector({
         >
           <Building2 className="mr-2 size-4 shrink-0 text-muted-foreground" />
           <SelectValue
-            placeholder={partners.isLoading ? "Carregando parceiro…" : "Selecionar parceiro"}
+            placeholder={
+              partners.isLoading
+                ? "Carregando parceiro…"
+                : "Selecionar parceiro"
+            }
           />
         </SelectTrigger>
         <SelectContent>
@@ -228,12 +232,12 @@ function PartnerSelector({
 function NavigationLink({
   item,
   location,
-  mobile = false,
+  surface = "sidebar",
   onNavigate,
 }: {
   item: V2NavigationItem;
   location: string;
-  mobile?: boolean;
+  surface?: "sidebar" | "bottom" | "more";
   onNavigate?: () => void;
 }) {
   const Icon = icons[item.key];
@@ -244,9 +248,11 @@ function NavigationLink({
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        mobile
+        surface === "bottom"
           ? "v2-mobile-nav-item"
-          : "v2-sidebar-nav-item",
+          : surface === "more"
+            ? "v2-mobile-more-nav-item"
+            : "v2-sidebar-nav-item",
         active && "is-active"
       )}
     >
@@ -291,7 +297,9 @@ function UserMenu({
             </AvatarFallback>
           </Avatar>
           <span className={cn("min-w-0", !compact && "hidden sm:block")}>
-            <span className="block truncate text-sm font-medium">{user.name}</span>
+            <span className="block truncate text-sm font-medium">
+              {user.name}
+            </span>
             <span className="block truncate text-xs text-muted-foreground">
               {role ? roleLabel[role] : "Selecione um parceiro"}
             </span>
@@ -374,12 +382,15 @@ function ShellFrame({
   }, [partnerId, partners.data]);
 
   const role = (access.data?.role ??
-    (user.systemRole === "super_admin" && partnerId ? "super_admin" : null)) as
-    | V2NavigationRole
-    | null;
+    (user.systemRole === "super_admin" && partnerId
+      ? "super_admin"
+      : null)) as V2NavigationRole | null;
   const navigation = useMemo(() => visibleV2Navigation(role), [role]);
   const mobileNavigation = navigation.filter(item => item.mobilePrimary);
   const moreNavigation = navigation.filter(item => !item.mobilePrimary);
+  const moreIsActive = moreNavigation.some(item =>
+    isV2NavigationActive(item.path, location)
+  );
   const activeItem = navigation.find(item =>
     isV2NavigationActive(item.path, location)
   );
@@ -417,7 +428,11 @@ function ShellFrame({
             <NavigationLink key={item.key} item={item} location={location} />
           ))}
           {!role && (
-            <button type="button" className="v2-sidebar-nav-item" onClick={goToAdmin}>
+            <button
+              type="button"
+              className="v2-sidebar-nav-item"
+              onClick={goToAdmin}
+            >
               <UsersRound aria-hidden="true" className="size-5" />
               <span>Selecionar contexto</span>
             </button>
@@ -476,14 +491,18 @@ function ShellFrame({
             key={item.key}
             item={item}
             location={location}
-            mobile
+            surface="bottom"
           />
         ))}
         <button
           type="button"
-          className={cn("v2-mobile-nav-item", moreOpen && "is-active")}
+          className={cn(
+            "v2-mobile-nav-item",
+            (moreOpen || moreIsActive) && "is-active"
+          )}
           onClick={() => setMoreOpen(true)}
           aria-label="Abrir mais opções"
+          aria-current={moreIsActive ? "page" : undefined}
         >
           <MoreHorizontal aria-hidden="true" className="size-5" />
           <span>Mais</span>
@@ -498,19 +517,20 @@ function ShellFrame({
               Gestão, relatórios e configurações disponíveis no seu perfil.
             </SheetDescription>
           </SheetHeader>
-          <nav className="space-y-1 px-4 pb-4" aria-label="Mais opções">
+          <nav className="v2-mobile-more-nav" aria-label="Mais opções">
             {moreNavigation.map(item => (
               <NavigationLink
                 key={item.key}
                 item={item}
                 location={location}
+                surface="more"
                 onNavigate={closeMore}
               />
             ))}
             {!role && (
               <button
                 type="button"
-                className="v2-sidebar-nav-item w-full"
+                className="v2-mobile-more-nav-item w-full"
                 onClick={goToAdmin}
               >
                 <Menu aria-hidden="true" className="size-5" />

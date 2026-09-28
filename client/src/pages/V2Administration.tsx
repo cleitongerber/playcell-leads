@@ -217,7 +217,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     }
   );
   return (
-    <main className="v2-page">
+    <main className="v2-page space-y-6">
       <V2PageHeader
         eyebrow="Administração"
         title="PDVs e acessos operacionais"
@@ -637,7 +637,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
               {users.data?.map(person => (
                 <div
                   key={person.membershipId}
-                  className="flex flex-col justify-between gap-3 rounded-lg border p-4 md:flex-row md:items-center"
+                  className="v2-admin-list-item flex flex-col justify-between gap-3 rounded-lg border p-4 md:flex-row md:items-center"
                 >
                   <div>
                     <p className="font-medium">{person.name}</p>

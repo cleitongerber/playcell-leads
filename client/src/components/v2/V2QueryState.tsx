@@ -3,12 +3,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
-export function V2LoadingState({ label = "Carregando dados…" }: { label?: string }) {
+export function V2LoadingState({
+  label = "Carregando dados…",
+}: {
+  label?: string;
+}) {
   return (
     <div className="grid gap-4" role="status" aria-label={label}>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="v2-metric-grid sm:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
-          <Card key={index}>
+          <Card key={index} className="v2-metric-card">
             <CardContent className="space-y-3 p-5">
               <Skeleton className="h-4 w-28" />
               <Skeleton className="h-8 w-20" />

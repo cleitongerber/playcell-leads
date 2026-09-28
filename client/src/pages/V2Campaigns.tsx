@@ -221,7 +221,7 @@ export default function V2Campaigns() {
         <CardContent className="space-y-3">
           {campaigns.data?.map(campaign => (
             <Link key={campaign.id} href={`/v2/campaigns/${campaign.id}`}>
-              <div className="cursor-pointer rounded-lg border p-4 transition hover:bg-muted/40">
+              <div className="v2-campaign-list-item cursor-pointer rounded-lg border p-4 transition hover:bg-muted/40">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-semibold">{campaign.name}</p>
                   <Badge
@@ -491,7 +491,7 @@ export function V2CampaignDetail() {
                   ))}
                 </div>
               </div>
-              <div className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-4">
+              <div className="v2-metric-grid rounded-lg border p-4 text-sm sm:grid-cols-4">
                 <span>
                   <strong>Total:</strong> {detail.data?.metrics.total}
                 </span>

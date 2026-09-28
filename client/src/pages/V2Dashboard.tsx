@@ -72,9 +72,7 @@ function MetricCard({
   icon: LucideIcon;
 }) {
   const content = (
-    <Card
-      className={`v2-metric-card ${destructive ? "border-danger/60" : ""}`}
-    >
+    <Card className={`v2-metric-card ${destructive ? "border-danger/60" : ""}`}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <p className="text-sm text-muted-foreground">{title}</p>
@@ -151,7 +149,7 @@ export default function V2Dashboard() {
         />
       ) : dashboard.data ? (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <section className="v2-metric-grid sm:grid-cols-2 xl:grid-cols-5">
             <MetricCard
               title="Leads recebidos"
               value={number(dashboard.data.cards.leadsReceived)}
@@ -265,10 +263,10 @@ export default function V2Dashboard() {
               <CardHeader>
                 <CardTitle>Saúde da operação</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="v2-health-list space-y-3">
                 <Link
                   href={leadPath("available")}
-                  className="block rounded-md border p-3 hover:bg-muted/40"
+                  className="v2-health-item block rounded-md border p-3 hover:bg-muted/40"
                 >
                   <p className="text-sm">Sem responsável</p>
                   <strong>{number(dashboard.data.health.unassigned)}</strong>
@@ -279,7 +277,7 @@ export default function V2Dashboard() {
                     firstContact: "missing",
                     assignedMembershipId: filters.sellerMembershipId,
                   })}
-                  className="block rounded-md border p-3 hover:bg-muted/40"
+                  className="v2-health-item block rounded-md border p-3 hover:bg-muted/40"
                 >
                   <p className="text-sm">Atribuídos sem primeiro contato</p>
                   <strong>
@@ -288,14 +286,14 @@ export default function V2Dashboard() {
                 </Link>
                 <Link
                   href={followUpPath("overdue")}
-                  className="block rounded-md border p-3 hover:bg-muted/40"
+                  className="v2-health-item block rounded-md border p-3 hover:bg-muted/40"
                 >
                   <p className="text-sm">Follow-ups vencidos</p>
                   <strong>
                     {number(dashboard.data.health.followUpsOverdue)}
                   </strong>
                 </Link>
-                <div className="rounded-md border p-3">
+                <div className="v2-health-item rounded-md border p-3">
                   <p className="text-sm">
                     Sem atividade há{" "}
                     {Math.max(
@@ -306,7 +304,7 @@ export default function V2Dashboard() {
                   </p>
                   <strong>{number(dashboard.data.health.staleLeads)}</strong>
                 </div>
-                <div className="rounded-md border p-3">
+                <div className="v2-health-item rounded-md border p-3">
                   <p className="text-sm">Pendências de governança</p>
                   <strong>
                     {number(dashboard.data.health.governancePending)}
@@ -390,7 +388,7 @@ function OverviewTable({
                         : "Sem vencidos"}
                     </Badge>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                  <div className="v2-mobile-detail-grid text-sm text-muted-foreground">
                     <span>
                       Leads{" "}
                       <strong className="text-foreground">
