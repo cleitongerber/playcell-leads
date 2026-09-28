@@ -78,6 +78,13 @@
       "when": 1790520152166,
       "tag": "0010_v2_direct_contact_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1790596766282,
+      "tag": "0011_v2_lead_journey_foundation",
+      "breakpoints": true
     }
   ]
 }

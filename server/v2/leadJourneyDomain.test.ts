@@ -1,0 +1,94 @@
+import { describe, expect, it } from "vitest";
+import {
+  deriveNextLeadAction,
+  normalizeLeadJourneyMode,
+  usesSeparatedContactJourney,
+} from "./leadJourneyDomain";
+
+const baseInput = {
+  timeZone: "America/Sao_Paulo",
+  now: new Date("2026-09-28T15:00:00.000Z"),
+  hasBlockingGovernance: false,
+  isTerminal: false,
+  hasEffectiveContact: false,
+};
+
+describe("016.1 lead journey domain foundation", () => {
+  it("fails closed to legacy until a partner is explicitly migrated", () => {
+    expect(normalizeLeadJourneyMode(undefined)).toBe("legacy");
+    expect(normalizeLeadJourneyMode("unknown")).toBe("legacy");
+    expect(normalizeLeadJourneyMode("separated_contact_v1")).toBe(
+      "separated_contact_v1"
+    );
+    expect(usesSeparatedContactJourney("legacy")).toBe(false);
+    expect(usesSeparatedContactJourney("separated_contact_v1")).toBe(true);
+  });
+
+  it("keeps blocking governance above a terminal lead and all follow-ups", () => {
+    expect(
+      deriveNextLeadAction({
+        ...baseInput,
+        hasBlockingGovernance: true,
+        isTerminal: true,
+        pendingFollowUps: [{ dueAt: new Date("2026-09-27T15:00:00.000Z") }],
+      })
+    ).toEqual({ kind: "complete_governance", hasResidualFollowUp: true });
+  });
+
+  it("does not recommend commercial work on a terminal lead with a residual follow-up", () => {
+    expect(
+      deriveNextLeadAction({
+        ...baseInput,
+        isTerminal: true,
+        pendingFollowUps: [{ dueAt: new Date("2026-09-27T15:00:00.000Z") }],
+      })
+    ).toEqual({ kind: "lead_terminal", hasResidualFollowUp: true });
+  });
+
+  it("uses the partner timezone to distinguish overdue and today follow-ups", () => {
+    expect(
+      deriveNextLeadAction({
+        ...baseInput,
+        pendingFollowUps: [{ dueAt: new Date("2026-09-28T02:00:00.000Z") }],
+      }).kind
+    ).toBe("complete_overdue_follow_up");
+    expect(
+      deriveNextLeadAction({
+        ...baseInput,
+        pendingFollowUps: [{ dueAt: new Date("2026-09-28T18:00:00.000Z") }],
+      }).kind
+    ).toBe("complete_today_follow_up");
+  });
+
+  it("separates a first attempt from an effective contact and reads only the latest attempt state", () => {
+    expect(deriveNextLeadAction(baseInput).kind).toBe(
+      "make_first_contact_attempt"
+    );
+    expect(
+      deriveNextLeadAction({
+        ...baseInput,
+        attempts: [
+          {
+            category: "invalid_contact",
+            occurredAt: new Date("2026-09-28T13:00:00.000Z"),
+          },
+          {
+            category: "awaiting_response",
+            occurredAt: new Date("2026-09-28T14:00:00.000Z"),
+          },
+        ],
+      }).kind
+    ).toBe("await_response");
+    expect(
+      deriveNextLeadAction({
+        ...baseInput,
+        attempts: [
+          {
+            category: "invalid_contact",
+            occurredAt: new Date("2026-09-28T14:00:00.000Z"),
+          },
+        ],
+      }).kind
+    ).toBe("resolve_invalid_contact");
+  });
+});

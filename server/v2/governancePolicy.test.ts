@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertAttemptGovernance,
+  defaultAttemptGovernanceRule,
   assertContactGovernance,
   defaultGovernanceRule,
+  evaluateAttemptGovernance,
   evaluateTreatmentGovernance,
+  isAttemptEvidenceRequiredForChannel,
   isEvidenceRequiredForChannel,
+  resolveGovernanceForAttempt,
   resolveGovernanceForContact,
+  selectEffectiveAttemptGovernance,
   selectEffectiveGovernance,
+  tightenAttemptGovernance,
+  type AttemptGovernanceRule,
   type GovernanceRule,
 } from "./governancePolicy";
 
@@ -108,5 +116,68 @@ describe("V2 governance policy", () => {
       evidenceRequiredChannels: ["whatsapp"],
     };
     expect(isEvidenceRequiredForChannel(rule, "telefone")).toBe(true);
+  });
+
+  it("keeps attempt governance independent, channel-aware and snapshot-safe", () => {
+    const rule: AttemptGovernanceRule = {
+      ...defaultAttemptGovernanceRule,
+      evidenceRequiredChannels: ["whatsapp"],
+      noteRequired: true,
+      allowedChannels: ["whatsapp"],
+    };
+    expect(isAttemptEvidenceRequiredForChannel(rule, "WhatsApp")).toBe(true);
+    expect(isAttemptEvidenceRequiredForChannel(rule, "telefone")).toBe(false);
+    expect(resolveGovernanceForAttempt(rule, "whatsapp")).toMatchObject({
+      evidenceRequired: true,
+      evidenceRequiredChannels: null,
+    });
+    expect(() =>
+      assertAttemptGovernance(rule, { channel: "telefone", summary: "" })
+    ).toThrow("Canal não permitido");
+    expect(() =>
+      assertAttemptGovernance(rule, { channel: "whatsapp", summary: "" })
+    ).toThrow("observação");
+    expect(
+      evaluateAttemptGovernance(resolveGovernanceForAttempt(rule, "whatsapp"), {
+        hasNote: true,
+        hasEvidence: false,
+      })
+    ).toMatchObject({ evidenceSatisfied: false, isComplete: false });
+  });
+
+  it("uses a campaign attempt override only when its independent mode is enabled", () => {
+    const partner = {
+      ...defaultAttemptGovernanceRule,
+      evidenceRequired: true,
+    };
+    const campaign = {
+      ...defaultAttemptGovernanceRule,
+      noteRequired: true,
+    };
+    expect(selectEffectiveAttemptGovernance(partner, null)).toEqual({
+      source: "partner",
+      rule: partner,
+    });
+    expect(selectEffectiveAttemptGovernance(partner, campaign)).toEqual({
+      source: "campaign",
+      rule: campaign,
+    });
+  });
+
+  it("never lets a future structured result weaken an attempt requirement", () => {
+    const strict = {
+      ...defaultAttemptGovernanceRule,
+      evidenceRequired: true,
+      noteRequired: true,
+    };
+    expect(tightenAttemptGovernance(strict, {})).toMatchObject({
+      evidenceRequired: true,
+      noteRequired: true,
+    });
+    expect(
+      tightenAttemptGovernance(defaultAttemptGovernanceRule, {
+        evidenceRequired: true,
+      })
+    ).toMatchObject({ evidenceRequired: true });
   });
 });

@@ -4,7 +4,11 @@ import { getTableConfig } from "drizzle-orm/mysql-core";
 import { describe, expect, it } from "vitest";
 import {
   leadDistributionBatches,
+  leadContactAttempts,
   leadContacts,
+  leadConversions,
+  leadInteractionResults,
+  leadOperationCommands,
   leadTimelineEvents,
   leads,
   campaignGovernanceOverrides,
@@ -123,6 +127,117 @@ describe("V2 migration tenant-key contract", () => {
         column => column.name === "evidenceRequiredChannels"
       )
     ).toBe(true);
+  });
+
+  it("adds the 016.1 journey foundation without reinterpreting legacy operations", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle-v2/0011_v2_lead_journey_foundation.sql"),
+      "utf8"
+    );
+
+    expect(migration).toContain("CREATE TABLE `lead_contact_attempts`");
+    expect(migration).toContain("CREATE TABLE `lead_interaction_results`");
+    expect(migration).toContain("CREATE TABLE `lead_conversions`");
+    expect(migration).toContain("CREATE TABLE `lead_operation_commands`");
+    expect(migration).toContain(
+      "`leadJourneyMode` enum('legacy','separated_contact_v1') DEFAULT 'legacy' NOT NULL"
+    );
+    expect(migration).toContain(
+      "`recordKind` enum('legacy','effective_contact') DEFAULT 'legacy' NOT NULL"
+    );
+    expect(migration).toContain(
+      "`operationKind` enum('legacy_contact','attempt','effective_contact') DEFAULT 'legacy_contact' NOT NULL"
+    );
+    expect(migration).toContain(
+      "`attemptMode` enum('inherit','override') DEFAULT 'inherit' NOT NULL"
+    );
+    expect(migration).toContain(
+      "lead_contact_attempts_timeline_lead_tenant_fk"
+    );
+    expect(migration).toContain("lead_contact_attempts_result_tenant_fk");
+    expect(migration).toContain("lead_conversions_effective_contact_tenant_fk");
+    expect(migration).toContain("lead_conversions_result_tenant_fk");
+    expect(migration).toContain("lead_interaction_results_status_tenant_fk");
+    expect(migration).toContain(
+      "lead_operation_commands_partner_actor_operation_request_unique"
+    );
+    expect(migration).toContain("message_sent");
+    expect(migration).toContain("sale_completed");
+    expect(migration).not.toContain("INSERT INTO `lead_contacts`");
+    expect(migration).not.toContain("INSERT INTO `lead_conversions`");
+    expect(migration).not.toContain("INSERT INTO `lead_contact_attempts`");
+    expect(migration).not.toContain("UPDATE `leads` SET `firstAttemptAt`");
+    expect(migration).not.toContain(
+      "UPDATE `leads` SET `firstEffectiveContactAt`"
+    );
+
+    const attemptColumns = getTableConfig(leadContactAttempts).columns.map(
+      column => column.name
+    );
+    expect(attemptColumns).toEqual(
+      expect.arrayContaining([
+        "partnerId",
+        "leadId",
+        "timelineEventId",
+        "resultId",
+        "resultCode",
+        "resultLabel",
+        "resultCategory",
+      ])
+    );
+    expect(
+      getTableConfig(leadContactAttempts).indexes.map(
+        index => index.config.name
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        "lead_contact_attempts_partner_lead_occurred_idx",
+        "lead_contact_attempts_partner_actor_occurred_idx",
+        "lead_contact_attempts_partner_result_occurred_idx",
+      ])
+    );
+    expect(
+      getTableConfig(leadInteractionResults).indexes.some(
+        index =>
+          index.config.name ===
+            "lead_interaction_results_partner_kind_code_unique" &&
+          index.config.unique
+      )
+    ).toBe(true);
+    expect(
+      getTableConfig(leadConversions).indexes.some(
+        index =>
+          index.config.name ===
+            "lead_conversions_partner_effective_contact_unique" &&
+          index.config.unique
+      )
+    ).toBe(true);
+    expect(
+      getTableConfig(leadOperationCommands).indexes.some(
+        index =>
+          index.config.name ===
+            "lead_operation_commands_partner_actor_operation_request_unique" &&
+          index.config.unique
+      )
+    ).toBe(true);
+    expect(
+      getTableConfig(leadContacts).columns.find(
+        column => column.name === "recordKind"
+      )?.enumValues
+    ).toEqual(["legacy", "effective_contact"]);
+    expect(
+      getTableConfig(leadTimelineEvents).columns.find(
+        column => column.name === "type"
+      )?.enumValues
+    ).toEqual(
+      expect.arrayContaining([
+        "contact_attempted",
+        "effective_contact_recorded",
+        "conversion_recorded",
+        "lead_reopened",
+        "administrative_status_changed",
+      ])
+    );
   });
 
   it("uses the official V2 migrator as the Render Free build gate", () => {

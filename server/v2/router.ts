@@ -82,6 +82,10 @@ import {
   updateWhatsAppInitialMessageTemplate,
 } from "./whatsappTemplateService";
 import {
+  listInteractionResultConfiguration,
+  saveInteractionResultConfiguration,
+} from "./interactionResultService";
+import {
   createPdv,
   listAccessiblePdvs,
   setPdvActive,
@@ -131,6 +135,21 @@ const governanceRuleInput = z.object({
     .min(1)
     .max(10 * 1024 * 1024),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
+});
+
+const interactionResultConfigurationInput = z.object({
+  id: z.number().int().positive().optional(),
+  interactionKind: z.enum(["attempt", "effective_contact"]),
+  code: z.string().min(1).max(64),
+  label: z.string().min(1).max(120),
+  category: z.string().min(1).max(64),
+  suggestedStatusId: z.number().int().positive().nullable(),
+  statusPolicy: z.enum(["none", "suggest", "require"]),
+  allowSellerOverride: z.boolean(),
+  followUpPolicy: z.enum(["not_applicable", "optional", "required"]),
+  conversionMode: z.enum(["none", "eligible"]),
+  isActive: z.boolean(),
+  sortOrder: z.number().int().min(0).max(10_000),
 });
 
 const importMappingInput = z.object({
@@ -578,6 +597,32 @@ export const v2FoundationRouter = v2Router({
       )
       .mutation(({ ctx, input }) =>
         addLeadNote(ctx.partner, input.id, input.text)
+      ),
+  }),
+  // Backend foundation only: no 016.1 screen exposes this configuration yet.
+  interactionResults: v2Router({
+    list: v2PartnerAdminProcedure
+      .input(
+        z
+          .object({
+            interactionKind: z
+              .enum(["attempt", "effective_contact"])
+              .optional(),
+            includeInactive: z.boolean().optional(),
+          })
+          .optional()
+      )
+      .query(({ ctx, input }) =>
+        listInteractionResultConfiguration(
+          ctx.partner,
+          input?.interactionKind,
+          input?.includeInactive === true
+        )
+      ),
+    save: v2PartnerAdminProcedure
+      .input(interactionResultConfigurationInput)
+      .mutation(({ ctx, input }) =>
+        saveInteractionResultConfiguration(ctx.partner, input)
       ),
   }),
   followUps: v2Router({

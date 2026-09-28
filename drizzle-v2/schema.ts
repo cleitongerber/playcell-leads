@@ -27,6 +27,34 @@ export const leadStatusCategory = [
   "completed",
   "discarded",
 ] as const;
+/**
+ * A partner is migrated as a whole. The new operational journey is deliberately
+ * opt-in so an incomplete rollout can never change the meaning of legacy data.
+ */
+export const leadJourneyMode = ["legacy", "separated_contact_v1"] as const;
+export const leadContactRecordKind = ["legacy", "effective_contact"] as const;
+export const leadInteractionKind = ["attempt", "effective_contact"] as const;
+export const leadInteractionStatusPolicy = [
+  "none",
+  "suggest",
+  "require",
+] as const;
+export const leadInteractionFollowUpPolicy = [
+  "not_applicable",
+  "optional",
+  "required",
+] as const;
+export const leadInteractionConversionMode = ["none", "eligible"] as const;
+export const leadTreatmentGovernanceOperationKind = [
+  "legacy_contact",
+  "attempt",
+  "effective_contact",
+] as const;
+export const leadOperationCommandStatus = [
+  "processing",
+  "completed",
+  "failed",
+] as const;
 export const leadTimelineType = [
   "lead_created",
   "assigned",
@@ -46,6 +74,11 @@ export const leadTimelineType = [
   "lead_reassigned",
   "lead_returned_to_queue",
   "follow_up_owner_changed",
+  "contact_attempted",
+  "effective_contact_recorded",
+  "conversion_recorded",
+  "lead_reopened",
+  "administrative_status_changed",
 ] as const;
 export const timelineVisibility = ["partner", "restricted"] as const;
 export const followUpStatus = ["pending", "completed", "cancelled"] as const;
@@ -160,6 +193,9 @@ export const partnerSettings = mysqlTable(
     })
       .notNull()
       .default(DEFAULT_WHATSAPP_INITIAL_MESSAGE_TEMPLATE),
+    leadJourneyMode: mysqlEnum("leadJourneyMode", leadJourneyMode)
+      .notNull()
+      .default("legacy"),
     notificationSettings: json("notificationSettings"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
@@ -442,6 +478,66 @@ export const leadSources = mysqlTable(
   })
 );
 
+/**
+ * Partner-configurable result catalog. Events persist a code/label/category
+ * snapshot, so changing a catalog row never reinterprets history.
+ */
+export const leadInteractionResults = mysqlTable(
+  "lead_interaction_results",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    partnerId: int("partnerId").notNull(),
+    interactionKind: mysqlEnum(
+      "interactionKind",
+      leadInteractionKind
+    ).notNull(),
+    code: varchar("code", { length: 64 }).notNull(),
+    label: varchar("label", { length: 120 }).notNull(),
+    category: varchar("category", { length: 64 }).notNull(),
+    suggestedStatusId: int("suggestedStatusId"),
+    statusPolicy: mysqlEnum("statusPolicy", leadInteractionStatusPolicy)
+      .notNull()
+      .default("none"),
+    allowSellerOverride: boolean("allowSellerOverride").notNull().default(true),
+    followUpPolicy: mysqlEnum("followUpPolicy", leadInteractionFollowUpPolicy)
+      .notNull()
+      .default("not_applicable"),
+    conversionMode: mysqlEnum("conversionMode", leadInteractionConversionMode)
+      .notNull()
+      .default("none"),
+    isActive: boolean("isActive").notNull().default(true),
+    sortOrder: int("sortOrder").notNull().default(0),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
+  },
+  table => ({
+    partnerKindCodeUnique: uniqueIndex(
+      "lead_interaction_results_partner_kind_code_unique"
+    ).on(table.partnerId, table.interactionKind, table.code),
+    idPartnerUnique: uniqueIndex(
+      "lead_interaction_results_id_partner_unique"
+    ).on(table.id, table.partnerId),
+    partnerKindActiveOrderIdx: index(
+      "lead_interaction_results_partner_kind_active_order_idx"
+    ).on(
+      table.partnerId,
+      table.interactionKind,
+      table.isActive,
+      table.sortOrder
+    ),
+    partnerReference: foreignKey({
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+      name: "lead_interaction_results_partner_fk",
+    }).onDelete("restrict"),
+    suggestedStatusTenantReference: foreignKey({
+      columns: [table.suggestedStatusId, table.partnerId],
+      foreignColumns: [leadStatuses.id, leadStatuses.partnerId],
+      name: "lead_interaction_results_status_tenant_fk",
+    }).onDelete("restrict"),
+  })
+);
+
 export const leads = mysqlTable(
   "leads",
   {
@@ -460,6 +556,10 @@ export const leads = mysqlTable(
     receivedAt: timestamp("receivedAt").notNull().defaultNow(),
     assignedAt: timestamp("assignedAt"),
     firstContactAt: timestamp("firstContactAt"),
+    // These fields intentionally begin empty. `firstContactAt` remains the
+    // historical compatibility field until partners opt in to the new model.
+    firstAttemptAt: timestamp("firstAttemptAt"),
+    firstEffectiveContactAt: timestamp("firstEffectiveContactAt"),
     lastActivityAt: timestamp("lastActivityAt"),
     nextFollowUpAt: timestamp("nextFollowUpAt"),
     deletedAt: timestamp("deletedAt"),
@@ -520,6 +620,13 @@ export const leads = mysqlTable(
       table.partnerId,
       table.normalizedPhone
     ),
+    partnerFirstAttemptIdx: index("leads_partner_first_attempt_idx").on(
+      table.partnerId,
+      table.firstAttemptAt
+    ),
+    partnerFirstEffectiveContactIdx: index(
+      "leads_partner_first_effective_contact_idx"
+    ).on(table.partnerId, table.firstEffectiveContactAt),
     // TiDB requires an index matching every referenced composite tenant key.
     // `id` remains globally unique, while this index makes the tenant scope
     // explicit and supports child-table foreign keys safely.
@@ -660,6 +767,68 @@ export const leadTimelineEvents = mysqlTable(
   })
 );
 
+/**
+ * An append-only declaration that a contact action was attempted. It is not a
+ * lead contact and never changes a lead by itself. The future command service
+ * will create the matching timeline event in the same transaction.
+ */
+export const leadContactAttempts = mysqlTable(
+  "lead_contact_attempts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    partnerId: int("partnerId").notNull(),
+    leadId: int("leadId").notNull(),
+    actorMembershipId: int("actorMembershipId").notNull(),
+    timelineEventId: int("timelineEventId").notNull(),
+    channel: varchar("channel", { length: 48 }).notNull(),
+    resultId: int("resultId").notNull(),
+    resultCode: varchar("resultCode", { length: 64 }).notNull(),
+    resultLabel: varchar("resultLabel", { length: 120 }).notNull(),
+    resultCategory: varchar("resultCategory", { length: 64 }).notNull(),
+    summary: text("summary"),
+    occurredAt: timestamp("occurredAt").notNull().defaultNow(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  table => ({
+    leadOccurredIdx: index(
+      "lead_contact_attempts_partner_lead_occurred_idx"
+    ).on(table.partnerId, table.leadId, table.occurredAt),
+    actorOccurredIdx: index(
+      "lead_contact_attempts_partner_actor_occurred_idx"
+    ).on(table.partnerId, table.actorMembershipId, table.occurredAt),
+    resultOccurredIdx: index(
+      "lead_contact_attempts_partner_result_occurred_idx"
+    ).on(table.partnerId, table.resultId, table.occurredAt),
+    leadTenantReference: foreignKey({
+      columns: [table.leadId, table.partnerId],
+      foreignColumns: [leads.id, leads.partnerId],
+      name: "lead_contact_attempts_lead_tenant_fk",
+    }).onDelete("restrict"),
+    actorTenantReference: foreignKey({
+      columns: [table.actorMembershipId, table.partnerId],
+      foreignColumns: [userPartners.id, userPartners.partnerId],
+      name: "lead_contact_attempts_actor_tenant_fk",
+    }).onDelete("restrict"),
+    timelineLeadTenantReference: foreignKey({
+      columns: [table.timelineEventId, table.partnerId, table.leadId],
+      foreignColumns: [
+        leadTimelineEvents.id,
+        leadTimelineEvents.partnerId,
+        leadTimelineEvents.leadId,
+      ],
+      name: "lead_contact_attempts_timeline_lead_tenant_fk",
+    }).onDelete("restrict"),
+    resultTenantReference: foreignKey({
+      columns: [table.resultId, table.partnerId],
+      foreignColumns: [
+        leadInteractionResults.id,
+        leadInteractionResults.partnerId,
+      ],
+      name: "lead_contact_attempts_result_tenant_fk",
+    }).onDelete("restrict"),
+  })
+);
+
 export const leadContacts = mysqlTable(
   "lead_contacts",
   {
@@ -667,8 +836,16 @@ export const leadContacts = mysqlTable(
     partnerId: int("partnerId").notNull(),
     leadId: int("leadId").notNull(),
     actorMembershipId: int("actorMembershipId").notNull(),
+    recordKind: mysqlEnum("recordKind", leadContactRecordKind)
+      .notNull()
+      .default("legacy"),
+    timelineEventId: int("timelineEventId"),
     channel: varchar("channel", { length: 48 }).notNull(),
     outcome: varchar("outcome", { length: 96 }).notNull(),
+    resultId: int("resultId"),
+    resultCode: varchar("resultCode", { length: 64 }),
+    resultLabel: varchar("resultLabel", { length: 120 }),
+    resultCategory: varchar("resultCategory", { length: 64 }),
     summary: text("summary"),
     occurredAt: timestamp("occurredAt").notNull().defaultNow(),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -685,6 +862,11 @@ export const leadContacts = mysqlTable(
       table.occurredAt,
       table.leadId
     ),
+    idPartnerLeadUnique: uniqueIndex("lead_contacts_id_partner_lead_unique").on(
+      table.id,
+      table.partnerId,
+      table.leadId
+    ),
     leadTenantReference: foreignKey({
       columns: [table.leadId, table.partnerId],
       foreignColumns: [leads.id, leads.partnerId],
@@ -694,6 +876,146 @@ export const leadContacts = mysqlTable(
       columns: [table.actorMembershipId, table.partnerId],
       foreignColumns: [userPartners.id, userPartners.partnerId],
       name: "lead_contacts_actor_tenant_fk",
+    }).onDelete("restrict"),
+    timelineLeadTenantReference: foreignKey({
+      columns: [table.timelineEventId, table.partnerId, table.leadId],
+      foreignColumns: [
+        leadTimelineEvents.id,
+        leadTimelineEvents.partnerId,
+        leadTimelineEvents.leadId,
+      ],
+      name: "lead_contacts_timeline_lead_tenant_fk",
+    }).onDelete("restrict"),
+    resultTenantReference: foreignKey({
+      columns: [table.resultId, table.partnerId],
+      foreignColumns: [
+        leadInteractionResults.id,
+        leadInteractionResults.partnerId,
+      ],
+      name: "lead_contacts_result_tenant_fk",
+    }).onDelete("restrict"),
+  })
+);
+
+/**
+ * Historical commercial conversion. Current lead status remains a separate,
+ * mutable state; no legacy status change is backfilled into this table.
+ */
+export const leadConversions = mysqlTable(
+  "lead_conversions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    partnerId: int("partnerId").notNull(),
+    leadId: int("leadId").notNull(),
+    effectiveContactId: int("effectiveContactId").notNull(),
+    timelineEventId: int("timelineEventId").notNull(),
+    resultId: int("resultId").notNull(),
+    statusId: int("statusId").notNull(),
+    actorMembershipId: int("actorMembershipId").notNull(),
+    occurredAt: timestamp("occurredAt").notNull().defaultNow(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  table => ({
+    effectiveContactUnique: uniqueIndex(
+      "lead_conversions_partner_effective_contact_unique"
+    ).on(table.partnerId, table.effectiveContactId),
+    partnerOccurredIdx: index("lead_conversions_partner_occurred_idx").on(
+      table.partnerId,
+      table.occurredAt
+    ),
+    partnerLeadOccurredIdx: index(
+      "lead_conversions_partner_lead_occurred_idx"
+    ).on(table.partnerId, table.leadId, table.occurredAt),
+    leadTenantReference: foreignKey({
+      columns: [table.leadId, table.partnerId],
+      foreignColumns: [leads.id, leads.partnerId],
+      name: "lead_conversions_lead_tenant_fk",
+    }).onDelete("restrict"),
+    effectiveContactTenantReference: foreignKey({
+      columns: [table.effectiveContactId, table.partnerId, table.leadId],
+      foreignColumns: [
+        leadContacts.id,
+        leadContacts.partnerId,
+        leadContacts.leadId,
+      ],
+      name: "lead_conversions_effective_contact_tenant_fk",
+    }).onDelete("restrict"),
+    timelineLeadTenantReference: foreignKey({
+      columns: [table.timelineEventId, table.partnerId, table.leadId],
+      foreignColumns: [
+        leadTimelineEvents.id,
+        leadTimelineEvents.partnerId,
+        leadTimelineEvents.leadId,
+      ],
+      name: "lead_conversions_timeline_lead_tenant_fk",
+    }).onDelete("restrict"),
+    resultTenantReference: foreignKey({
+      columns: [table.resultId, table.partnerId],
+      foreignColumns: [
+        leadInteractionResults.id,
+        leadInteractionResults.partnerId,
+      ],
+      name: "lead_conversions_result_tenant_fk",
+    }).onDelete("restrict"),
+    statusTenantReference: foreignKey({
+      columns: [table.statusId, table.partnerId],
+      foreignColumns: [leadStatuses.id, leadStatuses.partnerId],
+      name: "lead_conversions_status_tenant_fk",
+    }).onDelete("restrict"),
+    actorTenantReference: foreignKey({
+      columns: [table.actorMembershipId, table.partnerId],
+      foreignColumns: [userPartners.id, userPartners.partnerId],
+      name: "lead_conversions_actor_tenant_fk",
+    }).onDelete("restrict"),
+  })
+);
+
+/** Prepared idempotency boundary for future attempt/contact commands. */
+export const leadOperationCommands = mysqlTable(
+  "lead_operation_commands",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    partnerId: int("partnerId").notNull(),
+    actorUserId: int("actorUserId").notNull(),
+    actorMembershipId: int("actorMembershipId"),
+    operationType: varchar("operationType", { length: 64 }).notNull(),
+    requestKey: varchar("requestKey", { length: 96 }).notNull(),
+    status: mysqlEnum("status", leadOperationCommandStatus)
+      .notNull()
+      .default("processing"),
+    resultReferenceType: varchar("resultReferenceType", { length: 64 }),
+    resultReferenceId: varchar("resultReferenceId", { length: 96 }),
+    failureCode: varchar("failureCode", { length: 96 }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    completedAt: timestamp("completedAt"),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
+  },
+  table => ({
+    partnerActorOperationRequestUnique: uniqueIndex(
+      "lead_operation_commands_partner_actor_operation_request_unique"
+    ).on(
+      table.partnerId,
+      table.actorUserId,
+      table.operationType,
+      table.requestKey
+    ),
+    partnerStatusCreatedIdx: index(
+      "lead_operation_commands_partner_status_created_idx"
+    ).on(table.partnerId, table.status, table.createdAt),
+    partnerReference: foreignKey({
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+      name: "lead_operation_commands_partner_fk",
+    }).onDelete("restrict"),
+    actorUserReference: foreignKey({
+      columns: [table.actorUserId],
+      foreignColumns: [users.id],
+      name: "lead_operation_commands_actor_user_fk",
+    }).onDelete("restrict"),
+    actorMembershipTenantReference: foreignKey({
+      columns: [table.actorMembershipId, table.partnerId],
+      foreignColumns: [userPartners.id, userPartners.partnerId],
+      name: "lead_operation_commands_actor_membership_tenant_fk",
     }).onDelete("restrict"),
   })
 );
@@ -707,6 +1029,8 @@ export const followUps = mysqlTable(
     leadId: int("leadId").notNull(),
     ownerMembershipId: int("ownerMembershipId").notNull(),
     rescheduledFromId: int("rescheduledFromId"),
+    /** Null means an independent or legacy follow-up. */
+    originTimelineEventId: int("originTimelineEventId"),
     dueAt: timestamp("dueAt").notNull(),
     status: mysqlEnum("status", followUpStatus).notNull().default("pending"),
     note: text("note"),
@@ -739,6 +1063,10 @@ export const followUps = mysqlTable(
       table.completedAt,
       table.dueAt
     ),
+    originTimelineIdx: index("follow_ups_partner_origin_timeline_idx").on(
+      table.partnerId,
+      table.originTimelineEventId
+    ),
     leadTenantReference: foreignKey({
       columns: [table.leadId, table.partnerId],
       foreignColumns: [leads.id, leads.partnerId],
@@ -753,6 +1081,15 @@ export const followUps = mysqlTable(
       columns: [table.rescheduledFromId],
       foreignColumns: [table.id],
       name: "follow_ups_rescheduled_from_fk",
+    }).onDelete("restrict"),
+    originTimelineLeadTenantReference: foreignKey({
+      columns: [table.originTimelineEventId, table.partnerId, table.leadId],
+      foreignColumns: [
+        leadTimelineEvents.id,
+        leadTimelineEvents.partnerId,
+        leadTimelineEvents.leadId,
+      ],
+      name: "follow_ups_origin_timeline_lead_tenant_fk",
     }).onDelete("restrict"),
   })
 );
@@ -771,6 +1108,14 @@ export const partnerGovernanceRules = mysqlTable(
     followUpRequired: boolean("followUpRequired").notNull().default(false),
     /** Optional channel-specific evidence requirement; global remains the default. */
     evidenceRequiredChannels: json("evidenceRequiredChannels"),
+    attemptEvidenceRequired: boolean("attemptEvidenceRequired")
+      .notNull()
+      .default(false),
+    attemptEvidenceRequiredChannels: json("attemptEvidenceRequiredChannels"),
+    attemptNoteRequired: boolean("attemptNoteRequired")
+      .notNull()
+      .default(false),
+    attemptAllowedChannels: json("attemptAllowedChannels"),
     allowedChannels: json("allowedChannels"),
     allowedOutcomes: json("allowedOutcomes"),
     allowedEvidenceMimeTypes: json("allowedEvidenceMimeTypes"),
@@ -801,10 +1146,23 @@ export const campaignGovernanceOverrides = mysqlTable(
     partnerId: int("partnerId").notNull(),
     campaignId: int("campaignId").notNull(),
     mode: mysqlEnum("mode", governanceRuleMode).notNull().default("inherit"),
+    // Attempt policy must not accidentally turn the legacy/effective-contact
+    // campaign policy into an override. Each operation kind owns its mode.
+    attemptMode: mysqlEnum("attemptMode", governanceRuleMode)
+      .notNull()
+      .default("inherit"),
     evidenceRequired: boolean("evidenceRequired").notNull().default(false),
     noteRequired: boolean("noteRequired").notNull().default(false),
     followUpRequired: boolean("followUpRequired").notNull().default(false),
     evidenceRequiredChannels: json("evidenceRequiredChannels"),
+    attemptEvidenceRequired: boolean("attemptEvidenceRequired")
+      .notNull()
+      .default(false),
+    attemptEvidenceRequiredChannels: json("attemptEvidenceRequiredChannels"),
+    attemptNoteRequired: boolean("attemptNoteRequired")
+      .notNull()
+      .default(false),
+    attemptAllowedChannels: json("attemptAllowedChannels"),
     allowedChannels: json("allowedChannels"),
     allowedOutcomes: json("allowedOutcomes"),
     allowedEvidenceMimeTypes: json("allowedEvidenceMimeTypes"),
@@ -842,6 +1200,12 @@ export const leadTreatmentGovernance = mysqlTable(
     partnerId: int("partnerId").notNull(),
     leadId: int("leadId").notNull(),
     timelineEventId: int("timelineEventId").notNull(),
+    operationKind: mysqlEnum(
+      "operationKind",
+      leadTreatmentGovernanceOperationKind
+    )
+      .notNull()
+      .default("legacy_contact"),
     ruleSource: mysqlEnum("ruleSource", governanceRuleSource).notNull(),
     appliedRuleJson: json("appliedRuleJson").notNull(),
     noteSatisfied: boolean("noteSatisfied").notNull().default(true),
@@ -1353,6 +1717,19 @@ export type V2UserPdvAssignment = typeof userPdvAssignments.$inferSelect;
 export type V2Campaign = typeof campaigns.$inferSelect;
 export type CampaignStatus = (typeof campaignStatus)[number];
 export type LeadStatusCategory = (typeof leadStatusCategory)[number];
+export type LeadJourneyMode = (typeof leadJourneyMode)[number];
+export type LeadContactRecordKind = (typeof leadContactRecordKind)[number];
+export type LeadInteractionKind = (typeof leadInteractionKind)[number];
+export type LeadInteractionStatusPolicy =
+  (typeof leadInteractionStatusPolicy)[number];
+export type LeadInteractionFollowUpPolicy =
+  (typeof leadInteractionFollowUpPolicy)[number];
+export type LeadInteractionConversionMode =
+  (typeof leadInteractionConversionMode)[number];
+export type LeadTreatmentGovernanceOperationKind =
+  (typeof leadTreatmentGovernanceOperationKind)[number];
+export type LeadOperationCommandStatus =
+  (typeof leadOperationCommandStatus)[number];
 export type LeadTimelineType = (typeof leadTimelineType)[number];
 export type LeadDistributionBatchType =
   (typeof leadDistributionBatchType)[number];
