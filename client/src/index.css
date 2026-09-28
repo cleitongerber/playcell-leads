@@ -201,7 +201,18 @@
   .fluxo-brand-compact { display: inline-grid; align-items: center; }
   .fluxo-brand-symbol { width: 1.875rem; max-width: none; }
   .fluxo-brand-compact .fluxo-wordmark { font-size: 0.8125rem; letter-spacing: 0.1em; }
-  .fluxo-brand-inverse { color: #ffffff; }
+  .fluxo-brand-inverse {
+    grid-template-columns: 2rem minmax(0, 1fr);
+    column-gap: 0.625rem;
+    align-items: center;
+    color: #ffffff;
+  }
+  .fluxo-brand-sidebar-symbol {
+    width: 2rem;
+    height: 2rem;
+    object-fit: contain;
+  }
+  .fluxo-brand-sidebar-copy { display: grid; min-width: 0; gap: 0.125rem; }
   .fluxo-brand-inverse .fluxo-brand-descriptor { color: color-mix(in srgb, #ffffff 70%, transparent); }
 
   .v2-app-shell { min-height: 100dvh; background: var(--background); }

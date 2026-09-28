@@ -69,8 +69,10 @@ describe("FLUXO visual identity contracts", () => {
 
     expect(shell).toContain("<FluxoBrand");
     expect(shell).not.toContain("Playcell Leads");
+    expect(shell).toContain("<FluxoBrand inverse />");
     expect(brand).toContain('"/brand/fluxo-logo.png"');
     expect(brand).toContain('"/brand/fluxo-symbol.png"');
+    expect(brand).toContain("fluxo-brand-sidebar-symbol");
     expect(index).toContain('/icons/apple-touch-icon.png');
     expect(index).toContain('/icons/favicon-32.png');
     expect(serviceWorker).toContain('const CACHE = "fluxo-app-v2"');

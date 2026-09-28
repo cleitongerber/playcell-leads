@@ -2,11 +2,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * FLUXO lockup using the approved master asset and its exact symbol crop.
- *
- * The supplied official asset has a dark application only. The dark sidebar
- * therefore keeps its existing high-contrast textual wordmark until an
- * approved light logo variant is provided; no recoloring or approximation is
- * applied to the official mark.
+ * The inverse sidebar treatment keeps that official symbol untouched and uses
+ * a high-contrast textual product label on the dark navigation surface.
  */
 export function FluxoBrand({
   compact = false,
@@ -28,7 +25,23 @@ export function FluxoBrand({
       aria-label="FLUXO — Gestão de leads e performance comercial"
     >
       {inverse ? (
-        <span className="fluxo-wordmark">FLUXO</span>
+        <>
+          <img
+            className="fluxo-brand-sidebar-symbol"
+            src="/brand/fluxo-symbol.png"
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+          />
+          <div className="fluxo-brand-sidebar-copy">
+            <span className="fluxo-wordmark">FLUXO</span>
+            {!compact && (
+              <span className="fluxo-brand-descriptor">
+                Gestão de leads e performance comercial
+              </span>
+            )}
+          </div>
+        </>
       ) : (
         <img
           className={cn(
@@ -41,7 +54,7 @@ export function FluxoBrand({
           decoding="async"
         />
       )}
-      {!compact && (
+      {!inverse && !compact && (
         <span className="fluxo-brand-descriptor">
           Gestão de leads e performance comercial
         </span>
