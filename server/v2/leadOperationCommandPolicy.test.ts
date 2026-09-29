@@ -8,6 +8,7 @@ describe("lead operation command idempotency policy", () => {
   it("normalizes a request key and rejects absent or oversized keys", () => {
     expect(assertOperationRequestKey(" request-123 ")).toBe("request-123");
     expect(() => assertOperationRequestKey(" ")).toThrow("idempotência");
+    expect(() => assertOperationRequestKey("short")).toThrow("idempotência");
     expect(() => assertOperationRequestKey("x".repeat(97))).toThrow(
       "idempotência"
     );

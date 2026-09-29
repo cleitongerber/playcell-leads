@@ -25,6 +25,10 @@ export type NextLeadAction =
       hasResidualFollowUp: boolean;
     }
   | {
+      kind: "campaign_not_operational";
+      hasResidualFollowUp: boolean;
+    }
+  | {
       kind: "lead_terminal";
       hasResidualFollowUp: boolean;
     }
@@ -57,6 +61,8 @@ export type DeriveNextLeadActionInput = {
   timeZone: string;
   now?: Date;
   hasBlockingGovernance: boolean;
+  /** A frozen/closed campaign must never prompt a prohibited commercial action. */
+  isCampaignOperational?: boolean;
   isTerminal: boolean;
   pendingFollowUps?: readonly PendingLeadFollowUp[];
   attempts?: readonly LeadAttemptSignal[];
@@ -90,6 +96,9 @@ export function deriveNextLeadAction(
     // A pending follow-up on a terminal lead is a residual inconsistency, not
     // a reason to recommend continued commercial work.
     return { kind: "lead_terminal", hasResidualFollowUp };
+  }
+  if (input.isCampaignOperational === false) {
+    return { kind: "campaign_not_operational", hasResidualFollowUp };
   }
 
   const day = partnerDayBounds(input.timeZone, now);

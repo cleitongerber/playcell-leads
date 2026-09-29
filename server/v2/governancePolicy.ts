@@ -213,7 +213,12 @@ export function tightenAttemptGovernance(
   };
 }
 
-export function allowedEvidenceMimeTypes(rule: GovernanceRule) {
+export function allowedEvidenceMimeTypes(
+  rule: Pick<
+    GovernanceRule,
+    "allowedEvidenceMimeTypes" | "maxEvidenceSizeBytes"
+  >
+) {
   const configured = normalizedSet(rule.allowedEvidenceMimeTypes);
   const supported = new Set<string>(SUPPORTED_EVIDENCE_MIME_TYPES);
   if (!configured) return supported;

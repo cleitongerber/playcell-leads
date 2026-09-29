@@ -14,7 +14,7 @@ export function commandReplayDisposition(status: LeadOperationCommandStatus) {
 
 export function assertOperationRequestKey(requestKey: string) {
   const normalized = requestKey.trim();
-  if (!normalized || normalized.length > 96) {
+  if (normalized.length < 8 || normalized.length > 96) {
     throw new Error("Chave de idempotência inválida");
   }
   return normalized;

@@ -47,6 +47,8 @@ import {
   sellerCanModifyLead,
 } from "./leadPolicy";
 import { writeV2Audit } from "./partnerService";
+import { getPartnerLeadJourneyMode } from "./leadJourneySettings";
+import { LeadJourneyOperationError } from "./leadJourneyOperationalPolicy";
 
 const PAGE_MAX = 100;
 type LeadRow = typeof leads.$inferSelect;
@@ -213,6 +215,23 @@ async function getActiveStatus(
   )[0];
   if (!status) throw new Error("Status inválido para o parceiro atual");
   return status;
+}
+
+/**
+ * Legacy procedures intentionally remain unchanged for legacy partners. Once
+ * a partner opts into the separated model, allowing these old commands would
+ * let a caller bypass the attempt/effective-contact distinction.
+ */
+async function assertLegacyLeadJourney(
+  db: V2Database,
+  context: PartnerContext
+) {
+  if ((await getPartnerLeadJourneyMode(db, context.partnerId)) !== "legacy") {
+    throw new LeadJourneyOperationError(
+      "LEGACY_LEAD_OPERATION_NOT_AVAILABLE",
+      "LEGACY_LEAD_OPERATION_NOT_AVAILABLE"
+    );
+  }
 }
 
 export async function createLead(
@@ -708,6 +727,7 @@ export async function changeLeadStatus(
   statusId: number
 ) {
   const db = await getV2Db();
+  await assertLegacyLeadJourney(db, context);
   return db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
     const lead = await getLeadInPartner(transactionDb, context, leadId);
@@ -757,6 +777,7 @@ export async function recordLeadContact(
   if (!context.membershipId)
     throw new Error("Uma membership ativa é necessária para registrar contato");
   const db = await getV2Db();
+  await assertLegacyLeadJourney(db, context);
   return db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
     const lead = await getLeadInPartner(transactionDb, context, leadId);

@@ -43,6 +43,14 @@ describe("interaction result configuration policy", () => {
     expect(() =>
       normalizeInteractionResultConfiguration({
         ...base,
+        interactionKind: "attempt",
+        conversionMode: "none",
+        statusPolicy: "suggest",
+      })
+    ).toThrow("Tentativa");
+    expect(() =>
+      normalizeInteractionResultConfiguration({
+        ...base,
         statusPolicy: "suggest",
       })
     ).toThrow("situação obrigatória");

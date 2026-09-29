@@ -60,6 +60,9 @@ export function normalizeInteractionResultConfiguration(
   ) {
     throw new Error("Apenas contato efetivo pode ser elegível para conversão");
   }
+  if (input.interactionKind === "attempt" && input.statusPolicy !== "none") {
+    throw new Error("Tentativa não pode configurar alteração de situação");
+  }
   if (input.conversionMode === "eligible" && input.statusPolicy !== "require") {
     throw new Error("Resultado de conversão exige uma situação obrigatória");
   }

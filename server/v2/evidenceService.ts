@@ -21,7 +21,12 @@ import {
   assertEvidenceTimelineTarget,
 } from "./evidencePolicy";
 import { getV2Db, type V2Database } from "./database";
-import { normalizeRule, type GovernanceRule } from "./governancePolicy";
+import {
+  normalizeAttemptGovernanceRule,
+  normalizeRule,
+  type AttemptGovernanceRule,
+  type GovernanceRule,
+} from "./governancePolicy";
 import { resolveEffectiveGovernance } from "./governanceService";
 import { writeV2Audit } from "./partnerService";
 
@@ -131,7 +136,10 @@ export async function uploadLeadEvidence(
   await assertTimelineEventForLead(db, context, lead.id, input.timelineEventId);
   const treatmentSnapshot = (
     await db
-      .select({ appliedRuleJson: leadTreatmentGovernance.appliedRuleJson })
+      .select({
+        appliedRuleJson: leadTreatmentGovernance.appliedRuleJson,
+        operationKind: leadTreatmentGovernance.operationKind,
+      })
       .from(leadTreatmentGovernance)
       .where(
         and(
@@ -141,12 +149,17 @@ export async function uploadLeadEvidence(
       )
       .limit(1)
   )[0];
-  // Contacts retain the governance snapshot that applied when they were
-  // registered. A later policy edit must not invalidate a pending treatment.
+  // Every operational event retains the governance snapshot that applied when
+  // it was registered. A later policy edit must not invalidate a pending
+  // attempt or effective contact.
   const evidenceRule = treatmentSnapshot
-    ? normalizeRule(
-        treatmentSnapshot.appliedRuleJson as Partial<GovernanceRule>
-      )
+    ? treatmentSnapshot.operationKind === "attempt"
+      ? normalizeAttemptGovernanceRule(
+          treatmentSnapshot.appliedRuleJson as Partial<AttemptGovernanceRule>
+        )
+      : normalizeRule(
+          treatmentSnapshot.appliedRuleJson as Partial<GovernanceRule>
+        )
     : (await resolveEffectiveGovernance(db, context.partnerId, lead.campaignId))
         .rule;
   const upload = validateEvidenceUpload(input, evidenceRule);

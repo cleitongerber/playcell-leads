@@ -218,7 +218,10 @@ function decodeBase64(value: string) {
 
 export function validateEvidenceUpload(
   input: { fileName: string; mimeType: string; base64: string },
-  rule: GovernanceRule
+  rule: Pick<
+    GovernanceRule,
+    "allowedEvidenceMimeTypes" | "maxEvidenceSizeBytes"
+  >
 ) {
   const fileName = sanitizeOriginalFileName(input.fileName);
   const mimeType = input.mimeType.trim().toLowerCase();

@@ -48,9 +48,13 @@ import {
   uploadLeadEvidence,
 } from "./evidenceService";
 import {
+  getCampaignAttemptGovernance,
   getCampaignGovernance,
+  getPartnerAttemptGovernance,
   getPartnerGovernance,
+  setCampaignAttemptGovernance,
   setCampaignGovernance,
+  updatePartnerAttemptGovernance,
   updatePartnerGovernance,
 } from "./governanceService";
 import {
@@ -83,8 +87,17 @@ import {
 } from "./whatsappTemplateService";
 import {
   listInteractionResultConfiguration,
+  deactivateInteractionResult,
+  reorderInteractionResults,
   saveInteractionResultConfiguration,
 } from "./interactionResultService";
+import {
+  changeAdministrativeStatus,
+  getLeadNextAction,
+  recordEffectiveContact,
+  registerAttempt,
+  reopenLead,
+} from "./leadJourneyService";
 import {
   createPdv,
   listAccessiblePdvs,
@@ -137,6 +150,26 @@ const governanceRuleInput = z.object({
   retentionDays: z.number().int().min(1).max(3650).nullable(),
 });
 
+const attemptGovernanceRuleInput = z.object({
+  evidenceRequired: z.boolean(),
+  evidenceRequiredChannels: z
+    .array(z.string().min(1).max(48))
+    .max(50)
+    .nullable(),
+  noteRequired: z.boolean(),
+  allowedChannels: z.array(z.string().min(1).max(48)).max(50).nullable(),
+  allowedEvidenceMimeTypes: z
+    .array(z.string().min(1).max(128))
+    .max(10)
+    .nullable(),
+  maxEvidenceSizeBytes: z
+    .number()
+    .int()
+    .min(1)
+    .max(10 * 1024 * 1024),
+  retentionDays: z.number().int().min(1).max(3650).nullable(),
+});
+
 const interactionResultConfigurationInput = z.object({
   id: z.number().int().positive().optional(),
   interactionKind: z.enum(["attempt", "effective_contact"]),
@@ -150,6 +183,11 @@ const interactionResultConfigurationInput = z.object({
   conversionMode: z.enum(["none", "eligible"]),
   isActive: z.boolean(),
   sortOrder: z.number().int().min(0).max(10_000),
+});
+
+const operationalFollowUpInput = z.object({
+  dueAt: z.coerce.date(),
+  note: z.string().max(5_000).nullable().optional(),
 });
 
 const importMappingInput = z.object({
@@ -598,6 +636,64 @@ export const v2FoundationRouter = v2Router({
       .mutation(({ ctx, input }) =>
         addLeadNote(ctx.partner, input.id, input.text)
       ),
+    // Separated journey commands are backend-only in 016.2. Their services
+    // reject legacy partners explicitly, so these procedures cannot change an
+    // existing tenant's current seller flow before its controlled rollout.
+    registerAttempt: v2PartnerProcedure
+      .input(
+        z.object({
+          leadId: z.number().int().positive(),
+          channel: z.string().min(1).max(48),
+          resultId: z.number().int().positive(),
+          summary: z.string().max(5_000).nullable().optional(),
+          occurredAt: z.coerce.date().optional(),
+          followUp: operationalFollowUpInput.nullable().optional(),
+          requestKey: z.string().min(8).max(96),
+        })
+      )
+      .mutation(({ ctx, input }) => registerAttempt(ctx.partner, input)),
+    recordEffectiveContact: v2PartnerProcedure
+      .input(
+        z.object({
+          leadId: z.number().int().positive(),
+          channel: z.string().min(1).max(48),
+          resultId: z.number().int().positive(),
+          summary: z.string().max(5_000).nullable().optional(),
+          finalStatusId: z.number().int().positive().nullable().optional(),
+          followUp: operationalFollowUpInput.nullable().optional(),
+          occurredAt: z.coerce.date().optional(),
+          expectedStatusId: z.number().int().positive().nullable().optional(),
+          requestKey: z.string().min(8).max(96),
+        })
+      )
+      .mutation(({ ctx, input }) => recordEffectiveContact(ctx.partner, input)),
+    changeAdministrativeStatus: v2PartnerProcedure
+      .input(
+        z.object({
+          leadId: z.number().int().positive(),
+          statusId: z.number().int().positive(),
+          reason: z.string().max(1_000).nullable().optional(),
+          expectedStatusId: z.number().int().positive().nullable().optional(),
+          requestKey: z.string().min(8).max(96),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        changeAdministrativeStatus(ctx.partner, input)
+      ),
+    reopen: v2PartnerProcedure
+      .input(
+        z.object({
+          leadId: z.number().int().positive(),
+          statusId: z.number().int().positive(),
+          reason: z.string().min(1).max(1_000),
+          expectedStatusId: z.number().int().positive(),
+          requestKey: z.string().min(8).max(96),
+        })
+      )
+      .mutation(({ ctx, input }) => reopenLead(ctx.partner, input)),
+    nextAction: v2PartnerProcedure
+      .input(z.object({ leadId: z.number().int().positive() }))
+      .query(({ ctx, input }) => getLeadNextAction(ctx.partner, input.leadId)),
   }),
   // Backend foundation only: no 016.1 screen exposes this configuration yet.
   interactionResults: v2Router({
@@ -623,6 +719,42 @@ export const v2FoundationRouter = v2Router({
       .input(interactionResultConfigurationInput)
       .mutation(({ ctx, input }) =>
         saveInteractionResultConfiguration(ctx.partner, input)
+      ),
+    create: v2PartnerAdminProcedure
+      .input(interactionResultConfigurationInput.omit({ id: true }))
+      .mutation(({ ctx, input }) =>
+        saveInteractionResultConfiguration(ctx.partner, input)
+      ),
+    update: v2PartnerAdminProcedure
+      .input(
+        interactionResultConfigurationInput.extend({
+          id: z.number().int().positive(),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        saveInteractionResultConfiguration(ctx.partner, input)
+      ),
+    deactivate: v2PartnerAdminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ ctx, input }) =>
+        deactivateInteractionResult(ctx.partner, input.id)
+      ),
+    reorder: v2PartnerAdminProcedure
+      .input(
+        z.object({
+          items: z
+            .array(
+              z.object({
+                id: z.number().int().positive(),
+                sortOrder: z.number().int().min(0).max(10_000),
+              })
+            )
+            .min(1)
+            .max(200),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        reorderInteractionResults(ctx.partner, input.items)
       ),
   }),
   followUps: v2Router({
@@ -699,6 +831,41 @@ export const v2FoundationRouter = v2Router({
       )
       .mutation(({ ctx, input }) =>
         setCampaignGovernance(ctx.partner, input.campaignId, input.setting)
+      ),
+    // Exposed as API-only configuration for the separated journey. It does
+    // not alter the legacy contact governance or any current seller screen.
+    attemptPartner: v2PartnerAdminProcedure.query(({ ctx }) =>
+      getPartnerAttemptGovernance(ctx.partner)
+    ),
+    updateAttemptPartner: v2PartnerAdminProcedure
+      .input(attemptGovernanceRuleInput)
+      .mutation(({ ctx, input }) =>
+        updatePartnerAttemptGovernance(ctx.partner, input)
+      ),
+    attemptCampaign: v2PartnerAdminProcedure
+      .input(z.object({ campaignId: z.number().int().positive() }))
+      .query(({ ctx, input }) =>
+        getCampaignAttemptGovernance(ctx.partner, input.campaignId)
+      ),
+    setAttemptCampaign: v2PartnerAdminProcedure
+      .input(
+        z.object({
+          campaignId: z.number().int().positive(),
+          setting: z.discriminatedUnion("mode", [
+            z.object({ mode: z.literal("inherit") }),
+            z.object({
+              mode: z.literal("override"),
+              rule: attemptGovernanceRuleInput,
+            }),
+          ]),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        setCampaignAttemptGovernance(
+          ctx.partner,
+          input.campaignId,
+          input.setting
+        )
       ),
   }),
   imports: v2Router({

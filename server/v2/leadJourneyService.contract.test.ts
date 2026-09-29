@@ -1,0 +1,112 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const service = readFileSync(
+  resolve(process.cwd(), "server/v2/leadJourneyService.ts"),
+  "utf8"
+);
+const router = readFileSync(
+  resolve(process.cwd(), "server/v2/router.ts"),
+  "utf8"
+);
+const evidence = readFileSync(
+  resolve(process.cwd(), "server/v2/evidenceService.ts"),
+  "utf8"
+);
+const legacyLeadService = readFileSync(
+  resolve(process.cwd(), "server/v2/leadService.ts"),
+  "utf8"
+);
+
+function commandSlice(start: string, end: string) {
+  const startAt = service.indexOf(start);
+  const endAt = service.indexOf(end, startAt + start.length);
+  if (startAt < 0 || endAt < 0) throw new Error("Comando não encontrado");
+  return service.slice(startAt, endAt);
+}
+
+describe("016.2 separated journey service contract", () => {
+  it("keeps all new commands behind the explicit partner journey flag", () => {
+    for (const command of [
+      "registerAttempt",
+      "recordEffectiveContact",
+      "changeAdministrativeStatus",
+      "reopenLead",
+    ]) {
+      const start = service.indexOf(`export async function ${command}`);
+      const section = service.slice(start, start + 450);
+      expect(section).toContain("assertSeparatedJourney");
+    }
+    expect(service).toContain("NEW_LEAD_JOURNEY_NOT_ENABLED");
+  });
+
+  it("records attempts without creating legacy contacts, conversion, status or first contact", () => {
+    const attempt = commandSlice(
+      "export async function registerAttempt",
+      "export async function recordEffectiveContact"
+    );
+    expect(attempt).toContain("leadContactAttempts");
+    expect(attempt).toContain('type: "contact_attempted"');
+    expect(attempt).toContain("updateAttemptActivity");
+    expect(attempt).toContain("assertLeadOpenForCommercialOperation");
+    expect(service).toContain("firstAttemptAt");
+    expect(attempt).not.toContain("firstContactAt");
+    expect(attempt).not.toContain("leadContacts).values");
+    expect(attempt).not.toContain("leadConversions).values");
+    expect(attempt).not.toContain("conditionalStatusUpdate");
+  });
+
+  it("persists an effective contact, result snapshot, governance and conversion atomically", () => {
+    const contact = commandSlice(
+      "export async function recordEffectiveContact",
+      "async function assertAdministrativeLead"
+    );
+    expect(contact).toContain('recordKind: "effective_contact"');
+    expect(contact).toContain("resultCode: result.code");
+    expect(contact).toContain("updateEffectiveContactActivity");
+    expect(contact).toContain("assertLeadOpenForCommercialOperation");
+    expect(service).toContain("firstEffectiveContactAt");
+    expect(contact).toContain("writeEffectiveContactGovernance");
+    expect(contact).toContain("assertConversionSource");
+    expect(contact).toContain('type: "conversion_recorded"');
+    expect(contact).not.toContain("firstContactAt");
+  });
+
+  it("uses per-command idempotency and CAS before state changes", () => {
+    expect(service).toContain("leadOperationCommands");
+    expect(service).toContain("commandReplayDisposition");
+    expect(service).toContain("LEAD_STATUS_CONFLICT");
+    expect(service).toContain("eq(leads.statusId, expectedStatusId)");
+  });
+
+  it("keeps administrative status and reopen separate from commercial conversion", () => {
+    const admin = commandSlice(
+      "export async function changeAdministrativeStatus",
+      "export async function reopenLead"
+    );
+    const reopen = service.slice(
+      service.indexOf("export async function reopenLead")
+    );
+    expect(admin).toContain('type: "administrative_status_changed"');
+    expect(admin).toContain("writeV2Audit");
+    expect(admin).toContain("assertAdministrativeStatusTransition");
+    expect(admin).not.toContain("leadConversions).values");
+    expect(reopen).toContain('type: "lead_reopened"');
+    expect(reopen).toContain("Somente um lead terminal pode ser reaberto");
+    expect(reopen).not.toContain("leadConversions).delete");
+  });
+
+  it("binds evidence to the operation snapshot and leaves legacy routes intact", () => {
+    expect(evidence).toContain(
+      "operationKind: leadTreatmentGovernance.operationKind"
+    );
+    expect(evidence).toContain("normalizeAttemptGovernanceRule");
+    expect(router).toContain("changeStatus: v2PartnerProcedure");
+    expect(router).toContain("contact: v2PartnerProcedure");
+    expect(router).toContain("registerAttempt: v2PartnerProcedure");
+    expect(router).toContain("recordEffectiveContact: v2PartnerProcedure");
+    expect(legacyLeadService).toContain("assertLegacyLeadJourney");
+    expect(legacyLeadService).toContain("LEGACY_LEAD_OPERATION_NOT_AVAILABLE");
+  });
+});

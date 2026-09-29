@@ -45,6 +45,26 @@ describe("016.1 lead journey domain foundation", () => {
     ).toEqual({ kind: "lead_terminal", hasResidualFollowUp: true });
   });
 
+  it("returns a read-only operational state for a frozen or closed campaign", () => {
+    expect(
+      deriveNextLeadAction({
+        ...baseInput,
+        isCampaignOperational: false,
+        pendingFollowUps: [{ dueAt: new Date("2026-09-28T18:00:00.000Z") }],
+      })
+    ).toEqual({ kind: "campaign_not_operational", hasResidualFollowUp: true });
+  });
+
+  it("keeps terminal state above campaign and residual follow-up suggestions", () => {
+    expect(
+      deriveNextLeadAction({
+        ...baseInput,
+        isTerminal: true,
+        isCampaignOperational: false,
+      })
+    ).toEqual({ kind: "lead_terminal", hasResidualFollowUp: false });
+  });
+
   it("uses the partner timezone to distinguish overdue and today follow-ups", () => {
     expect(
       deriveNextLeadAction({
