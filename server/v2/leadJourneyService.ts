@@ -59,6 +59,10 @@ import {
   campaignAllowsLeadOperations,
   sellerCanModifyLead,
 } from "./leadPolicy";
+import {
+  listPartnerInteractionResults,
+  listPartnerLeadStatuses,
+} from "./leadConfiguration";
 import { writeV2Audit } from "./partnerService";
 
 type LeadRow = typeof leads.$inferSelect;
@@ -124,6 +128,13 @@ export type ReopenLeadInput = {
   reason: string;
   expectedStatusId: number;
   requestKey: string;
+};
+
+export type LeadOperationRequirementsInput = {
+  leadId: number;
+  operationKind: "attempt" | "effective_contact";
+  channel?: string;
+  resultId?: number;
 };
 
 function insertedId(result: unknown, message: string) {
@@ -356,6 +367,180 @@ async function assertSeparatedJourney(db: V2Database, context: PartnerContext) {
       "NEW_LEAD_JOURNEY_NOT_ENABLED"
     );
   }
+}
+
+/**
+ * Active choices for an operational form. This is deliberately separate from
+ * the Partner Admin configuration API: sellers need labels and policies for
+ * their permitted partner, never the ability to mutate the catalogue.
+ */
+export async function listOperationalInteractionResults(
+  context: PartnerContext,
+  interactionKind: LeadInteractionKind
+) {
+  const db = await getV2Db();
+  await assertSeparatedJourney(db, context);
+  return listPartnerInteractionResults(db, context.partnerId, interactionKind);
+}
+
+/**
+ * Read-only form contract for the separated journey. React consumes this
+ * response to decide what to render; all state, governance and RBAC decisions
+ * remain independently enforced again by the write commands.
+ */
+export async function getLeadOperationRequirements(
+  context: PartnerContext,
+  input: LeadOperationRequirementsInput
+) {
+  const db = await getV2Db();
+  await assertSeparatedJourney(db, context);
+  const lead = await loadLead(db, context, input.leadId);
+  await assertLeadScope(db, context, lead, "read");
+
+  const currentStatus = await getCurrentStatus(
+    db,
+    context.partnerId,
+    lead.statusId
+  );
+  let campaignOperational = true;
+  try {
+    await assertCampaignOperational(db, context, lead);
+  } catch {
+    campaignOperational = false;
+  }
+
+  const operationalMembership = Boolean(context.membershipId);
+  const sellerOwnsLead =
+    context.role !== "seller" ||
+    sellerCanModifyLead(lead.assignedMembershipId, context.membershipId);
+  const canOperate =
+    operationalMembership &&
+    sellerOwnsLead &&
+    campaignOperational &&
+    !currentStatus.isTerminal;
+
+  const rawChannel = input.channel?.trim() || null;
+  let rule: GovernanceRule | AttemptGovernanceRule;
+  let governanceFollowUpRequired = false;
+  if (input.operationKind === "attempt") {
+    const effective = await resolveEffectiveAttemptGovernance(
+      db,
+      context.partnerId,
+      lead.campaignId
+    );
+    rule = rawChannel
+      ? resolveGovernanceForAttempt(effective.rule, rawChannel)
+      : effective.rule;
+  } else {
+    const effective = await resolveEffectiveGovernance(
+      db,
+      context.partnerId,
+      lead.campaignId
+    );
+    const contactRule = rawChannel
+      ? resolveGovernanceForContact(effective.rule, rawChannel)
+      : effective.rule;
+    rule = contactRule;
+    governanceFollowUpRequired = contactRule.followUpRequired;
+  }
+  const result = input.resultId
+    ? await getActiveResult(db, context, input.resultId, input.operationKind)
+    : null;
+
+  let suggestedStatus: LeadStatusRow | null = null;
+  if (
+    input.operationKind === "effective_contact" &&
+    result?.suggestedStatusId
+  ) {
+    suggestedStatus = await getActiveStatus(
+      db,
+      context.partnerId,
+      result.suggestedStatusId
+    );
+  }
+  if (
+    input.operationKind === "effective_contact" &&
+    result &&
+    result.statusPolicy !== "none" &&
+    !suggestedStatus
+  ) {
+    throw new LeadJourneyOperationError(
+      "INVALID_RESULT_CONFIGURATION",
+      "Resultado configurado sem situação sugerida"
+    );
+  }
+
+  const followUpRequired =
+    input.operationKind === "effective_contact" && result
+      ? isFollowUpRequired({
+          governanceRequiresFollowUp: governanceFollowUpRequired,
+          resultPolicy: result.followUpPolicy,
+        })
+      : input.operationKind === "effective_contact"
+        ? governanceFollowUpRequired
+        : false;
+  const followUpAllowed =
+    input.operationKind === "attempt"
+      ? result?.followUpPolicy !== "not_applicable"
+      : Boolean(
+          followUpRequired || result?.followUpPolicy !== "not_applicable"
+        );
+  const canOverrideSuggestedStatus = Boolean(
+    input.operationKind === "effective_contact" &&
+      result?.statusPolicy === "suggest" &&
+      (context.role !== "seller" || result.allowSellerOverride)
+  );
+
+  return {
+    operationKind: input.operationKind,
+    canOperate,
+    campaignOperational,
+    isTerminal: currentStatus.isTerminal,
+    blockedReason: !operationalMembership
+      ? "Uma membership operacional ativa é necessária para registrar esta ação"
+      : !sellerOwnsLead
+        ? "Somente o responsável pode operar este lead"
+        : !campaignOperational
+          ? "A campanha não permite operações de lead neste momento"
+          : currentStatus.isTerminal
+            ? "Reabra o lead antes de registrar uma nova ação comercial"
+            : null,
+    allowedChannels: rule.allowedChannels,
+    requirements: {
+      summaryRequired: rule.noteRequired,
+      evidenceRequired: rule.evidenceRequired,
+      followUp: {
+        required: followUpRequired,
+        allowed: followUpAllowed,
+      },
+    },
+    result: result
+      ? {
+          id: result.id,
+          code: result.code,
+          label: result.label,
+          category: result.category,
+          followUpPolicy: result.followUpPolicy,
+          conversionMode: result.conversionMode,
+        }
+      : null,
+    status: {
+      policy:
+        input.operationKind === "effective_contact"
+          ? (result?.statusPolicy ?? "none")
+          : "none",
+      suggested: suggestedStatus
+        ? {
+            id: suggestedStatus.id,
+            label: suggestedStatus.label,
+            category: suggestedStatus.category,
+            isTerminal: suggestedStatus.isTerminal,
+          }
+        : null,
+      canOverrideSuggestedStatus,
+    },
+    statuses: await listPartnerLeadStatuses(db, context.partnerId),
+  };
 }
 
 async function writeTimeline(

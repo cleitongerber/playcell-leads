@@ -18,7 +18,10 @@ function labelFromCode(value: unknown): string | null {
   if (!code) return null;
   return code
     .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, character => character.toUpperCase());
+    .split(" ")
+    .filter(Boolean)
+    .map(word => `${word[0]?.toLocaleUpperCase("pt-BR") ?? ""}${word.slice(1)}`)
+    .join(" ");
 }
 
 function formatDateTime(value: unknown): string | null {
@@ -31,6 +34,14 @@ function formatDateTime(value: unknown): string | null {
         dateStyle: "short",
         timeStyle: "short",
       });
+}
+
+function interactionDescription(data: Record<string, unknown>) {
+  const channel = labelFromCode(data.channel);
+  const result = textOf(data.resultLabel) ?? labelFromCode(data.resultCode);
+  return [channel && `Canal: ${channel}`, result && `Resultado: ${result}`]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /**
@@ -50,7 +61,8 @@ export function presentTimelineEvent(
     case "lead_created":
       return {
         title: "Lead criado",
-        description: "O lead foi incluído na campanha e disponibilizado para atendimento.",
+        description:
+          "O lead foi incluído na campanha e disponibilizado para atendimento.",
       };
     case "lead_imported":
       return {
@@ -59,7 +71,9 @@ export function presentTimelineEvent(
       };
     case "import_updated": {
       const fields = Array.isArray(data.fields)
-        ? data.fields.filter((field): field is string => typeof field === "string")
+        ? data.fields.filter(
+            (field): field is string => typeof field === "string"
+          )
         : [];
       return {
         title: "Dados atualizados por importação",
@@ -76,7 +90,9 @@ export function presentTimelineEvent(
     case "assignee_changed":
       return {
         title: "Responsável alterado",
-        description: textOf(data.reason) ?? "A responsabilidade pelo lead foi transferida.",
+        description:
+          textOf(data.reason) ??
+          "A responsabilidade pelo lead foi transferida.",
       };
     case "lead_distributed":
       return {
@@ -120,12 +136,64 @@ export function presentTimelineEvent(
     case "contact": {
       const channel = labelFromCode(data.channel);
       const outcome = labelFromCode(data.outcome);
-      const detail = [channel && `Canal: ${channel}`, outcome && `Resultado: ${outcome}`]
+      const detail = [
+        channel && `Canal: ${channel}`,
+        outcome && `Resultado: ${outcome}`,
+      ]
         .filter(Boolean)
         .join(" · ");
       return {
         title: "Contato registrado",
-        description: [detail, note].filter(Boolean).join(note && detail ? " — " : "") || undefined,
+        description:
+          [detail, note].filter(Boolean).join(note && detail ? " — " : "") ||
+          undefined,
+      };
+    }
+    case "contact_attempted": {
+      const detail = interactionDescription(data);
+      return {
+        title: "Tentativa de contato",
+        description:
+          [detail, note].filter(Boolean).join(note && detail ? " — " : "") ||
+          undefined,
+      };
+    }
+    case "effective_contact_recorded": {
+      const detail = interactionDescription(data);
+      return {
+        title: "Tratativa registrada",
+        description:
+          [detail, note].filter(Boolean).join(note && detail ? " — " : "") ||
+          undefined,
+      };
+    }
+    case "conversion_recorded": {
+      const result = textOf(data.resultLabel) ?? labelFromCode(data.resultCode);
+      return {
+        title: "Conversão registrada",
+        description: result ? `Resultado: ${result}.` : undefined,
+      };
+    }
+    case "lead_reopened": {
+      const status = labelFromCode(data.statusCode);
+      const reason = textOf(data.reason);
+      return {
+        title: "Lead reaberto",
+        description:
+          [status && `Nova situação: ${status}.`, reason]
+            .filter(Boolean)
+            .join(reason && status ? " — " : "") || undefined,
+      };
+    }
+    case "administrative_status_changed": {
+      const status = labelFromCode(data.statusCode);
+      const reason = textOf(data.reason);
+      return {
+        title: "Situação ajustada administrativamente",
+        description:
+          [status && `Nova situação: ${status}.`, reason]
+            .filter(Boolean)
+            .join(reason && status ? " — " : "") || undefined,
       };
     }
     case "note":
@@ -136,9 +204,10 @@ export function presentTimelineEvent(
     case "follow_up_created":
       return {
         title: "Follow-up agendado",
-        description: [dueAt && `Para ${dueAt}`, note]
-          .filter(Boolean)
-          .join(note && dueAt ? " — " : "") || undefined,
+        description:
+          [dueAt && `Para ${dueAt}`, note]
+            .filter(Boolean)
+            .join(note && dueAt ? " — " : "") || undefined,
       };
     case "follow_up_completed":
       return {
@@ -161,7 +230,10 @@ export function presentTimelineEvent(
         .join(" ");
       return {
         title: "Follow-up reagendado",
-        description: [schedule, reason].filter(Boolean).join(reason && schedule ? " — " : "") || undefined,
+        description:
+          [schedule, reason]
+            .filter(Boolean)
+            .join(reason && schedule ? " — " : "") || undefined,
       };
     }
     default:

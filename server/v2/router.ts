@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getSessionCookieOptions } from "../_core/cookies";
+import { getV2Db } from "./database";
 import { loginV2WithPassword } from "./auth";
 import {
   createV2SessionToken,
@@ -85,6 +86,7 @@ import {
   getWhatsAppInitialMessageTemplate,
   updateWhatsAppInitialMessageTemplate,
 } from "./whatsappTemplateService";
+import { getPartnerLeadJourneyMode } from "./leadJourneySettings";
 import {
   listInteractionResultConfiguration,
   deactivateInteractionResult,
@@ -93,7 +95,9 @@ import {
 } from "./interactionResultService";
 import {
   changeAdministrativeStatus,
+  getLeadOperationRequirements,
   getLeadNextAction,
+  listOperationalInteractionResults,
   recordEffectiveContact,
   registerAttempt,
   reopenLead,
@@ -362,6 +366,14 @@ export const v2FoundationRouter = v2Router({
       ),
   }),
   partnerSettings: v2Router({
+    // Read-only rollout signal. A missing or invalid value fails closed to
+    // legacy in the service, so the client never enables an unfinished flow.
+    leadJourneyMode: v2PartnerProcedure.query(async ({ ctx }) => {
+      const db = await getV2Db();
+      return {
+        mode: await getPartnerLeadJourneyMode(db, ctx.partner.partnerId),
+      };
+    }),
     whatsappTemplate: v2PartnerProcedure.query(({ ctx }) =>
       getWhatsAppInitialMessageTemplate(ctx.partner)
     ),
@@ -694,9 +706,32 @@ export const v2FoundationRouter = v2Router({
     nextAction: v2PartnerProcedure
       .input(z.object({ leadId: z.number().int().positive() }))
       .query(({ ctx, input }) => getLeadNextAction(ctx.partner, input.leadId)),
+    operationRequirements: v2PartnerProcedure
+      .input(
+        z.object({
+          leadId: z.number().int().positive(),
+          operationKind: z.enum(["attempt", "effective_contact"]),
+          channel: z.string().min(1).max(48).optional(),
+          resultId: z.number().int().positive().optional(),
+        })
+      )
+      .query(({ ctx, input }) =>
+        getLeadOperationRequirements(ctx.partner, input)
+      ),
   }),
   // Backend foundation only: no 016.1 screen exposes this configuration yet.
   interactionResults: v2Router({
+    // Operational users only receive active, partner-scoped choices for the
+    // separated journey. Administrative configuration remains below.
+    available: v2PartnerProcedure
+      .input(
+        z.object({
+          interactionKind: z.enum(["attempt", "effective_contact"]),
+        })
+      )
+      .query(({ ctx, input }) =>
+        listOperationalInteractionResults(ctx.partner, input.interactionKind)
+      ),
     list: v2PartnerAdminProcedure
       .input(
         z

@@ -500,6 +500,18 @@
     color: var(--foreground);
     font-size: 0.875rem;
   }
+  .v2-lead-journey details > summary::-webkit-details-marker {
+    display: none;
+  }
+  .v2-lead-journey details > summary svg {
+    transition: transform 150ms ease;
+  }
+  .v2-lead-journey details[open] > summary svg {
+    transform: rotate(180deg);
+  }
+  .v2-lead-journey .v2-mobile-detail-grid strong {
+    overflow-wrap: anywhere;
+  }
   .v2-report-mobile-field {
     display: flex;
     align-items: flex-start;

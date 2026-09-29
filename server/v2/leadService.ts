@@ -540,6 +540,7 @@ export async function getLeadDetail(context: PartnerContext, leadId: number) {
       id: leadStatuses.id,
       label: leadStatuses.label,
       category: leadStatuses.category,
+      isTerminal: leadStatuses.isTerminal,
     })
     .from(leadStatuses)
     .where(eq(leadStatuses.id, lead.statusId));
@@ -605,6 +606,28 @@ export async function getLeadDetail(context: PartnerContext, leadId: number) {
       )
     )
     .orderBy(asc(followUps.dueAt), asc(followUps.id));
+  const actorMembershipIds = Array.from(
+    new Set(
+      timeline
+        .map(event => event.actorMembershipId)
+        .filter((membershipId): membershipId is number => membershipId !== null)
+    )
+  );
+  const timelineActors = actorMembershipIds.length
+    ? await db
+        .select({ membershipId: userPartners.id, name: users.name })
+        .from(userPartners)
+        .innerJoin(users, eq(users.id, userPartners.userId))
+        .where(
+          and(
+            eq(userPartners.partnerId, context.partnerId),
+            inArray(userPartners.id, actorMembershipIds)
+          )
+        )
+    : [];
+  const actorNameByMembershipId = new Map(
+    timelineActors.map(actor => [actor.membershipId, actor.name])
+  );
   const [evidences, governance, effectiveGovernance] = await Promise.all([
     db
       .select({
@@ -628,6 +651,7 @@ export async function getLeadDetail(context: PartnerContext, leadId: number) {
     db
       .select({
         timelineEventId: leadTreatmentGovernance.timelineEventId,
+        operationKind: leadTreatmentGovernance.operationKind,
         ruleSource: leadTreatmentGovernance.ruleSource,
         noteSatisfied: leadTreatmentGovernance.noteSatisfied,
         followUpSatisfied: leadTreatmentGovernance.followUpSatisfied,
@@ -649,7 +673,12 @@ export async function getLeadDetail(context: PartnerContext, leadId: number) {
     campaign,
     pdv,
     assignee,
-    timeline,
+    timeline: timeline.map(event => ({
+      ...event,
+      actorName: event.actorMembershipId
+        ? (actorNameByMembershipId.get(event.actorMembershipId) ?? null)
+        : null,
+    })),
     contacts,
     followUps: scheduledFollowUps,
     evidences,

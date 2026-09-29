@@ -41,6 +41,28 @@ describe("016.2 separated journey service contract", () => {
     expect(service).toContain("NEW_LEAD_JOURNEY_NOT_ENABLED");
   });
 
+  it("exposes active result choices and form requirements only through the separated journey guard", () => {
+    const resultChoices = service.slice(
+      service.indexOf(
+        "export async function listOperationalInteractionResults"
+      ),
+      service.indexOf("export async function getLeadOperationRequirements")
+    );
+    const requirements = service.slice(
+      service.indexOf("export async function getLeadOperationRequirements"),
+      service.indexOf("async function writeTimeline")
+    );
+
+    expect(resultChoices).toContain("assertSeparatedJourney");
+    expect(resultChoices).toContain("listPartnerInteractionResults");
+    expect(requirements).toContain("assertSeparatedJourney");
+    expect(requirements).toContain("resolveEffectiveAttemptGovernance");
+    expect(requirements).toContain("resolveEffectiveGovernance");
+    expect(requirements).toContain("canOverrideSuggestedStatus");
+    expect(router).toContain("operationRequirements: v2PartnerProcedure");
+    expect(router).toContain("available: v2PartnerProcedure");
+  });
+
   it("records attempts without creating legacy contacts, conversion, status or first contact", () => {
     const attempt = commandSlice(
       "export async function registerAttempt",

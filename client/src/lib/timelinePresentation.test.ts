@@ -34,6 +34,37 @@ describe("V2 timeline presentation", () => {
     });
   });
 
+  it("uses factual human labels for the separated operational events", () => {
+    expect(
+      presentTimelineEvent("contact_attempted", {
+        channel: "whatsapp",
+        resultLabel: "Mensagem enviada",
+      })
+    ).toEqual({
+      title: "Tentativa de contato",
+      description: "Canal: Whatsapp · Resultado: Mensagem enviada",
+    });
+    expect(
+      presentTimelineEvent("effective_contact_recorded", {
+        channel: "ligação",
+        resultLabel: "Interessado",
+        summary: "Cliente pediu proposta.",
+      })
+    ).toEqual({
+      title: "Tratativa registrada",
+      description:
+        "Canal: Ligação · Resultado: Interessado — Cliente pediu proposta.",
+    });
+    expect(
+      presentTimelineEvent("conversion_recorded", {
+        resultLabel: "Venda realizada",
+      })
+    ).toEqual({
+      title: "Conversão registrada",
+      description: "Resultado: Venda realizada.",
+    });
+  });
+
   it("presents distribution and transferred follow-ups without exposing memberships", () => {
     expect(
       presentTimelineEvent("lead_reassigned", {

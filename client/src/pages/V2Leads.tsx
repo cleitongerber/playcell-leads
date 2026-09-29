@@ -15,7 +15,10 @@ import { v2trpc } from "@/lib/v2trpc";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { FollowUpCancellationDialog } from "@/components/v2/FollowUpCancellationDialog";
+import { LeadEvidenceUploader } from "@/components/v2/LeadEvidenceUploader";
+import { V2SeparatedLeadJourney } from "@/components/v2/V2SeparatedLeadJourney";
 import { followUpStatusLabel } from "@/lib/followUpPresentation";
+import { usesSeparatedLeadJourney } from "@/lib/leadJourneyPresentation";
 import { useV2Session } from "@/components/v2/V2AppShell";
 import {
   buildV2Path,
@@ -139,78 +142,6 @@ function readLeadListState(): LeadListState {
         ? requestedFirstContact
         : undefined,
   };
-}
-
-function readFileAsBase64(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Não foi possível ler o arquivo"));
-    reader.onload = () => {
-      const result = String(reader.result ?? "");
-      const base64 = result.includes(",") ? result.split(",", 2)[1] : "";
-      if (!base64) {
-        reject(new Error("Não foi possível ler o arquivo"));
-        return;
-      }
-      resolve(base64);
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function EvidenceUploader({
-  leadId,
-  timelineEventId,
-  onUploaded,
-}: {
-  leadId: number;
-  timelineEventId: number;
-  onUploaded: () => void;
-}) {
-  const [file, setFile] = useState<File | null>(null);
-  const upload = v2trpc.evidences.upload.useMutation({
-    onSuccess: () => {
-      setFile(null);
-      onUploaded();
-      toast.success("Evidência anexada à tratativa");
-    },
-    onError: error => toast.error(error.message),
-  });
-  const send = async () => {
-    if (!file) return;
-    try {
-      upload.mutate({
-        leadId,
-        timelineEventId,
-        fileName: file.name,
-        mimeType: file.type,
-        base64: await readFileAsBase64(file),
-      });
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível ler o arquivo"
-      );
-    }
-  };
-  return (
-    <div className="mt-3 flex flex-col gap-2 rounded-md bg-muted/40 p-3 sm:flex-row sm:items-center">
-      <Input
-        type="file"
-        accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
-        onChange={event => setFile(event.target.files?.[0] ?? null)}
-      />
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={!file || upload.isPending}
-        onClick={send}
-      >
-        Anexar evidência
-      </Button>
-    </div>
-  );
 }
 
 export default function V2Leads() {
@@ -459,7 +390,27 @@ export default function V2Leads() {
   );
 }
 
+/**
+ * The rollout decision comes from the backend. Until it resolves we do not
+ * optimistically mount either form; an error intentionally falls back to the
+ * established legacy experience.
+ */
 export function V2LeadDetail() {
+  const journeyMode = v2trpc.partnerSettings.leadJourneyMode.useQuery();
+  if (journeyMode.isLoading) {
+    return (
+      <main className="v2-page">
+        <V2LoadingState label="Preparando área de trabalho" />
+      </main>
+    );
+  }
+  if (usesSeparatedLeadJourney(journeyMode.data?.mode)) {
+    return <V2SeparatedLeadJourney />;
+  }
+  return <V2LegacyLeadDetail />;
+}
+
+function V2LegacyLeadDetail() {
   const [, params] = useRoute("/v2/leads/:id");
   const id = Number(params?.id);
   const session = useV2Session();
@@ -1176,10 +1127,11 @@ export function V2LeadDetail() {
                     </div>
                   ))}
                   {canWork && canAttach && (
-                    <EvidenceUploader
+                    <LeadEvidenceUploader
                       leadId={id}
                       timelineEventId={event.id}
                       onUploaded={refresh}
+                      successMessage="Evidência anexada à tratativa."
                     />
                   )}
                 </div>
