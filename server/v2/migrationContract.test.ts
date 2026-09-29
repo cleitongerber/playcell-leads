@@ -249,4 +249,19 @@ describe("V2 migration tenant-key contract", () => {
     expect(renderBlueprint).toContain("pnpm db:migrate");
     expect(renderBlueprint).not.toContain("db:push");
   });
+
+  it("enables the separated journey only for existing pre-operational partners", () => {
+    const migration = readFileSync(
+      resolve(
+        process.cwd(),
+        "drizzle-v2/0012_v2_enable_separated_lead_journey.sql"
+      ),
+      "utf8"
+    );
+
+    expect(migration).toContain("UPDATE `partner_settings`");
+    expect(migration).toContain("'separated_contact_v1'");
+    expect(migration).not.toContain("INSERT INTO `partners`");
+    expect(migration).not.toContain("DELETE FROM");
+  });
 });

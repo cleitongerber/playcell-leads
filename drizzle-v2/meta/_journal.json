@@ -85,6 +85,13 @@
       "when": 1790596766282,
       "tag": "0011_v2_lead_journey_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1790710768356,
+      "tag": "0012_v2_enable_separated_lead_journey",
+      "breakpoints": true
     }
   ]
 }
