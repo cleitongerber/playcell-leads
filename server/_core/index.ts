@@ -3,6 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { readBuildInfo } from "./buildInfo";
 import { serveStatic, setupVite } from "./vite";
 import { v2FoundationRouter } from "../v2/router";
 import { createV2Context } from "../v2/context";
@@ -30,6 +31,12 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
   const v2Mode = process.env.V2_ENABLE_API === "true";
+  const buildInfo = readBuildInfo();
+
+  app.get("/healthz", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.status(200).json({ status: "ok", version: buildInfo.version });
+  });
 
   if (
     v2Mode &&

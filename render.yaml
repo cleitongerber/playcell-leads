@@ -10,7 +10,7 @@ services:
     # migrations and keeps the currently live release in place on failure.
     buildCommand: pnpm install --no-frozen-lockfile && pnpm db:migrate && pnpm build
     startCommand: pnpm start
-    healthCheckPath: /
+    healthCheckPath: /healthz
     autoDeployTrigger: commit
     envVars:
       - key: NODE_ENV
