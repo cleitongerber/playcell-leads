@@ -195,7 +195,10 @@ export const partnerSettings = mysqlTable(
       .default(DEFAULT_WHATSAPP_INITIAL_MESSAGE_TEMPLATE),
     leadJourneyMode: mysqlEnum("leadJourneyMode", leadJourneyMode)
       .notNull()
-      .default("legacy"),
+      // Deprecated rollout marker. The unified journey is now the only
+      // runtime path; preserve the column temporarily for historical schema
+      // compatibility while new partner rows accurately reflect that state.
+      .default("separated_contact_v1"),
     notificationSettings: json("notificationSettings"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
@@ -556,8 +559,8 @@ export const leads = mysqlTable(
     receivedAt: timestamp("receivedAt").notNull().defaultNow(),
     assignedAt: timestamp("assignedAt"),
     firstContactAt: timestamp("firstContactAt"),
-    // These fields intentionally begin empty. `firstContactAt` remains the
-    // historical compatibility field until partners opt in to the new model.
+    // `firstContactAt` is retained only for historical compatibility. The
+    // unified operational journey uses the two explicit fields below.
     firstAttemptAt: timestamp("firstAttemptAt"),
     firstEffectiveContactAt: timestamp("firstEffectiveContactAt"),
     lastActivityAt: timestamp("lastActivityAt"),

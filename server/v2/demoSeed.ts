@@ -6,6 +6,7 @@ import {
   importTemplates,
   importTemplateVersions,
   leadSources,
+  leadInteractionResults,
   leadStatuses,
   leadTimelineEvents,
   leads,
@@ -28,8 +29,9 @@ import {
   addLeadNote,
   assumeLead,
   createLead,
-  recordLeadContact,
+  initializeLeadConfiguration,
 } from "./leadService";
+import { registerAttempt, recordEffectiveContact } from "./leadJourneyService";
 import { createPartner, writeV2Audit } from "./partnerService";
 import { createPdv } from "./pdvService";
 import { createPartnerUser } from "./userService";
@@ -196,6 +198,7 @@ async function seedOverdueFollowUp(
     ownerMembershipId: number;
     dueAt: Date;
     note: string;
+    originTimelineEventId?: number | null;
   }
 ) {
   const existing = (
@@ -220,6 +223,7 @@ async function seedOverdueFollowUp(
       ownerMembershipId: input.ownerMembershipId,
       dueAt: input.dueAt,
       note: input.note,
+      originTimelineEventId: input.originTimelineEventId ?? null,
       status: "pending",
     });
     const followUpId = insertId(followUpInsert);
@@ -242,6 +246,7 @@ async function seedOverdueFollowUp(
         dueAt: input.dueAt.toISOString(),
         note: input.note,
         seededFor: "overdue_demo",
+        originTimelineEventId: input.originTimelineEventId ?? null,
       },
       visibility: "partner",
     });
@@ -404,6 +409,9 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     role: "super_admin",
     userId: superAdmin.id,
   };
+  // Ensures a repeatable demo always has the structured catalog required by
+  // the unified operational commands, including an older pre-016 partner.
+  await initializeLeadConfiguration(superAdminContext);
 
   const [videiraPdvId, fraiburgoPdvId, cacadorPdvId] = await Promise.all([
     ensurePdv(db, superAdminContext, {
@@ -518,7 +526,13 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     noteRequired: false,
     followUpRequired: false,
     allowedChannels: ["whatsapp", "telefone", "email"],
-    allowedOutcomes: ["interessado", "sem_resposta", "agendado", "convertido"],
+    allowedOutcomes: [
+      "interested",
+      "return_later",
+      "not_interested",
+      "sale_completed",
+      "other_contact",
+    ],
     allowedEvidenceMimeTypes: ["image/png", "image/jpeg", "application/pdf"],
     maxEvidenceSizeBytes: 5 * 1024 * 1024,
     retentionDays: 365,
@@ -541,7 +555,7 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     sortOrder: 20,
   });
 
-  const [statusRows, sourceRows] = await Promise.all([
+  const [statusRows, sourceRows, interactionResultRows] = await Promise.all([
     db
       .select({ id: leadStatuses.id, code: leadStatuses.code })
       .from(leadStatuses)
@@ -550,9 +564,23 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
       .select({ id: leadSources.id, code: leadSources.code })
       .from(leadSources)
       .where(eq(leadSources.partnerId, partnerId)),
+    db
+      .select({
+        id: leadInteractionResults.id,
+        code: leadInteractionResults.code,
+        interactionKind: leadInteractionResults.interactionKind,
+      })
+      .from(leadInteractionResults)
+      .where(eq(leadInteractionResults.partnerId, partnerId)),
   ]);
   const statusId = new Map(statusRows.map(row => [row.code, row.id]));
   const sourceId = new Map(sourceRows.map(row => [row.code, row.id]));
+  const interactionResultId = new Map(
+    interactionResultRows.map(row => [
+      `${row.interactionKind}:${row.code}`,
+      row.id,
+    ])
+  );
   const requiredStatus = (code: string) => {
     const id = statusId.get(code);
     if (!id) throw new Error(`Status DEMO ausente: ${code}`);
@@ -561,6 +589,15 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
   const requiredSource = (code: string) => {
     const id = sourceId.get(code);
     if (!id) throw new Error(`Fonte DEMO ausente: ${code}`);
+    return id;
+  };
+  const requiredResult = (
+    interactionKind: "attempt" | "effective_contact",
+    code: string
+  ) => {
+    const id = interactionResultId.get(`${interactionKind}:${code}`);
+    if (!id)
+      throw new Error(`Resultado DEMO ausente: ${interactionKind}/${code}`);
     return id;
   };
 
@@ -671,11 +708,12 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
 
   if (overdue.created) {
     await assumeLead(sellerOneContext, overdue.id);
-    await recordLeadContact(sellerOneContext, overdue.id, {
+    const attempt = await registerAttempt(sellerOneContext, {
+      leadId: overdue.id,
       channel: "whatsapp",
-      outcome: "sem_resposta",
+      resultId: requiredResult("attempt", "message_sent"),
       summary: "Contato DEMO sem resposta; retorno pendente.",
-      statusId: requiredStatus("contacted"),
+      requestKey: `demo-attempt-overdue-${overdue.id}`,
     });
     await seedOverdueFollowUp(db, {
       partnerId,
@@ -683,17 +721,22 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
       ownerMembershipId: sellerOne.membershipId,
       dueAt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
       note: "DEMO — retorno vencido",
+      originTimelineEventId: attempt.timelineEvent.id,
     });
   }
   if (upcoming.created) {
     await assumeLead(sellerOneContext, upcoming.id);
-    await recordLeadContact(sellerOneContext, upcoming.id, {
+    await recordEffectiveContact(sellerOneContext, {
+      leadId: upcoming.id,
       channel: "telefone",
-      outcome: "interessado",
+      resultId: requiredResult("effective_contact", "interested"),
       summary: "Cliente DEMO interessado; próximo contato programado.",
-      statusId: requiredStatus("qualified"),
-      followUpDueAt: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
-      followUpNote: "DEMO — enviar proposta",
+      finalStatusId: requiredStatus("qualified"),
+      followUp: {
+        dueAt: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
+        note: "DEMO — enviar proposta",
+      },
+      requestKey: `demo-effective-upcoming-${upcoming.id}`,
     });
     await addLeadNote(
       sellerOneContext,
@@ -716,11 +759,13 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
   }
   if (completed.created) {
     await assumeLead(sellerTwoContext, completed.id);
-    await recordLeadContact(sellerTwoContext, completed.id, {
+    await recordEffectiveContact(sellerTwoContext, {
+      leadId: completed.id,
       channel: "email",
-      outcome: "convertido",
+      resultId: requiredResult("effective_contact", "sale_completed"),
       summary: "Conversão DEMO registrada para exibir a timeline concluída.",
-      statusId: requiredStatus("converted"),
+      finalStatusId: requiredStatus("converted"),
+      requestKey: `demo-effective-conversion-${completed.id}`,
     });
     const completedFollowUpId = await createFollowUp(sellerTwoContext, {
       leadId: completed.id,

@@ -89,8 +89,3 @@ export function presentNextLeadAction(action: BackendNextLeadAction) {
       };
   }
 }
-
-/** Fails closed, matching the server's missing-setting legacy default. */
-export function usesSeparatedLeadJourney(value: unknown) {
-  return value === "separated_contact_v1";
-}

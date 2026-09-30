@@ -1,14 +1,4 @@
-import type { LeadJourneyMode } from "../../drizzle-v2/schema";
 import { partnerDayBounds } from "./partnerTime";
-
-/** A missing or unrecognized setting always fails closed to the legacy journey. */
-export function normalizeLeadJourneyMode(value: unknown): LeadJourneyMode {
-  return value === "separated_contact_v1" ? value : "legacy";
-}
-
-export function usesSeparatedContactJourney(value: unknown) {
-  return normalizeLeadJourneyMode(value) === "separated_contact_v1";
-}
 
 export type PendingLeadFollowUp = {
   dueAt: Date;

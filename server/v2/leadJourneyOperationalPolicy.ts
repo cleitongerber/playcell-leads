@@ -7,14 +7,12 @@ import type {
 import type { PartnerRole } from "./access";
 
 /**
- * Domain errors from the separated journey deliberately carry a stable code.
- * The legacy router continues to use its previous errors and services.
+ * Domain errors from the unified operational journey deliberately carry a
+ * stable code for the UI and retry boundary.
  */
 export class LeadJourneyOperationError extends Error {
   constructor(
     public readonly code:
-      | "NEW_LEAD_JOURNEY_NOT_ENABLED"
-      | "LEGACY_LEAD_OPERATION_NOT_AVAILABLE"
       | "LEAD_OPERATION_IN_PROGRESS"
       | "LEAD_STATUS_CONFLICT"
       | "ADMINISTRATIVE_STATUS_FORBIDDEN"

@@ -14,11 +14,6 @@ const evidence = readFileSync(
   resolve(process.cwd(), "server/v2/evidenceService.ts"),
   "utf8"
 );
-const legacyLeadService = readFileSync(
-  resolve(process.cwd(), "server/v2/leadService.ts"),
-  "utf8"
-);
-
 function commandSlice(start: string, end: string) {
   const startAt = service.indexOf(start);
   const endAt = service.indexOf(end, startAt + start.length);
@@ -26,8 +21,8 @@ function commandSlice(start: string, end: string) {
   return service.slice(startAt, endAt);
 }
 
-describe("016.2 separated journey service contract", () => {
-  it("keeps all new commands behind the explicit partner journey flag", () => {
+describe("016.4 unified journey service contract", () => {
+  it("keeps the new commands as the only commercial operation path", () => {
     for (const command of [
       "registerAttempt",
       "recordEffectiveContact",
@@ -36,12 +31,13 @@ describe("016.2 separated journey service contract", () => {
     ]) {
       const start = service.indexOf(`export async function ${command}`);
       const section = service.slice(start, start + 450);
-      expect(section).toContain("assertSeparatedJourney");
+      expect(section).not.toContain("assertSeparatedJourney");
     }
-    expect(service).toContain("NEW_LEAD_JOURNEY_NOT_ENABLED");
+    expect(router).not.toContain("changeStatus: v2PartnerProcedure");
+    expect(router).not.toContain("contact: v2PartnerProcedure");
   });
 
-  it("exposes active result choices and form requirements only through the separated journey guard", () => {
+  it("exposes active result choices and form requirements through the unified journey", () => {
     const resultChoices = service.slice(
       service.indexOf(
         "export async function listOperationalInteractionResults"
@@ -53,9 +49,7 @@ describe("016.2 separated journey service contract", () => {
       service.indexOf("async function writeTimeline")
     );
 
-    expect(resultChoices).toContain("assertSeparatedJourney");
     expect(resultChoices).toContain("listPartnerInteractionResults");
-    expect(requirements).toContain("assertSeparatedJourney");
     expect(requirements).toContain("resolveEffectiveAttemptGovernance");
     expect(requirements).toContain("resolveEffectiveGovernance");
     expect(requirements).toContain("canOverrideSuggestedStatus");
@@ -119,16 +113,14 @@ describe("016.2 separated journey service contract", () => {
     expect(reopen).not.toContain("leadConversions).delete");
   });
 
-  it("binds evidence to the operation snapshot and leaves legacy routes intact", () => {
+  it("binds evidence to the operation snapshot and removes legacy commercial routes", () => {
     expect(evidence).toContain(
       "operationKind: leadTreatmentGovernance.operationKind"
     );
     expect(evidence).toContain("normalizeAttemptGovernanceRule");
-    expect(router).toContain("changeStatus: v2PartnerProcedure");
-    expect(router).toContain("contact: v2PartnerProcedure");
     expect(router).toContain("registerAttempt: v2PartnerProcedure");
     expect(router).toContain("recordEffectiveContact: v2PartnerProcedure");
-    expect(legacyLeadService).toContain("assertLegacyLeadJourney");
-    expect(legacyLeadService).toContain("LEGACY_LEAD_OPERATION_NOT_AVAILABLE");
+    expect(router).not.toContain("changeStatus: v2PartnerProcedure");
+    expect(router).not.toContain("contact: v2PartnerProcedure");
   });
 });

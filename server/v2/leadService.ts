@@ -9,7 +9,6 @@ import {
   isNull,
   like,
   or,
-  sql,
 } from "drizzle-orm";
 import {
   campaignPdvs,
@@ -30,11 +29,6 @@ import {
 import { requirePartnerRole, type PartnerContext } from "./access";
 import { getV2Db, type V2Database } from "./database";
 import { transferLeadResponsibility } from "./distributionService";
-import {
-  assertContactGovernance,
-  evaluateTreatmentGovernance,
-  resolveGovernanceForContact,
-} from "./governancePolicy";
 import { resolveEffectiveGovernance } from "./governanceService";
 import {
   listPartnerLeadSources,
@@ -47,8 +41,6 @@ import {
   sellerCanModifyLead,
 } from "./leadPolicy";
 import { writeV2Audit } from "./partnerService";
-import { getPartnerLeadJourneyMode } from "./leadJourneySettings";
-import { LeadJourneyOperationError } from "./leadJourneyOperationalPolicy";
 
 const PAGE_MAX = 100;
 type LeadRow = typeof leads.$inferSelect;
@@ -215,23 +207,6 @@ async function getActiveStatus(
   )[0];
   if (!status) throw new Error("Status inválido para o parceiro atual");
   return status;
-}
-
-/**
- * Legacy procedures intentionally remain unchanged for legacy partners. Once
- * a partner opts into the separated model, allowing these old commands would
- * let a caller bypass the attempt/effective-contact distinction.
- */
-async function assertLegacyLeadJourney(
-  db: V2Database,
-  context: PartnerContext
-) {
-  if ((await getPartnerLeadJourneyMode(db, context.partnerId)) !== "legacy") {
-    throw new LeadJourneyOperationError(
-      "LEGACY_LEAD_OPERATION_NOT_AVAILABLE",
-      "LEGACY_LEAD_OPERATION_NOT_AVAILABLE"
-    );
-  }
 }
 
 export async function createLead(
@@ -480,10 +455,17 @@ export async function listLeads(
     conditions.push(isNull(leads.assignedMembershipId));
   }
   if (input.firstContact === "missing") {
-    conditions.push(isNull(leads.firstContactAt));
+    conditions.push(
+      and(isNull(leads.firstAttemptAt), isNull(leads.firstEffectiveContactAt))!
+    );
   }
   if (input.firstContact === "recorded") {
-    conditions.push(isNotNull(leads.firstContactAt));
+    conditions.push(
+      or(
+        isNotNull(leads.firstAttemptAt),
+        isNotNull(leads.firstEffectiveContactAt)
+      )!
+    );
   }
   if (input.search?.trim())
     conditions.push(
@@ -503,7 +485,8 @@ export async function listLeads(
     phone: leads.phone,
     receivedAt: leads.receivedAt,
     assignedAt: leads.assignedAt,
-    firstContactAt: leads.firstContactAt,
+    firstAttemptAt: leads.firstAttemptAt,
+    firstEffectiveContactAt: leads.firstEffectiveContactAt,
     lastActivityAt: leads.lastActivityAt,
     statusLabel: leadStatuses.label,
     statusCategory: leadStatuses.category,
@@ -748,230 +731,6 @@ export async function transferLead(
   // distribution service performs tenant/scope validation, conditional owner
   // updates, follow-up transfer and the individual historical events.
   return transferLeadResponsibility(context, leadId, nextMembershipId, reason);
-}
-
-export async function changeLeadStatus(
-  context: PartnerContext,
-  leadId: number,
-  statusId: number
-) {
-  const db = await getV2Db();
-  await assertLegacyLeadJourney(db, context);
-  return db.transaction(async tx => {
-    const transactionDb = tx as unknown as V2Database;
-    const lead = await getLeadInPartner(transactionDb, context, leadId);
-    await assertLeadVisible(transactionDb, context, lead, true);
-    await assertCampaignOperational(
-      transactionDb,
-      context,
-      lead.campaignId,
-      lead.pdvId
-    );
-    const status = await getActiveStatus(
-      transactionDb,
-      context.partnerId,
-      statusId
-    );
-    await tx
-      .update(leads)
-      .set({ statusId, lastActivityAt: new Date(), updatedAt: new Date() })
-      .where(eq(leads.id, leadId));
-    await writeTimeline(transactionDb, {
-      partnerId: context.partnerId,
-      leadId,
-      actorMembershipId: context.membershipId,
-      type: "status_changed",
-      payload: {
-        previousStatusId: lead.statusId,
-        statusId,
-        statusCode: status.code,
-      },
-    });
-  });
-}
-
-export async function recordLeadContact(
-  context: PartnerContext,
-  leadId: number,
-  input: {
-    channel: string;
-    outcome: string;
-    summary?: string | null;
-    occurredAt?: Date;
-    statusId?: number;
-    followUpDueAt?: Date | null;
-    followUpNote?: string | null;
-  }
-) {
-  if (!context.membershipId)
-    throw new Error("Uma membership ativa é necessária para registrar contato");
-  const db = await getV2Db();
-  await assertLegacyLeadJourney(db, context);
-  return db.transaction(async tx => {
-    const transactionDb = tx as unknown as V2Database;
-    const lead = await getLeadInPartner(transactionDb, context, leadId);
-    await assertLeadVisible(transactionDb, context, lead, true);
-    await assertCampaignOperational(
-      transactionDb,
-      context,
-      lead.campaignId,
-      lead.pdvId
-    );
-    const effectiveGovernance = await resolveEffectiveGovernance(
-      transactionDb,
-      context.partnerId,
-      lead.campaignId
-    );
-    // The immutable treatment snapshot resolves a channel-specific evidence
-    // requirement now. A later policy edit cannot retroactively complete or
-    // reopen this recorded treatment.
-    const appliedGovernanceRule = resolveGovernanceForContact(
-      effectiveGovernance.rule,
-      input.channel
-    );
-    assertContactGovernance(appliedGovernanceRule, input);
-    const occurredAt = input.occurredAt ?? new Date();
-    if (input.followUpDueAt && input.followUpDueAt.getTime() <= Date.now()) {
-      throw new Error(
-        "O próximo follow-up deve ser agendado para uma data futura"
-      );
-    }
-    let newStatus = null;
-    if (input.statusId && input.statusId !== lead.statusId)
-      newStatus = await getActiveStatus(
-        transactionDb,
-        context.partnerId,
-        input.statusId
-      );
-    await tx.insert(leadContacts).values({
-      partnerId: context.partnerId,
-      leadId,
-      actorMembershipId: context.membershipId!,
-      channel: input.channel.trim(),
-      outcome: input.outcome.trim(),
-      summary: input.summary?.trim() || null,
-      occurredAt,
-    });
-    await tx
-      .update(leads)
-      .set({
-        statusId: newStatus?.id ?? lead.statusId,
-        firstContactAt: sql`coalesce(${leads.firstContactAt}, ${occurredAt})`,
-        lastActivityAt: occurredAt,
-        updatedAt: new Date(),
-      })
-      .where(eq(leads.id, leadId));
-    if (newStatus)
-      await writeTimeline(transactionDb, {
-        partnerId: context.partnerId,
-        leadId,
-        actorMembershipId: context.membershipId,
-        type: "status_changed",
-        occurredAt,
-        payload: {
-          previousStatusId: lead.statusId,
-          statusId: newStatus.id,
-          statusCode: newStatus.code,
-          causedBy: "contact",
-        },
-      });
-    let followUpId: number | null = null;
-    if (input.followUpDueAt) {
-      const ownerMembershipId =
-        lead.assignedMembershipId ?? context.membershipId;
-      if (!ownerMembershipId)
-        throw new Error("Responsável do follow-up obrigatório");
-      const ownerScope = (
-        await transactionDb
-          .select({ id: userPdvAssignments.id })
-          .from(userPdvAssignments)
-          .innerJoin(
-            userPartners,
-            eq(userPartners.id, userPdvAssignments.membershipId)
-          )
-          .innerJoin(users, eq(users.id, userPartners.userId))
-          .where(
-            and(
-              eq(userPdvAssignments.partnerId, context.partnerId),
-              eq(userPdvAssignments.membershipId, ownerMembershipId),
-              eq(userPdvAssignments.pdvId, lead.pdvId),
-              eq(userPdvAssignments.isActive, true),
-              eq(userPartners.isActive, true),
-              eq(users.isActive, true)
-            )
-          )
-          .limit(1)
-      )[0];
-      if (!ownerScope)
-        throw new Error("O responsável não possui acesso ativo ao PDV do lead");
-      const insertedFollowUp = await tx.insert(followUps).values({
-        partnerId: context.partnerId,
-        leadId,
-        ownerMembershipId,
-        dueAt: input.followUpDueAt,
-        note: input.followUpNote?.trim() || null,
-      });
-      followUpId = Number(
-        (insertedFollowUp as unknown as [{ insertId?: number }])[0]?.insertId
-      );
-      if (!followUpId) throw new Error("Não foi possível criar o follow-up");
-      await tx
-        .update(leads)
-        .set({
-          nextFollowUpAt: sql`case when ${leads.nextFollowUpAt} is null or ${input.followUpDueAt} < ${leads.nextFollowUpAt} then ${input.followUpDueAt} else ${leads.nextFollowUpAt} end`,
-          updatedAt: new Date(),
-        })
-        .where(eq(leads.id, leadId));
-      await writeTimeline(transactionDb, {
-        partnerId: context.partnerId,
-        leadId,
-        actorMembershipId: context.membershipId,
-        type: "follow_up_created",
-        occurredAt,
-        payload: {
-          followUpId,
-          ownerMembershipId,
-          dueAt: input.followUpDueAt.toISOString(),
-          note: input.followUpNote?.trim() || null,
-          causedBy: "contact",
-        },
-      });
-    }
-    const contactTimelineEventId = await writeTimeline(transactionDb, {
-      partnerId: context.partnerId,
-      leadId,
-      actorMembershipId: context.membershipId,
-      type: "contact",
-      occurredAt,
-      payload: {
-        channel: input.channel.trim(),
-        outcome: input.outcome.trim(),
-        summary: input.summary?.trim() || null,
-        followUpId,
-      },
-    });
-    const evaluation = evaluateTreatmentGovernance(appliedGovernanceRule, {
-      hasNote: Boolean(input.summary?.trim()),
-      hasFollowUp: Boolean(followUpId),
-      hasEvidence: false,
-    });
-    await tx.insert(leadTreatmentGovernance).values({
-      partnerId: context.partnerId,
-      leadId,
-      timelineEventId: contactTimelineEventId,
-      ruleSource: effectiveGovernance.source,
-      appliedRuleJson: appliedGovernanceRule,
-      ...evaluation,
-      completedAt: evaluation.isComplete ? new Date() : null,
-    });
-    return {
-      timelineEventId: contactTimelineEventId,
-      governance: {
-        source: effectiveGovernance.source,
-        ...evaluation,
-      },
-    };
-  });
 }
 
 export async function addLeadNote(

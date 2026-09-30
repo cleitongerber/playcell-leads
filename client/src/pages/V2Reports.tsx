@@ -20,14 +20,18 @@ import { toast } from "sonner";
 
 type ReportType =
   | "leads"
+  | "attempts"
   | "treatments"
+  | "conversions"
   | "follow_ups"
   | "imports"
   | "distributions";
 
 const reportLabels: Record<ReportType, string> = {
   leads: "Leads",
-  treatments: "Tratativas",
+  attempts: "Tentativas",
+  treatments: "Tratativas efetivas",
+  conversions: "Conversões",
   follow_ups: "Follow-ups",
   imports: "Importações",
   distributions: "Distribuições",

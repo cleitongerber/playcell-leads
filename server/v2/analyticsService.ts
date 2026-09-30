@@ -11,8 +11,6 @@ import {
   isNull,
   lt,
   max,
-  min,
-  notInArray,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -22,13 +20,12 @@ import {
   campaigns,
   customFieldDefinitions,
   followUps,
+  leadContactAttempts,
   leadContacts,
+  leadConversions,
   leadDistributionBatches,
   leadEvidences,
   leadImportBatches,
-  importTemplates,
-  importTemplateVersions,
-  leadSources,
   leadStatuses,
   leadTimelineEvents,
   leadTreatmentGovernance,
@@ -39,7 +36,7 @@ import {
   userPdvAssignments,
   users,
 } from "../../drizzle-v2/schema";
-import { type PartnerContext } from "./access";
+import type { PartnerContext } from "./access";
 import {
   analyticsMetricDefinitions,
   percentageChange,
@@ -50,6 +47,7 @@ import {
   type AnalyticsPeriodPreset,
 } from "./analyticsDomain";
 import { getV2Db, type V2Database } from "./database";
+import { partnerDayBounds } from "./partnerTime";
 import { writeV2Audit } from "./partnerService";
 import {
   pdvIsInsideAnalyticsScope,
@@ -58,6 +56,10 @@ import {
 
 const REPORT_PAGE_MAX = 100;
 const EXPORT_ROW_MAX = 25_000;
+const OPERATION_EVENT_TYPES = [
+  "contact_attempted",
+  "effective_contact_recorded",
+] as const;
 
 export type AnalyticsFilters = AnalyticsDateRangeInput & {
   campaignId?: number;
@@ -67,7 +69,9 @@ export type AnalyticsFilters = AnalyticsDateRangeInput & {
 
 export type AnalyticsReportType =
   | "leads"
+  | "attempts"
   | "treatments"
+  | "conversions"
   | "follow_ups"
   | "imports"
   | "distributions";
@@ -76,6 +80,18 @@ export type AnalyticsReportInput = AnalyticsFilters & {
   type: AnalyticsReportType;
   page: number;
   pageSize: number;
+};
+
+export type AnalyticsReportRow = Record<string, string | number | null>;
+export type AnalyticsReportColumn = { key: string; label: string };
+export type AnalyticsReportPage = {
+  type: AnalyticsReportType;
+  columns: AnalyticsReportColumn[];
+  rows: AnalyticsReportRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  period: { start: Date; end: Date; timeZone: string; label: string };
 };
 
 type AnalyticsScope = {
@@ -98,7 +114,16 @@ type AnalyticsSeller = {
   pdvNames: string[];
 };
 
-export type AnalyticsReportRow = Record<string, string | number | null>;
+type OperationMetrics = {
+  worked: number;
+  leadsWithAttempt: number;
+  attempts: number;
+  leadsWithEffectiveContact: number;
+  effectiveContacts: number;
+  interested: number;
+  conversions: number;
+  leadsConverted: number;
+};
 
 function numberOf(value: unknown) {
   return Number(value ?? 0);
@@ -108,7 +133,22 @@ function valueOfDate(value: Date | null | undefined) {
   return value ? value.toISOString() : null;
 }
 
-function analyticsScopeConditions(
+function parseRule(value: unknown) {
+  if (!value || typeof value !== "object") return {} as Record<string, unknown>;
+  return value as Record<string, unknown>;
+}
+
+function evidenceState(rule: unknown, hasEvidence: number | boolean) {
+  const required = parseRule(rule).evidenceRequired === true;
+  const available = Boolean(hasEvidence);
+  return {
+    required,
+    available,
+    governance: required && !available ? "Pendente" : "Completa",
+  };
+}
+
+function scopeLeadConditions(
   context: PartnerContext,
   scope: AnalyticsScope,
   filters: AnalyticsFilters,
@@ -136,13 +176,14 @@ async function resolveAnalyticsScope(
   if (context.role === "super_admin" || context.role === "partner_admin") {
     return { pdvIds: null, ownMembershipId: null };
   }
+  if (!context.membershipId) throw new Error("Membership ativa é necessária");
   const rows = await db
     .select({ pdvId: userPdvAssignments.pdvId })
     .from(userPdvAssignments)
     .where(
       and(
         eq(userPdvAssignments.partnerId, context.partnerId),
-        eq(userPdvAssignments.membershipId, context.membershipId!),
+        eq(userPdvAssignments.membershipId, context.membershipId),
         eq(userPdvAssignments.isActive, true)
       )
     );
@@ -158,11 +199,11 @@ async function assertAnalyticsFilters(
   scope: AnalyticsScope,
   filters: AnalyticsFilters
 ) {
-  if (scope.pdvIds && !scope.pdvIds.length)
+  if (scope.pdvIds && !scope.pdvIds.length) {
     throw new Error("Não há PDVs ativos no seu escopo analítico");
-
+  }
   if (filters.pdvId) {
-    const validPdv = (
+    const row = (
       await db
         .select({ id: pdvs.id })
         .from(pdvs)
@@ -171,13 +212,12 @@ async function assertAnalyticsFilters(
         )
         .limit(1)
     )[0];
-    if (!validPdv || !pdvIsInsideAnalyticsScope(scope.pdvIds, filters.pdvId)) {
+    if (!row || !pdvIsInsideAnalyticsScope(scope.pdvIds, filters.pdvId)) {
       throw new Error("PDV indisponível no seu escopo");
     }
   }
-
   if (filters.campaignId) {
-    const campaign = (
+    const row = (
       await db
         .select({ id: campaigns.id })
         .from(campaigns)
@@ -189,9 +229,9 @@ async function assertAnalyticsFilters(
         )
         .limit(1)
     )[0];
-    if (!campaign) throw new Error("Campanha indisponível no seu escopo");
+    if (!row) throw new Error("Campanha indisponível no seu escopo");
     if (scope.pdvIds) {
-      const scopedCampaignPdv = (
+      const mapped = (
         await db
           .select({ id: campaignPdvs.id })
           .from(campaignPdvs)
@@ -204,11 +244,9 @@ async function assertAnalyticsFilters(
           )
           .limit(1)
       )[0];
-      if (!scopedCampaignPdv)
-        throw new Error("Campanha indisponível no seu escopo");
+      if (!mapped) throw new Error("Campanha indisponível no seu escopo");
     }
   }
-
   if (filters.sellerMembershipId) {
     if (
       !sellerIsInsideAnalyticsScope(
@@ -235,238 +273,240 @@ async function assertAnalyticsFilters(
         .limit(1)
     )[0];
     if (!seller) throw new Error("Vendedor indisponível no seu escopo");
-    if (scope.pdvIds) {
-      const sharedPdv = (
-        await db
-          .select({ id: userPdvAssignments.id })
-          .from(userPdvAssignments)
-          .where(
-            and(
-              eq(userPdvAssignments.partnerId, context.partnerId),
-              eq(userPdvAssignments.membershipId, filters.sellerMembershipId),
-              eq(userPdvAssignments.isActive, true),
-              inArray(userPdvAssignments.pdvId, scope.pdvIds)
-            )
-          )
-          .limit(1)
-      )[0];
-      if (!sharedPdv) throw new Error("Vendedor indisponível no seu escopo");
-    }
   }
 }
 
 async function createAnalyticsContext(
   context: PartnerContext,
-  filters: AnalyticsFilters,
-  now = new Date()
+  filters: AnalyticsFilters
 ): Promise<AnalyticsContext> {
   const db = await getV2Db();
-  const [scope, settings] = await Promise.all([
-    resolveAnalyticsScope(db, context),
-    db
+  const scope = await resolveAnalyticsScope(db, context);
+  await assertAnalyticsFilters(db, context, scope, filters);
+  const settings = (
+    await db
       .select({
         timezone: partnerSettings.timezone,
-        staleLeadMinutes: partnerSettings.staleLeadMinutes,
+        stale: partnerSettings.staleLeadMinutes,
       })
       .from(partnerSettings)
       .where(eq(partnerSettings.partnerId, context.partnerId))
-      .limit(1),
-  ]);
-  const configuration = settings[0] ?? {
-    timezone: "America/Sao_Paulo",
-    staleLeadMinutes: 1440,
-  };
-  await assertAnalyticsFilters(db, context, scope, filters);
+      .limit(1)
+  )[0];
+  const timeZone = settings?.timezone ?? "America/Sao_Paulo";
   return {
     db,
     scope,
-    period: resolveAnalyticsPeriod(configuration.timezone, filters, now),
-    now,
-    staleLeadMinutes: configuration.staleLeadMinutes,
+    period: resolveAnalyticsPeriod(timeZone, filters),
+    now: new Date(),
+    staleLeadMinutes: settings?.stale ?? 1_440,
   };
 }
 
-async function queryCohortMetrics(
+function withPeriod(
+  conditions: SQL[],
+  column:
+    | typeof leadContactAttempts.occurredAt
+    | typeof leadContacts.occurredAt
+    | typeof leadConversions.occurredAt
+    | typeof leadTimelineEvents.occurredAt,
+  period: Pick<AnalyticsPeriod, "start" | "end">
+) {
+  return [...conditions, gte(column, period.start), lt(column, period.end)];
+}
+
+async function queryOperationMetrics(
+  db: V2Database,
+  context: PartnerContext,
+  scope: AnalyticsScope,
+  filters: AnalyticsFilters,
+  period: Pick<AnalyticsPeriod, "start" | "end">
+): Promise<OperationMetrics> {
+  const leadConditions = scopeLeadConditions(context, scope, filters);
+  const attemptsConditions = withPeriod(
+    [...leadConditions, eq(leadContactAttempts.partnerId, context.partnerId)],
+    leadContactAttempts.occurredAt,
+    period
+  );
+  const contactsConditions = withPeriod(
+    [
+      ...leadConditions,
+      eq(leadContacts.partnerId, context.partnerId),
+      eq(leadContacts.recordKind, "effective_contact"),
+    ],
+    leadContacts.occurredAt,
+    period
+  );
+  const conversionConditions = withPeriod(
+    [...leadConditions, eq(leadConversions.partnerId, context.partnerId)],
+    leadConversions.occurredAt,
+    period
+  );
+  const workConditions = withPeriod(
+    [
+      ...leadConditions,
+      eq(leadTimelineEvents.partnerId, context.partnerId),
+      inArray(leadTimelineEvents.type, [...OPERATION_EVENT_TYPES]),
+    ],
+    leadTimelineEvents.occurredAt,
+    period
+  );
+  const [attemptRows, contactRows, interestedRows, conversionRows, workedRows] =
+    await Promise.all([
+      db
+        .select({
+          total: count(),
+          leads: countDistinct(leadContactAttempts.leadId),
+        })
+        .from(leadContactAttempts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContactAttempts.leadId),
+            eq(leads.partnerId, leadContactAttempts.partnerId)
+          )
+        )
+        .where(and(...attemptsConditions)),
+      db
+        .select({ total: count(), leads: countDistinct(leadContacts.leadId) })
+        .from(leadContacts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContacts.leadId),
+            eq(leads.partnerId, leadContacts.partnerId)
+          )
+        )
+        .where(and(...contactsConditions)),
+      db
+        .select({ leads: countDistinct(leadContacts.leadId) })
+        .from(leadContacts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContacts.leadId),
+            eq(leads.partnerId, leadContacts.partnerId)
+          )
+        )
+        .where(
+          and(
+            ...contactsConditions,
+            eq(leadContacts.resultCategory, "interested")
+          )
+        ),
+      db
+        .select({
+          total: count(),
+          leads: countDistinct(leadConversions.leadId),
+        })
+        .from(leadConversions)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadConversions.leadId),
+            eq(leads.partnerId, leadConversions.partnerId)
+          )
+        )
+        .where(and(...conversionConditions)),
+      db
+        .select({ leads: countDistinct(leadTimelineEvents.leadId) })
+        .from(leadTimelineEvents)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadTimelineEvents.leadId),
+            eq(leads.partnerId, leadTimelineEvents.partnerId)
+          )
+        )
+        .where(and(...workConditions)),
+    ]);
+  return {
+    worked: numberOf(workedRows[0]?.leads),
+    leadsWithAttempt: numberOf(attemptRows[0]?.leads),
+    attempts: numberOf(attemptRows[0]?.total),
+    leadsWithEffectiveContact: numberOf(contactRows[0]?.leads),
+    effectiveContacts: numberOf(contactRows[0]?.total),
+    interested: numberOf(interestedRows[0]?.leads),
+    conversions: numberOf(conversionRows[0]?.total),
+    leadsConverted: numberOf(conversionRows[0]?.leads),
+  };
+}
+
+async function queryCohortFunnel(
   db: V2Database,
   context: PartnerContext,
   scope: AnalyticsScope,
   filters: AnalyticsFilters,
   period: Pick<AnalyticsPeriod, "start" | "end">
 ) {
-  const conditions = [
-    ...analyticsScopeConditions(context, scope, filters),
+  const cohortConditions = [
+    ...scopeLeadConditions(context, scope, filters),
     gte(leads.receivedAt, period.start),
     lt(leads.receivedAt, period.end),
   ];
-  const assignmentEvent = alias(
-    leadTimelineEvents,
-    "analytics_cohort_assignment_event"
-  );
-  const contact = alias(leadContacts, "analytics_cohort_contact");
-  const terminalEvent = alias(
-    leadTimelineEvents,
-    "analytics_cohort_terminal_event"
-  );
-  const terminalStatus = alias(
-    leadStatuses,
-    "analytics_cohort_terminal_status"
-  );
-  const conversionEvent = alias(
-    leadTimelineEvents,
-    "analytics_cohort_conversion_event"
-  );
-  const conversionStatus = alias(
-    leadStatuses,
-    "analytics_cohort_conversion_status"
-  );
-
-  // TiDB rejects a correlated EXISTS nested under SUM. Keep each metric an
-  // independent aggregate query instead: every result remains SQL-side, while
-  // COUNT DISTINCT preserves the one-lead/one-metric definition.
+  const factBeforeEnd = <
+    T extends
+      | typeof leadContactAttempts
+      | typeof leadContacts
+      | typeof leadConversions
+      | typeof leadTimelineEvents,
+  >(
+    table: T,
+    occurredAt: T extends typeof leadContactAttempts
+      ? typeof leadContactAttempts.occurredAt
+      : T extends typeof leadContacts
+        ? typeof leadContacts.occurredAt
+        : T extends typeof leadConversions
+          ? typeof leadConversions.occurredAt
+          : typeof leadTimelineEvents.occurredAt
+  ) => [eq(table.partnerId, context.partnerId), lt(occurredAt, period.end)];
   const [
     receivedRows,
-    assignedRows,
-    treatedRows,
-    completedRows,
+    workedRows,
+    attemptedRows,
+    contactedRows,
+    interestedRows,
     convertedRows,
   ] = await Promise.all([
     db
       .select({ total: count() })
       .from(leads)
-      .where(and(...conditions)),
+      .where(and(...cohortConditions)),
     db
-      .select({ total: countDistinct(leads.id) })
-      .from(leads)
+      .select({ total: countDistinct(leadTimelineEvents.leadId) })
+      .from(leadTimelineEvents)
       .innerJoin(
-        assignmentEvent,
+        leads,
         and(
-          eq(assignmentEvent.partnerId, leads.partnerId),
-          eq(assignmentEvent.leadId, leads.id)
+          eq(leads.id, leadTimelineEvents.leadId),
+          eq(leads.partnerId, leadTimelineEvents.partnerId)
         )
       )
       .where(
         and(
-          ...conditions,
-          inArray(assignmentEvent.type, [
-            "assigned",
-            "lead_distributed",
-            "lead_reassigned",
-          ]),
-          lt(assignmentEvent.occurredAt, period.end)
+          ...cohortConditions,
+          ...factBeforeEnd(leadTimelineEvents, leadTimelineEvents.occurredAt),
+          inArray(leadTimelineEvents.type, [...OPERATION_EVENT_TYPES])
         )
       ),
     db
-      .select({ total: countDistinct(leads.id) })
-      .from(leads)
+      .select({ total: countDistinct(leadContactAttempts.leadId) })
+      .from(leadContactAttempts)
       .innerJoin(
-        contact,
+        leads,
         and(
-          eq(contact.partnerId, leads.partnerId),
-          eq(contact.leadId, leads.id)
+          eq(leads.id, leadContactAttempts.leadId),
+          eq(leads.partnerId, leadContactAttempts.partnerId)
         )
       )
       .where(
         and(
-          ...conditions,
-          eq(contact.partnerId, context.partnerId),
-          lt(contact.occurredAt, period.end)
+          ...cohortConditions,
+          ...factBeforeEnd(leadContactAttempts, leadContactAttempts.occurredAt)
         )
       ),
     db
-      .select({ total: countDistinct(leads.id) })
-      .from(leads)
-      .innerJoin(
-        terminalEvent,
-        and(
-          eq(terminalEvent.partnerId, leads.partnerId),
-          eq(terminalEvent.leadId, leads.id)
-        )
-      )
-      .innerJoin(
-        terminalStatus,
-        and(
-          sql`${terminalStatus.id} = cast(json_unquote(json_extract(${terminalEvent.payloadJson}, '$.statusId')) as unsigned)`,
-          eq(terminalStatus.partnerId, terminalEvent.partnerId)
-        )
-      )
-      .where(
-        and(
-          ...conditions,
-          eq(terminalEvent.partnerId, context.partnerId),
-          eq(terminalEvent.type, "status_changed"),
-          lt(terminalEvent.occurredAt, period.end),
-          eq(terminalStatus.isTerminal, true)
-        )
-      ),
-    db
-      .select({ total: countDistinct(leads.id) })
-      .from(leads)
-      .innerJoin(
-        conversionEvent,
-        and(
-          eq(conversionEvent.partnerId, leads.partnerId),
-          eq(conversionEvent.leadId, leads.id)
-        )
-      )
-      .innerJoin(
-        conversionStatus,
-        and(
-          sql`${conversionStatus.id} = cast(json_unquote(json_extract(${conversionEvent.payloadJson}, '$.statusId')) as unsigned)`,
-          eq(conversionStatus.partnerId, conversionEvent.partnerId)
-        )
-      )
-      .where(
-        and(
-          ...conditions,
-          eq(conversionEvent.partnerId, context.partnerId),
-          eq(conversionEvent.type, "status_changed"),
-          lt(conversionEvent.occurredAt, period.end),
-          eq(conversionStatus.isTerminal, true),
-          eq(conversionStatus.category, "completed")
-        )
-      ),
-  ]);
-  return {
-    received: numberOf(receivedRows[0]?.total),
-    assigned: numberOf(assignedRows[0]?.total),
-    treated: numberOf(treatedRows[0]?.total),
-    completed: numberOf(completedRows[0]?.total),
-    converted: numberOf(convertedRows[0]?.total),
-  };
-}
-
-async function queryPeriodActivityMetrics(
-  db: V2Database,
-  context: PartnerContext,
-  scope: AnalyticsScope,
-  filters: AnalyticsFilters,
-  period: Pick<AnalyticsPeriod, "start" | "end">
-) {
-  const leadConditions = analyticsScopeConditions(context, scope, filters);
-  const contactConditions = [
-    ...leadConditions,
-    eq(leadContacts.partnerId, context.partnerId),
-    gte(leadContacts.occurredAt, period.start),
-    lt(leadContacts.occurredAt, period.end),
-  ];
-  const event = alias(leadTimelineEvents, "analytics_period_status_event");
-  const targetStatus = alias(leadStatuses, "analytics_period_target_status");
-  const eventConditions = [
-    ...leadConditions,
-    eq(event.partnerId, context.partnerId),
-    eq(event.type, "status_changed"),
-    gte(event.occurredAt, period.start),
-    lt(event.occurredAt, period.end),
-  ];
-  const firstContactConditions = [
-    ...leadConditions,
-    isNotNull(leads.firstContactAt),
-    gte(leads.firstContactAt, period.start),
-    lt(leads.firstContactAt, period.end),
-  ];
-  const [contacts, completed, converted, firstContact] = await Promise.all([
-    db
-      .select({ treated: countDistinct(leadContacts.leadId) })
+      .select({ total: countDistinct(leadContacts.leadId) })
       .from(leadContacts)
       .innerJoin(
         leads,
@@ -475,568 +515,442 @@ async function queryPeriodActivityMetrics(
           eq(leads.partnerId, leadContacts.partnerId)
         )
       )
-      .where(and(...contactConditions)),
-    db
-      .select({ total: countDistinct(event.leadId) })
-      .from(event)
-      .innerJoin(
-        leads,
-        and(eq(leads.id, event.leadId), eq(leads.partnerId, event.partnerId))
-      )
-      .innerJoin(
-        targetStatus,
+      .where(
         and(
-          sql`${targetStatus.id} = cast(json_unquote(json_extract(${event.payloadJson}, '$.statusId')) as unsigned)`,
-          eq(targetStatus.partnerId, event.partnerId)
+          ...cohortConditions,
+          ...factBeforeEnd(leadContacts, leadContacts.occurredAt),
+          eq(leadContacts.recordKind, "effective_contact")
         )
-      )
-      .where(and(...eventConditions, eq(targetStatus.isTerminal, true))),
+      ),
     db
-      .select({ total: countDistinct(event.leadId) })
-      .from(event)
+      .select({ total: countDistinct(leadContacts.leadId) })
+      .from(leadContacts)
       .innerJoin(
         leads,
-        and(eq(leads.id, event.leadId), eq(leads.partnerId, event.partnerId))
-      )
-      .innerJoin(
-        targetStatus,
         and(
-          sql`${targetStatus.id} = cast(json_unquote(json_extract(${event.payloadJson}, '$.statusId')) as unsigned)`,
-          eq(targetStatus.partnerId, event.partnerId)
+          eq(leads.id, leadContacts.leadId),
+          eq(leads.partnerId, leadContacts.partnerId)
         )
       )
       .where(
         and(
-          ...eventConditions,
-          eq(targetStatus.isTerminal, true),
-          eq(targetStatus.category, "completed")
+          ...cohortConditions,
+          ...factBeforeEnd(leadContacts, leadContacts.occurredAt),
+          eq(leadContacts.recordKind, "effective_contact"),
+          eq(leadContacts.resultCategory, "interested")
+        )
+      ),
+    db
+      .select({ total: countDistinct(leadConversions.leadId) })
+      .from(leadConversions)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadConversions.leadId),
+          eq(leads.partnerId, leadConversions.partnerId)
+        )
+      )
+      .where(
+        and(
+          ...cohortConditions,
+          ...factBeforeEnd(leadConversions, leadConversions.occurredAt)
+        )
+      ),
+  ]);
+  return {
+    received: numberOf(receivedRows[0]?.total),
+    worked: numberOf(workedRows[0]?.total),
+    attempted: numberOf(attemptedRows[0]?.total),
+    contacted: numberOf(contactedRows[0]?.total),
+    interested: numberOf(interestedRows[0]?.total),
+    converted: numberOf(convertedRows[0]?.total),
+  };
+}
+
+async function queryDashboardStocks(
+  analytics: AnalyticsContext,
+  context: PartnerContext,
+  filters: AnalyticsFilters
+) {
+  const { db, scope, now, period, staleLeadMinutes } = analytics;
+  const leadConditions = scopeLeadConditions(context, scope, filters);
+  const day = partnerDayBounds(period.timeZone, now);
+  const staleBefore = new Date(now.getTime() - staleLeadMinutes * 60_000);
+  const nonTerminal = alias(leadStatuses, "analytics_stock_status");
+  const [stockRows, followUpRows, governanceRows, awaitingRows, residualRows] =
+    await Promise.all([
+      db
+        .select({
+          available: sql<number>`coalesce(sum(case when ${leads.assignedMembershipId} is null then 1 else 0 end), 0)`,
+          inPortfolio: sql<number>`coalesce(sum(case when ${leads.assignedMembershipId} is not null then 1 else 0 end), 0)`,
+          withoutWork: sql<number>`coalesce(sum(case when ${leads.assignedMembershipId} is not null and ${leads.firstAttemptAt} is null and ${leads.firstEffectiveContactAt} is null then 1 else 0 end), 0)`,
+          stale: sql<number>`coalesce(sum(case when (${leads.lastActivityAt} is null or ${leads.lastActivityAt} < ${staleBefore}) then 1 else 0 end), 0)`,
+        })
+        .from(leads)
+        .innerJoin(nonTerminal, eq(nonTerminal.id, leads.statusId))
+        .where(and(...leadConditions, eq(nonTerminal.isTerminal, false))),
+      db
+        .select({
+          overdue: sql<number>`coalesce(sum(case when ${followUps.dueAt} < ${now} then 1 else 0 end), 0)`,
+          today: sql<number>`coalesce(sum(case when ${followUps.dueAt} >= ${day.start} and ${followUps.dueAt} < ${day.end} then 1 else 0 end), 0)`,
+        })
+        .from(followUps)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, followUps.leadId),
+            eq(leads.partnerId, followUps.partnerId)
+          )
+        )
+        .where(
+          and(
+            ...leadConditions,
+            eq(followUps.partnerId, context.partnerId),
+            eq(followUps.status, "pending")
+          )
+        ),
+      db
+        .select({ total: countDistinct(leadTreatmentGovernance.id) })
+        .from(leadTreatmentGovernance)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadTreatmentGovernance.leadId),
+            eq(leads.partnerId, leadTreatmentGovernance.partnerId)
+          )
+        )
+        .where(
+          and(
+            ...leadConditions,
+            eq(leadTreatmentGovernance.partnerId, context.partnerId),
+            eq(leadTreatmentGovernance.isComplete, false),
+            inArray(leadTreatmentGovernance.operationKind, [
+              "attempt",
+              "effective_contact",
+            ])
+          )
+        ),
+      db
+        .select({ total: countDistinct(leadContactAttempts.leadId) })
+        .from(leadContactAttempts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContactAttempts.leadId),
+            eq(leads.partnerId, leadContactAttempts.partnerId)
+          )
+        )
+        .innerJoin(nonTerminal, eq(nonTerminal.id, leads.statusId))
+        .where(
+          and(
+            ...leadConditions,
+            eq(leadContactAttempts.partnerId, context.partnerId),
+            eq(leadContactAttempts.resultCategory, "awaiting_response"),
+            eq(nonTerminal.isTerminal, false)
+          )
+        ),
+      db
+        .select({ total: countDistinct(followUps.leadId) })
+        .from(followUps)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, followUps.leadId),
+            eq(leads.partnerId, followUps.partnerId)
+          )
+        )
+        .innerJoin(nonTerminal, eq(nonTerminal.id, leads.statusId))
+        .where(
+          and(
+            ...leadConditions,
+            eq(followUps.partnerId, context.partnerId),
+            eq(followUps.status, "pending"),
+            eq(nonTerminal.isTerminal, true)
+          )
+        ),
+    ]);
+  return {
+    available: numberOf(stockRows[0]?.available),
+    inPortfolio: numberOf(stockRows[0]?.inPortfolio),
+    assignedWithoutWork: numberOf(stockRows[0]?.withoutWork),
+    stale: numberOf(stockRows[0]?.stale),
+    followUpsOverdue: numberOf(followUpRows[0]?.overdue),
+    followUpsToday: numberOf(followUpRows[0]?.today),
+    governancePending: numberOf(governanceRows[0]?.total),
+    awaitingResponse: numberOf(awaitingRows[0]?.total),
+    terminalResidualFollowUps: numberOf(residualRows[0]?.total),
+  };
+}
+
+async function queryFirstResponseTimes(
+  analytics: AnalyticsContext,
+  context: PartnerContext,
+  filters: AnalyticsFilters
+) {
+  const { db, scope, period } = analytics;
+  const leadConditions = scopeLeadConditions(context, scope, filters);
+  const [attempt, effective] = await Promise.all([
+    db
+      .select({
+        seconds: sql<
+          number | null
+        >`avg(timestampdiff(second, ${leads.receivedAt}, ${leads.firstAttemptAt}))`,
+      })
+      .from(leads)
+      .where(
+        and(
+          ...leadConditions,
+          isNotNull(leads.firstAttemptAt),
+          gte(leads.firstAttemptAt, period.start),
+          lt(leads.firstAttemptAt, period.end)
         )
       ),
     db
       .select({
-        averageSeconds: sql<
+        seconds: sql<
           number | null
-        >`avg(timestampdiff(second, ${leads.receivedAt}, ${leads.firstContactAt}))`,
-        contacted: count(),
+        >`avg(timestampdiff(second, ${leads.receivedAt}, ${leads.firstEffectiveContactAt}))`,
       })
       .from(leads)
-      .where(and(...firstContactConditions)),
+      .where(
+        and(
+          ...leadConditions,
+          isNotNull(leads.firstEffectiveContactAt),
+          gte(leads.firstEffectiveContactAt, period.start),
+          lt(leads.firstEffectiveContactAt, period.end)
+        )
+      ),
   ]);
   return {
-    treated: numberOf(contacts[0]?.treated),
-    completed: numberOf(completed[0]?.total),
-    converted: numberOf(converted[0]?.total),
-    firstContactAverageSeconds:
-      firstContact[0]?.averageSeconds == null
-        ? null
-        : numberOf(firstContact[0]?.averageSeconds),
-    firstContacts: numberOf(firstContact[0]?.contacted),
+    firstAttemptAverageSeconds:
+      attempt[0]?.seconds == null ? null : numberOf(attempt[0].seconds),
+    firstEffectiveContactAverageSeconds:
+      effective[0]?.seconds == null ? null : numberOf(effective[0].seconds),
   };
 }
 
-function operationalLeadConditions(
+async function queryOverviewDimension(
+  analytics: AnalyticsContext,
   context: PartnerContext,
-  scope: AnalyticsScope,
-  filters: AnalyticsFilters
-) {
-  return [
-    ...analyticsScopeConditions(context, scope, filters),
-    inArray(leadStatuses.category, ["open", "in_progress"]),
-    eq(campaigns.status, "active"),
-    eq(campaigns.isFrozen, false),
-    eq(campaignPdvs.isActive, true),
-    eq(pdvs.isActive, true),
-  ];
-}
-
-async function queryDashboardStocks(
-  db: V2Database,
-  context: PartnerContext,
-  scope: AnalyticsScope,
   filters: AnalyticsFilters,
-  period: AnalyticsPeriod,
-  now: Date,
-  staleLeadMinutes: number
+  dimension: "campaign" | "pdv"
 ) {
-  const operational = operationalLeadConditions(context, scope, filters);
-  const today = resolveAnalyticsPeriod(
-    period.timeZone,
-    { preset: "today" },
-    now
-  );
-  const staleBefore = new Date(now.getTime() - staleLeadMinutes * 60_000);
-  // These are fixed aggregate queries, never a query per lead.
-  const leadAggregate = db
-    .select({
-      available: sql<number>`coalesce(sum(case when ${leads.assignedMembershipId} is null then 1 else 0 end), 0)`,
-      inPortfolio: sql<number>`coalesce(sum(case when ${leads.assignedMembershipId} is not null then 1 else 0 end), 0)`,
-      assignedWithoutFirstContact: sql<number>`coalesce(sum(case when ${leads.assignedMembershipId} is not null and ${leads.firstContactAt} is null then 1 else 0 end), 0)`,
-      stale: sql<number>`coalesce(sum(case when (${leads.lastActivityAt} is null or ${leads.lastActivityAt} < ${staleBefore}) then 1 else 0 end), 0)`,
-    })
-    .from(leads)
-    .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
-    .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
-    .innerJoin(
-      campaignPdvs,
-      and(
-        eq(campaignPdvs.campaignId, leads.campaignId),
-        eq(campaignPdvs.pdvId, leads.pdvId),
-        eq(campaignPdvs.partnerId, leads.partnerId)
-      )
-    )
-    .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
-    .where(and(...operational));
-
-  const followUpConditions = [
-    ...analyticsScopeConditions(context, scope, filters),
-    eq(followUps.partnerId, context.partnerId),
-    eq(followUps.status, "pending"),
-  ];
-  const governanceConditions = [
-    ...analyticsScopeConditions(context, scope, filters),
-    eq(leadTreatmentGovernance.partnerId, context.partnerId),
-    eq(leadTreatmentGovernance.isComplete, false),
-  ];
-  const [leadRows, followUpRows, governanceRows] = await Promise.all([
-    leadAggregate,
-    db
-      .select({
-        overdue: sql<number>`coalesce(sum(case when ${followUps.dueAt} < ${now} then 1 else 0 end), 0)`,
-        today: sql<number>`coalesce(sum(case when ${followUps.dueAt} >= ${today.start} and ${followUps.dueAt} < ${today.end} then 1 else 0 end), 0)`,
-      })
-      .from(followUps)
-      .innerJoin(
-        leads,
-        and(
-          eq(leads.id, followUps.leadId),
-          eq(leads.partnerId, followUps.partnerId)
+  const { db, scope, period, now } = analytics;
+  const base = scopeLeadConditions(context, scope, filters);
+  const dimensionId = dimension === "campaign" ? campaigns.id : pdvs.id;
+  const dimensionName = dimension === "campaign" ? campaigns.name : pdvs.name;
+  const dimensionJoin =
+    dimension === "campaign"
+      ? and(
+          eq(campaigns.id, leads.campaignId),
+          eq(campaigns.partnerId, leads.partnerId)
         )
-      )
-      .where(and(...followUpConditions)),
-    db
-      .select({ total: countDistinct(leadTreatmentGovernance.leadId) })
-      .from(leadTreatmentGovernance)
-      .innerJoin(
-        leads,
-        and(
-          eq(leads.id, leadTreatmentGovernance.leadId),
-          eq(leads.partnerId, leadTreatmentGovernance.partnerId)
-        )
-      )
-      .where(and(...governanceConditions)),
-  ]);
-  const stock = leadRows[0];
-  const followup = followUpRows[0];
-  return {
-    available: numberOf(stock?.available),
-    inPortfolio: numberOf(stock?.inPortfolio),
-    assignedWithoutFirstContact: numberOf(stock?.assignedWithoutFirstContact),
-    stale: numberOf(stock?.stale),
-    followUpsOverdue: numberOf(followup?.overdue),
-    followUpsToday: numberOf(followup?.today),
-    governancePending: numberOf(governanceRows[0]?.total),
-  };
-}
-
-async function queryCampaignAndPdvOverview(
-  db: V2Database,
-  context: PartnerContext,
-  scope: AnalyticsScope,
-  filters: AnalyticsFilters,
-  period: AnalyticsPeriod,
-  now: Date
-) {
-  const cohortConditions = [
-    ...analyticsScopeConditions(context, scope, filters),
-    gte(leads.receivedAt, period.start),
-    lt(leads.receivedAt, period.end),
-  ];
-  const campaignTerminalEvent = alias(
-    leadTimelineEvents,
-    "analytics_campaign_terminal_event"
-  );
-  const campaignTerminalStatus = alias(
-    leadStatuses,
-    "analytics_campaign_terminal_status"
-  );
-  const campaignConversionEvent = alias(
-    leadTimelineEvents,
-    "analytics_campaign_conversion_event"
-  );
-  const campaignConversionStatus = alias(
-    leadStatuses,
-    "analytics_campaign_conversion_status"
-  );
-  const pdvTerminalEvent = alias(
-    leadTimelineEvents,
-    "analytics_pdv_terminal_event"
-  );
-  const pdvTerminalStatus = alias(
-    leadStatuses,
-    "analytics_pdv_terminal_status"
-  );
-  const pdvConversionEvent = alias(
-    leadTimelineEvents,
-    "analytics_pdv_conversion_event"
-  );
-  const pdvConversionStatus = alias(
-    leadStatuses,
-    "analytics_pdv_conversion_status"
-  );
-  const followUpConditions = [
-    ...analyticsScopeConditions(context, scope, filters),
-    eq(followUps.partnerId, context.partnerId),
-    eq(followUps.status, "pending"),
-    lt(followUps.dueAt, now),
-  ];
-  // These grouped queries deliberately avoid correlated EXISTS expressions
-  // inside SUM. TiDB accepts the joins below and COUNT DISTINCT maintains the
-  // metric's one Lead per campaign/PDV semantics.
-  const [
-    campaignRows,
-    campaignTreatedRows,
-    campaignCompletedRows,
-    campaignConversionRows,
-    pdvRows,
-    pdvTreatedRows,
-    pdvCompletedRows,
-    pdvConversionRows,
-    campaignOverdue,
-    pdvOverdue,
-  ] = await Promise.all([
-    db
-      .select({
-        campaignId: campaigns.id,
-        campaignName: campaigns.name,
-        leads: count(),
-        firstContactAverageSeconds: sql<
-          number | null
-        >`avg(case when ${leads.firstContactAt} is not null and ${leads.firstContactAt} < ${period.end} then timestampdiff(second, ${leads.receivedAt}, ${leads.firstContactAt}) else null end)`,
-      })
-      .from(leads)
-      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
-      .where(and(...cohortConditions))
-      .groupBy(campaigns.id, campaigns.name)
-      .orderBy(desc(count()), asc(campaigns.name)),
-    db
-      .select({ campaignId: leads.campaignId, total: countDistinct(leads.id) })
-      .from(leads)
-      .innerJoin(
-        leadContacts,
-        and(
-          eq(leadContacts.partnerId, leads.partnerId),
-          eq(leadContacts.leadId, leads.id)
-        )
-      )
-      .where(
-        and(
-          ...cohortConditions,
-          eq(leadContacts.partnerId, context.partnerId),
-          lt(leadContacts.occurredAt, period.end)
-        )
-      )
-      .groupBy(leads.campaignId),
-    db
-      .select({ campaignId: leads.campaignId, total: countDistinct(leads.id) })
-      .from(leads)
-      .innerJoin(
-        campaignTerminalEvent,
-        and(
-          eq(campaignTerminalEvent.partnerId, leads.partnerId),
-          eq(campaignTerminalEvent.leadId, leads.id)
-        )
-      )
-      .innerJoin(
-        campaignTerminalStatus,
-        and(
-          sql`${campaignTerminalStatus.id} = cast(json_unquote(json_extract(${campaignTerminalEvent.payloadJson}, '$.statusId')) as unsigned)`,
-          eq(campaignTerminalStatus.partnerId, campaignTerminalEvent.partnerId)
-        )
-      )
-      .where(
-        and(
-          ...cohortConditions,
-          eq(campaignTerminalEvent.partnerId, context.partnerId),
-          eq(campaignTerminalEvent.type, "status_changed"),
-          lt(campaignTerminalEvent.occurredAt, period.end),
-          eq(campaignTerminalStatus.isTerminal, true)
-        )
-      )
-      .groupBy(leads.campaignId),
-    db
-      .select({ campaignId: leads.campaignId, total: countDistinct(leads.id) })
-      .from(leads)
-      .innerJoin(
-        campaignConversionEvent,
-        and(
-          eq(campaignConversionEvent.partnerId, leads.partnerId),
-          eq(campaignConversionEvent.leadId, leads.id)
-        )
-      )
-      .innerJoin(
-        campaignConversionStatus,
-        and(
-          sql`${campaignConversionStatus.id} = cast(json_unquote(json_extract(${campaignConversionEvent.payloadJson}, '$.statusId')) as unsigned)`,
-          eq(
-            campaignConversionStatus.partnerId,
-            campaignConversionEvent.partnerId
+      : and(eq(pdvs.id, leads.pdvId), eq(pdvs.partnerId, leads.partnerId));
+  const group = dimension === "campaign" ? campaigns : pdvs;
+  const attemptGroup = dimension === "campaign" ? campaigns : pdvs;
+  const contactGroup = dimension === "campaign" ? campaigns : pdvs;
+  const conversionGroup = dimension === "campaign" ? campaigns : pdvs;
+  const [leadRows, attemptRows, contactRows, conversionRows, overdueRows] =
+    await Promise.all([
+      db
+        .select({
+          id: dimensionId,
+          name: dimensionName,
+          leads: countDistinct(leads.id),
+        })
+        .from(leads)
+        .innerJoin(group, dimensionJoin)
+        .where(and(...base))
+        .groupBy(dimensionId, dimensionName),
+      db
+        .select({
+          id: dimensionId,
+          attempts: count(),
+          attempted: countDistinct(leadContactAttempts.leadId),
+        })
+        .from(leadContactAttempts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContactAttempts.leadId),
+            eq(leads.partnerId, leadContactAttempts.partnerId)
           )
         )
-      )
-      .where(
-        and(
-          ...cohortConditions,
-          eq(campaignConversionEvent.partnerId, context.partnerId),
-          eq(campaignConversionEvent.type, "status_changed"),
-          lt(campaignConversionEvent.occurredAt, period.end),
-          eq(campaignConversionStatus.isTerminal, true),
-          eq(campaignConversionStatus.category, "completed")
+        .innerJoin(attemptGroup, dimensionJoin)
+        .where(
+          and(
+            ...base,
+            eq(leadContactAttempts.partnerId, context.partnerId),
+            gte(leadContactAttempts.occurredAt, period.start),
+            lt(leadContactAttempts.occurredAt, period.end)
+          )
         )
-      )
-      .groupBy(leads.campaignId),
-    db
-      .select({
-        pdvId: pdvs.id,
-        pdvName: pdvs.name,
-        leads: count(),
-        firstContactAverageSeconds: sql<
-          number | null
-        >`avg(case when ${leads.firstContactAt} is not null and ${leads.firstContactAt} < ${period.end} then timestampdiff(second, ${leads.receivedAt}, ${leads.firstContactAt}) else null end)`,
-      })
-      .from(leads)
-      .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
-      .where(and(...cohortConditions))
-      .groupBy(pdvs.id, pdvs.name)
-      .orderBy(desc(count()), asc(pdvs.name)),
-    db
-      .select({ pdvId: leads.pdvId, total: countDistinct(leads.id) })
-      .from(leads)
-      .innerJoin(
-        leadContacts,
-        and(
-          eq(leadContacts.partnerId, leads.partnerId),
-          eq(leadContacts.leadId, leads.id)
+        .groupBy(dimensionId),
+      db
+        .select({
+          id: dimensionId,
+          contacts: count(),
+          contacted: countDistinct(leadContacts.leadId),
+          interested: sql<number>`coalesce(count(distinct case when ${leadContacts.resultCategory} = 'interested' then ${leadContacts.leadId} end), 0)`,
+        })
+        .from(leadContacts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContacts.leadId),
+            eq(leads.partnerId, leadContacts.partnerId)
+          )
         )
-      )
-      .where(
-        and(
-          ...cohortConditions,
-          eq(leadContacts.partnerId, context.partnerId),
-          lt(leadContacts.occurredAt, period.end)
+        .innerJoin(contactGroup, dimensionJoin)
+        .where(
+          and(
+            ...base,
+            eq(leadContacts.partnerId, context.partnerId),
+            eq(leadContacts.recordKind, "effective_contact"),
+            gte(leadContacts.occurredAt, period.start),
+            lt(leadContacts.occurredAt, period.end)
+          )
         )
-      )
-      .groupBy(leads.pdvId),
-    db
-      .select({ pdvId: leads.pdvId, total: countDistinct(leads.id) })
-      .from(leads)
-      .innerJoin(
-        pdvTerminalEvent,
-        and(
-          eq(pdvTerminalEvent.partnerId, leads.partnerId),
-          eq(pdvTerminalEvent.leadId, leads.id)
+        .groupBy(dimensionId),
+      db
+        .select({
+          id: dimensionId,
+          conversions: count(),
+          converted: countDistinct(leadConversions.leadId),
+        })
+        .from(leadConversions)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadConversions.leadId),
+            eq(leads.partnerId, leadConversions.partnerId)
+          )
         )
-      )
-      .innerJoin(
-        pdvTerminalStatus,
-        and(
-          sql`${pdvTerminalStatus.id} = cast(json_unquote(json_extract(${pdvTerminalEvent.payloadJson}, '$.statusId')) as unsigned)`,
-          eq(pdvTerminalStatus.partnerId, pdvTerminalEvent.partnerId)
+        .innerJoin(conversionGroup, dimensionJoin)
+        .where(
+          and(
+            ...base,
+            eq(leadConversions.partnerId, context.partnerId),
+            gte(leadConversions.occurredAt, period.start),
+            lt(leadConversions.occurredAt, period.end)
+          )
         )
-      )
-      .where(
-        and(
-          ...cohortConditions,
-          eq(pdvTerminalEvent.partnerId, context.partnerId),
-          eq(pdvTerminalEvent.type, "status_changed"),
-          lt(pdvTerminalEvent.occurredAt, period.end),
-          eq(pdvTerminalStatus.isTerminal, true)
+        .groupBy(dimensionId),
+      db
+        .select({ id: dimensionId, overdue: countDistinct(followUps.id) })
+        .from(followUps)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, followUps.leadId),
+            eq(leads.partnerId, followUps.partnerId)
+          )
         )
-      )
-      .groupBy(leads.pdvId),
-    db
-      .select({ pdvId: leads.pdvId, total: countDistinct(leads.id) })
-      .from(leads)
-      .innerJoin(
-        pdvConversionEvent,
-        and(
-          eq(pdvConversionEvent.partnerId, leads.partnerId),
-          eq(pdvConversionEvent.leadId, leads.id)
+        .innerJoin(group, dimensionJoin)
+        .where(
+          and(
+            ...base,
+            eq(followUps.partnerId, context.partnerId),
+            eq(followUps.status, "pending"),
+            lt(followUps.dueAt, now)
+          )
         )
-      )
-      .innerJoin(
-        pdvConversionStatus,
-        and(
-          sql`${pdvConversionStatus.id} = cast(json_unquote(json_extract(${pdvConversionEvent.payloadJson}, '$.statusId')) as unsigned)`,
-          eq(pdvConversionStatus.partnerId, pdvConversionEvent.partnerId)
-        )
-      )
-      .where(
-        and(
-          ...cohortConditions,
-          eq(pdvConversionEvent.partnerId, context.partnerId),
-          eq(pdvConversionEvent.type, "status_changed"),
-          lt(pdvConversionEvent.occurredAt, period.end),
-          eq(pdvConversionStatus.isTerminal, true),
-          eq(pdvConversionStatus.category, "completed")
-        )
-      )
-      .groupBy(leads.pdvId),
-    db
-      .select({ campaignId: leads.campaignId, overdue: count() })
-      .from(followUps)
-      .innerJoin(
-        leads,
-        and(
-          eq(leads.id, followUps.leadId),
-          eq(leads.partnerId, followUps.partnerId)
-        )
-      )
-      .where(and(...followUpConditions))
-      .groupBy(leads.campaignId),
-    db
-      .select({ pdvId: leads.pdvId, overdue: count() })
-      .from(followUps)
-      .innerJoin(
-        leads,
-        and(
-          eq(leads.id, followUps.leadId),
-          eq(leads.partnerId, followUps.partnerId)
-        )
-      )
-      .where(and(...followUpConditions))
-      .groupBy(leads.pdvId),
-  ]);
-  const campaignOverdueMap = new Map(
-    campaignOverdue.map(row => [row.campaignId, numberOf(row.overdue)])
-  );
-  const pdvOverdueMap = new Map(
-    pdvOverdue.map(row => [row.pdvId, numberOf(row.overdue)])
-  );
-  const metricsById = (
-    treatedRows: Array<{ id: number; total: unknown }>,
-    completedRows: Array<{ id: number; total: unknown }>,
-    conversionRows: Array<{ id: number; total: unknown }>
-  ) => {
-    const metrics = new Map<
-      number,
-      { treated: number; completed: number; converted: number }
-    >();
-    for (const row of treatedRows) {
-      metrics.set(row.id, {
-        treated: numberOf(row.total),
-        completed: 0,
-        converted: 0,
-      });
-    }
-    for (const row of completedRows) {
-      const current = metrics.get(row.id) ?? {
-        treated: 0,
-        completed: 0,
-        converted: 0,
-      };
-      current.completed = numberOf(row.total);
-      metrics.set(row.id, current);
-    }
-    for (const row of conversionRows) {
-      const current = metrics.get(row.id) ?? {
-        treated: 0,
-        completed: 0,
-        converted: 0,
-      };
-      current.converted = numberOf(row.total);
-      metrics.set(row.id, current);
-    }
-    return metrics;
-  };
-  const campaignMetrics = metricsById(
-    campaignTreatedRows.map(row => ({ id: row.campaignId, total: row.total })),
-    campaignCompletedRows.map(row => ({
-      id: row.campaignId,
-      total: row.total,
-    })),
-    campaignConversionRows.map(row => ({
-      id: row.campaignId,
-      total: row.total,
-    }))
-  );
-  const pdvMetrics = metricsById(
-    pdvTreatedRows.map(row => ({ id: row.pdvId, total: row.total })),
-    pdvCompletedRows.map(row => ({ id: row.pdvId, total: row.total })),
-    pdvConversionRows.map(row => ({ id: row.pdvId, total: row.total }))
-  );
-  const normalize = (
-    row: {
-      leads: unknown;
-      firstContactAverageSeconds: unknown;
-    },
-    metrics:
-      | { treated: number; completed: number; converted: number }
-      | undefined
-  ) => {
-    const leadTotal = numberOf(row.leads);
-    const values = metrics ?? { treated: 0, completed: 0, converted: 0 };
+        .groupBy(dimensionId),
+    ]);
+  const attempts = new Map(attemptRows.map(row => [row.id, row]));
+  const contacts = new Map(contactRows.map(row => [row.id, row]));
+  const conversions = new Map(conversionRows.map(row => [row.id, row]));
+  const overdue = new Map(overdueRows.map(row => [row.id, row]));
+  return leadRows.map(row => {
+    const attempt = attempts.get(row.id);
+    const contact = contacts.get(row.id);
+    const conversion = conversions.get(row.id);
     return {
-      leads: leadTotal,
-      treated: values.treated,
-      completed: values.completed,
-      conversions: values.converted,
-      conversionRate: safeRate(values.converted, leadTotal),
-      firstContactAverageSeconds:
-        row.firstContactAverageSeconds == null
-          ? null
-          : numberOf(row.firstContactAverageSeconds),
+      id: row.id,
+      name: row.name,
+      leads: numberOf(row.leads),
+      attempts: numberOf(attempt?.attempts),
+      leadsWithAttempt: numberOf(attempt?.attempted),
+      effectiveContacts: numberOf(contact?.contacts),
+      leadsWithEffectiveContact: numberOf(contact?.contacted),
+      interested: numberOf(contact?.interested),
+      conversions: numberOf(conversion?.conversions),
+      leadsConverted: numberOf(conversion?.converted),
+      conversionRate: safeRate(
+        numberOf(conversion?.converted),
+        numberOf(contact?.contacted)
+      ),
+      followUpsOverdue: numberOf(overdue.get(row.id)?.overdue),
     };
-  };
-  return {
-    campaigns: campaignRows.map(row => ({
-      id: row.campaignId,
-      name: row.campaignName,
-      ...normalize(row, campaignMetrics.get(row.campaignId)),
-      followUpsOverdue: campaignOverdueMap.get(row.campaignId) ?? 0,
-    })),
-    pdvs: pdvRows.map(row => ({
-      id: row.pdvId,
-      name: row.pdvName,
-      ...normalize(row, pdvMetrics.get(row.pdvId)),
-      followUpsOverdue: pdvOverdueMap.get(row.pdvId) ?? 0,
-    })),
-  };
+  });
 }
 
-/** Central Dashboard query layer. Every count is computed in SQL under the resolved tenant scope. */
+/** Central SQL dashboard provider. Browser code receives facts, never rules. */
 export async function getDashboardAnalytics(
   context: PartnerContext,
   filters: AnalyticsFilters
 ) {
   const analytics = await createAnalyticsContext(context, filters);
-  const { db, scope, period, now } = analytics;
-  const [cohort, previousCohort, activity, previousActivity, stocks, overview] =
-    await Promise.all([
-      queryCohortMetrics(db, context, scope, filters, period),
-      queryCohortMetrics(db, context, scope, filters, {
-        start: period.previousStart,
-        end: period.previousEnd,
-      }),
-      queryPeriodActivityMetrics(db, context, scope, filters, period),
-      queryPeriodActivityMetrics(db, context, scope, filters, {
-        start: period.previousStart,
-        end: period.previousEnd,
-      }),
-      queryDashboardStocks(
-        db,
-        context,
-        scope,
-        filters,
-        period,
-        now,
-        analytics.staleLeadMinutes
+  const { db, scope, period } = analytics;
+  const [
+    receivedRows,
+    previousReceivedRows,
+    activity,
+    previousActivity,
+    funnel,
+    stocks,
+    times,
+    campaignsOverview,
+    pdvsOverview,
+  ] = await Promise.all([
+    db
+      .select({ total: count() })
+      .from(leads)
+      .where(
+        and(
+          ...scopeLeadConditions(context, scope, filters),
+          gte(leads.receivedAt, period.start),
+          lt(leads.receivedAt, period.end)
+        )
       ),
-      queryCampaignAndPdvOverview(db, context, scope, filters, period, now),
-    ]);
-  const conversionRate = safeRate(cohort.converted, cohort.received);
+    db
+      .select({ total: count() })
+      .from(leads)
+      .where(
+        and(
+          ...scopeLeadConditions(context, scope, filters),
+          gte(leads.receivedAt, period.previousStart),
+          lt(leads.receivedAt, period.previousEnd)
+        )
+      ),
+    queryOperationMetrics(db, context, scope, filters, period),
+    queryOperationMetrics(db, context, scope, filters, {
+      start: period.previousStart,
+      end: period.previousEnd,
+    }),
+    queryCohortFunnel(db, context, scope, filters, period),
+    queryDashboardStocks(analytics, context, filters),
+    queryFirstResponseTimes(analytics, context, filters),
+    queryOverviewDimension(analytics, context, filters, "campaign"),
+    queryOverviewDimension(analytics, context, filters, "pdv"),
+  ]);
+  const received = numberOf(receivedRows[0]?.total);
+  const previousReceived = numberOf(previousReceivedRows[0]?.total);
+  const effectiveContactRate = safeRate(
+    activity.leadsWithEffectiveContact,
+    activity.worked
+  );
+  const previousEffectiveContactRate = safeRate(
+    previousActivity.leadsWithEffectiveContact,
+    previousActivity.worked
+  );
+  const conversionRate = safeRate(
+    activity.leadsConverted,
+    activity.leadsWithEffectiveContact
+  );
   const previousConversionRate = safeRate(
-    previousCohort.converted,
-    previousCohort.received
+    previousActivity.leadsConverted,
+    previousActivity.leadsWithEffectiveContact
   );
   return {
     metricDefinitions: analyticsMetricDefinitions,
@@ -1049,54 +963,62 @@ export async function getDashboardAnalytics(
       label: period.label,
     },
     cards: {
-      leadsReceived: cohort.received,
+      leadsReceived: received,
+      leadsBase: stocks.available + stocks.inPortfolio,
       leadsAvailable: stocks.available,
       leadsInPortfolio: stocks.inPortfolio,
-      leadsTreated: activity.treated,
-      leadsCompleted: activity.completed,
-      conversions: activity.converted,
+      leadsWorked: activity.worked,
+      leadsWithAttempt: activity.leadsWithAttempt,
+      attempts: activity.attempts,
+      leadsWithEffectiveContact: activity.leadsWithEffectiveContact,
+      effectiveContacts: activity.effectiveContacts,
+      interested: activity.interested,
+      conversions: activity.conversions,
+      leadsConverted: activity.leadsConverted,
+      effectiveContactRate,
       conversionRate,
       followUpsOverdue: stocks.followUpsOverdue,
       followUpsToday: stocks.followUpsToday,
-      firstContactAverageSeconds: activity.firstContactAverageSeconds,
-      leadsWithoutFirstContact: stocks.assignedWithoutFirstContact,
+      ...times,
+      leadsWithoutWork: stocks.assignedWithoutWork,
     },
     comparisons: {
-      leadsReceived: percentageChange(cohort.received, previousCohort.received),
-      leadsTreated: percentageChange(
-        activity.treated,
-        previousActivity.treated
-      ),
-      leadsCompleted: percentageChange(
-        activity.completed,
-        previousActivity.completed
+      leadsReceived: percentageChange(received, previousReceived),
+      leadsWorked: percentageChange(activity.worked, previousActivity.worked),
+      attempts: percentageChange(activity.attempts, previousActivity.attempts),
+      effectiveContacts: percentageChange(
+        activity.effectiveContacts,
+        previousActivity.effectiveContacts
       ),
       conversions: percentageChange(
-        activity.converted,
-        previousActivity.converted
+        activity.conversions,
+        previousActivity.conversions
       ),
+      effectiveContactRate:
+        effectiveContactRate == null || previousEffectiveContactRate == null
+          ? null
+          : percentageChange(
+              effectiveContactRate,
+              previousEffectiveContactRate
+            ),
       conversionRate:
         conversionRate == null || previousConversionRate == null
           ? null
           : percentageChange(conversionRate, previousConversionRate),
     },
-    funnel: {
-      received: cohort.received,
-      assigned: cohort.assigned,
-      treated: cohort.treated,
-      completed: cohort.completed,
-      converted: cohort.converted,
-    },
+    funnel,
     health: {
       unassigned: stocks.available,
-      assignedWithoutFirstContact: stocks.assignedWithoutFirstContact,
+      assignedWithoutWork: stocks.assignedWithoutWork,
       followUpsOverdue: stocks.followUpsOverdue,
       staleLeads: stocks.stale,
       staleLeadMinutes: analytics.staleLeadMinutes,
       governancePending: stocks.governancePending,
+      awaitingResponse: stocks.awaitingResponse,
+      terminalResidualFollowUps: stocks.terminalResidualFollowUps,
     },
-    campaigns: overview.campaigns,
-    pdvs: overview.pdvs,
+    campaigns: campaignsOverview,
+    pdvs: pdvsOverview,
   };
 }
 
@@ -1116,9 +1038,8 @@ async function listAnalyticsSellers(
   ];
   if (scope.pdvIds)
     conditions.push(inArray(userPdvAssignments.pdvId, scope.pdvIds));
-  if (filters.pdvId) {
+  if (filters.pdvId)
     conditions.push(eq(userPdvAssignments.pdvId, filters.pdvId));
-  }
   const requiredSeller = scope.ownMembershipId ?? filters.sellerMembershipId;
   if (requiredSeller) conditions.push(eq(userPartners.id, requiredSeller));
   const rows = await db
@@ -1165,66 +1086,79 @@ async function listAnalyticsSellers(
   return Array.from(grouped.values());
 }
 
-type MutableProductivity = {
+type ProductivityRow = {
   membershipId: number;
   name: string;
   pdvIds: number[];
   pdvNames: string[];
   leadsInPortfolio: number;
   leadsAssignedInPeriod: number;
-  leadsTreated: number;
-  contacts: number;
-  leadsCompleted: number;
+  leadsWorked: number;
+  attempts: number;
+  leadsWithAttempt: number;
+  effectiveContacts: number;
+  leadsWithEffectiveContact: number;
+  interested: number;
   conversions: number;
   followUpsCreated: number;
   followUpsCompleted: number;
   followUpsOverdue: number;
   followUpsPending: number;
-  followUpsDueByPeriodEnd: number;
-  firstContactAverageSeconds: number | null;
-  leadsWithoutFirstContact: number;
-  lastActivityAt: Date | null;
+  followUpsFromAttempts: number;
+  followUpsFromTreatments: number;
+  followUpsIndependent: number;
+  firstAttemptAverageSeconds: number | null;
+  firstEffectiveContactAverageSeconds: number | null;
+  leadsWithoutWork: number;
   governanceComplete: number;
   governancePending: number;
+  lastActivityAt: Date | null;
+  effectiveContactRate: number | null;
+  followUpCompletionRate: number | null;
 };
 
-function createProductivityRow(seller: AnalyticsSeller): MutableProductivity {
+function blankProductivityRow(seller: AnalyticsSeller): ProductivityRow {
   return {
-    membershipId: seller.membershipId,
-    name: seller.name,
-    pdvIds: seller.pdvIds,
-    pdvNames: seller.pdvNames,
+    ...seller,
     leadsInPortfolio: 0,
     leadsAssignedInPeriod: 0,
-    leadsTreated: 0,
-    contacts: 0,
-    leadsCompleted: 0,
+    leadsWorked: 0,
+    attempts: 0,
+    leadsWithAttempt: 0,
+    effectiveContacts: 0,
+    leadsWithEffectiveContact: 0,
+    interested: 0,
     conversions: 0,
     followUpsCreated: 0,
     followUpsCompleted: 0,
     followUpsOverdue: 0,
     followUpsPending: 0,
-    followUpsDueByPeriodEnd: 0,
-    firstContactAverageSeconds: null,
-    leadsWithoutFirstContact: 0,
-    lastActivityAt: null,
+    followUpsFromAttempts: 0,
+    followUpsFromTreatments: 0,
+    followUpsIndependent: 0,
+    firstAttemptAverageSeconds: null,
+    firstEffectiveContactAverageSeconds: null,
+    leadsWithoutWork: 0,
     governanceComplete: 0,
     governancePending: 0,
+    lastActivityAt: null,
+    effectiveContactRate: null,
+    followUpCompletionRate: null,
   };
 }
 
-function addToRows<T extends { membershipId: number }>(
-  source: readonly T[],
-  target: Map<number, MutableProductivity>,
-  apply: (target: MutableProductivity, row: T) => void
+function mutateRows<T extends { membershipId: number }>(
+  rows: T[],
+  target: Map<number, ProductivityRow>,
+  apply: (row: ProductivityRow, source: T) => void
 ) {
-  for (const row of source) {
-    const existing = target.get(row.membershipId);
-    if (existing) apply(existing, row);
+  for (const source of rows) {
+    const row = target.get(source.membershipId);
+    if (row) apply(row, source);
   }
 }
 
-/** Productivity is intentionally separated from Dashboard stocks and credits actual contact/follow-up actors. */
+/** Per-seller SQL aggregation for effort, quality and commercial outcome. */
 export async function getProductivityAnalytics(
   context: PartnerContext,
   filters: AnalyticsFilters
@@ -1233,7 +1167,7 @@ export async function getProductivityAnalytics(
   const { db, scope, period, now } = analytics;
   const sellers = await listAnalyticsSellers(db, context, scope, filters);
   const bySeller = new Map(
-    sellers.map(seller => [seller.membershipId, createProductivityRow(seller)])
+    sellers.map(seller => [seller.membershipId, blankProductivityRow(seller)])
   );
   if (!sellers.length) {
     return {
@@ -1243,85 +1177,77 @@ export async function getProductivityAnalytics(
         timeZone: period.timeZone,
         label: period.label,
       },
-      totals: { sellers: 0, contacts: 0, treated: 0, followUpsOverdue: 0 },
-      sellers: [],
+      totals: {
+        sellers: 0,
+        attempts: 0,
+        effectiveContacts: 0,
+        worked: 0,
+        conversions: 0,
+        followUpsOverdue: 0,
+      },
+      sellers: [] as ProductivityRow[],
     };
   }
   const sellerIds = sellers.map(seller => seller.membershipId);
-  const leadConditions = analyticsScopeConditions(context, scope, filters, {
+  const leadConditions = scopeLeadConditions(context, scope, filters, {
     includeOwner: false,
   });
-  const activeLeadConditions = [
-    ...leadConditions,
-    inArray(leads.assignedMembershipId, sellerIds),
-    inArray(leadStatuses.category, ["open", "in_progress"]),
-  ];
-  const contactConditions = [
-    ...leadConditions,
-    eq(leadContacts.partnerId, context.partnerId),
-    inArray(leadContacts.actorMembershipId, sellerIds),
-    gte(leadContacts.occurredAt, period.start),
-    lt(leadContacts.occurredAt, period.end),
-  ];
-  const event = alias(leadTimelineEvents, "productivity_status_event");
-  const targetStatus = alias(leadStatuses, "productivity_target_status");
-  const statusEventConditions = [
-    ...leadConditions,
-    eq(event.partnerId, context.partnerId),
-    inArray(event.actorMembershipId, sellerIds),
-    eq(event.type, "status_changed"),
-    gte(event.occurredAt, period.start),
-    lt(event.occurredAt, period.end),
-  ];
-  const followUpConditions = [
-    ...leadConditions,
-    eq(followUps.partnerId, context.partnerId),
-    inArray(followUps.ownerMembershipId, sellerIds),
-  ];
-  const firstContact = alias(leadContacts, "productivity_first_contact");
-  const governanceEvent = alias(
-    leadTimelineEvents,
-    "productivity_governance_event"
-  );
+  const event = alias(leadTimelineEvents, "productivity_operation_event");
+  const origin = alias(leadTimelineEvents, "productivity_follow_up_origin");
   const [
-    portfolio,
-    assigned,
-    contacts,
-    completed,
-    conversions,
-    followupRows,
-    firstContacts,
-    lastActivity,
-    governance,
+    portfolioRows,
+    attemptRows,
+    contactRows,
+    workedRows,
+    conversionRows,
+    followUpRows,
+    governanceRows,
+    attemptTimeRows,
+    contactTimeRows,
+    activityRows,
   ] = await Promise.all([
     db
       .select({
         membershipId: leads.assignedMembershipId,
-        total: count(),
-        withoutFirstContact: sql<number>`coalesce(sum(case when ${leads.firstContactAt} is null then 1 else 0 end), 0)`,
+        portfolio: countDistinct(leads.id),
+        assigned: sql<number>`coalesce(sum(case when ${leads.assignedAt} >= ${period.start} and ${leads.assignedAt} < ${period.end} then 1 else 0 end), 0)`,
+        withoutWork: sql<number>`coalesce(sum(case when ${leads.firstAttemptAt} is null and ${leads.firstEffectiveContactAt} is null then 1 else 0 end), 0)`,
       })
       .from(leads)
-      .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
-      .where(and(...activeLeadConditions))
-      .groupBy(leads.assignedMembershipId),
-    db
-      .select({ membershipId: leads.assignedMembershipId, total: count() })
-      .from(leads)
       .where(
-        and(
-          ...leadConditions,
-          inArray(leads.assignedMembershipId, sellerIds),
-          isNotNull(leads.assignedAt),
-          gte(leads.assignedAt, period.start),
-          lt(leads.assignedAt, period.end)
-        )
+        and(...leadConditions, inArray(leads.assignedMembershipId, sellerIds))
       )
       .groupBy(leads.assignedMembershipId),
     db
       .select({
+        membershipId: leadContactAttempts.actorMembershipId,
+        attempts: count(),
+        leads: countDistinct(leadContactAttempts.leadId),
+      })
+      .from(leadContactAttempts)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadContactAttempts.leadId),
+          eq(leads.partnerId, leadContactAttempts.partnerId)
+        )
+      )
+      .where(
+        and(
+          ...leadConditions,
+          eq(leadContactAttempts.partnerId, context.partnerId),
+          inArray(leadContactAttempts.actorMembershipId, sellerIds),
+          gte(leadContactAttempts.occurredAt, period.start),
+          lt(leadContactAttempts.occurredAt, period.end)
+        )
+      )
+      .groupBy(leadContactAttempts.actorMembershipId),
+    db
+      .select({
         membershipId: leadContacts.actorMembershipId,
         contacts: count(),
-        treated: countDistinct(leadContacts.leadId),
+        leads: countDistinct(leadContacts.leadId),
+        interested: sql<number>`coalesce(count(distinct case when ${leadContacts.resultCategory} = 'interested' then ${leadContacts.leadId} end), 0)`,
       })
       .from(leadContacts)
       .innerJoin(
@@ -1331,52 +1257,61 @@ export async function getProductivityAnalytics(
           eq(leads.partnerId, leadContacts.partnerId)
         )
       )
-      .where(and(...contactConditions))
+      .where(
+        and(
+          ...leadConditions,
+          eq(leadContacts.partnerId, context.partnerId),
+          inArray(leadContacts.actorMembershipId, sellerIds),
+          eq(leadContacts.recordKind, "effective_contact"),
+          gte(leadContacts.occurredAt, period.start),
+          lt(leadContacts.occurredAt, period.end)
+        )
+      )
       .groupBy(leadContacts.actorMembershipId),
     db
       .select({
         membershipId: event.actorMembershipId,
-        total: countDistinct(event.leadId),
+        worked: countDistinct(event.leadId),
       })
       .from(event)
       .innerJoin(
         leads,
         and(eq(leads.id, event.leadId), eq(leads.partnerId, event.partnerId))
       )
-      .innerJoin(
-        targetStatus,
+      .where(
         and(
-          sql`${targetStatus.id} = cast(json_unquote(json_extract(${event.payloadJson}, '$.statusId')) as unsigned)`,
-          eq(targetStatus.partnerId, event.partnerId)
+          ...leadConditions,
+          eq(event.partnerId, context.partnerId),
+          inArray(event.actorMembershipId, sellerIds),
+          inArray(event.type, [...OPERATION_EVENT_TYPES]),
+          gte(event.occurredAt, period.start),
+          lt(event.occurredAt, period.end)
         )
       )
-      .where(and(...statusEventConditions, eq(targetStatus.isTerminal, true)))
       .groupBy(event.actorMembershipId),
     db
       .select({
-        membershipId: event.actorMembershipId,
-        total: countDistinct(event.leadId),
+        membershipId: leadConversions.actorMembershipId,
+        conversions: count(),
       })
-      .from(event)
+      .from(leadConversions)
       .innerJoin(
         leads,
-        and(eq(leads.id, event.leadId), eq(leads.partnerId, event.partnerId))
-      )
-      .innerJoin(
-        targetStatus,
         and(
-          sql`${targetStatus.id} = cast(json_unquote(json_extract(${event.payloadJson}, '$.statusId')) as unsigned)`,
-          eq(targetStatus.partnerId, event.partnerId)
+          eq(leads.id, leadConversions.leadId),
+          eq(leads.partnerId, leadConversions.partnerId)
         )
       )
       .where(
         and(
-          ...statusEventConditions,
-          eq(targetStatus.isTerminal, true),
-          eq(targetStatus.category, "completed")
+          ...leadConditions,
+          eq(leadConversions.partnerId, context.partnerId),
+          inArray(leadConversions.actorMembershipId, sellerIds),
+          gte(leadConversions.occurredAt, period.start),
+          lt(leadConversions.occurredAt, period.end)
         )
       )
-      .groupBy(event.actorMembershipId),
+      .groupBy(leadConversions.actorMembershipId),
     db
       .select({
         membershipId: followUps.ownerMembershipId,
@@ -1384,7 +1319,9 @@ export async function getProductivityAnalytics(
         completed: sql<number>`coalesce(sum(case when ${followUps.completedAt} >= ${period.start} and ${followUps.completedAt} < ${period.end} then 1 else 0 end), 0)`,
         overdue: sql<number>`coalesce(sum(case when ${followUps.status} = 'pending' and ${followUps.dueAt} < ${now} then 1 else 0 end), 0)`,
         pending: sql<number>`coalesce(sum(case when ${followUps.status} = 'pending' then 1 else 0 end), 0)`,
-        dueByEnd: sql<number>`coalesce(sum(case when ${followUps.status} = 'pending' and ${followUps.dueAt} < ${period.end} then 1 else 0 end), 0)`,
+        attemptOrigin: sql<number>`coalesce(sum(case when ${origin.type} = 'contact_attempted' then 1 else 0 end), 0)`,
+        treatmentOrigin: sql<number>`coalesce(sum(case when ${origin.type} = 'effective_contact_recorded' then 1 else 0 end), 0)`,
+        independentOrigin: sql<number>`coalesce(sum(case when ${followUps.originTimelineEventId} is null then 1 else 0 end), 0)`,
       })
       .from(followUps)
       .innerJoin(
@@ -1394,57 +1331,35 @@ export async function getProductivityAnalytics(
           eq(leads.partnerId, followUps.partnerId)
         )
       )
-      .where(and(...followUpConditions))
-      .groupBy(followUps.ownerMembershipId),
-    db
-      .select({
-        membershipId: firstContact.actorMembershipId,
-        averageSeconds: sql<
-          number | null
-        >`avg(timestampdiff(second, ${leads.receivedAt}, ${leads.firstContactAt}))`,
-      })
-      .from(leads)
-      .innerJoin(
-        firstContact,
+      .leftJoin(
+        origin,
         and(
-          eq(firstContact.leadId, leads.id),
-          eq(firstContact.partnerId, leads.partnerId),
-          eq(firstContact.occurredAt, leads.firstContactAt)
+          eq(origin.id, followUps.originTimelineEventId),
+          eq(origin.partnerId, followUps.partnerId),
+          eq(origin.leadId, followUps.leadId)
         )
       )
       .where(
         and(
           ...leadConditions,
-          inArray(firstContact.actorMembershipId, sellerIds),
-          isNotNull(leads.firstContactAt),
-          gte(leads.firstContactAt, period.start),
-          lt(leads.firstContactAt, period.end)
+          eq(followUps.partnerId, context.partnerId),
+          inArray(followUps.ownerMembershipId, sellerIds)
         )
       )
-      .groupBy(firstContact.actorMembershipId),
+      .groupBy(followUps.ownerMembershipId),
     db
       .select({
-        membershipId: leads.assignedMembershipId,
-        lastActivityAt: max(leads.lastActivityAt),
-      })
-      .from(leads)
-      .where(
-        and(...leadConditions, inArray(leads.assignedMembershipId, sellerIds))
-      )
-      .groupBy(leads.assignedMembershipId),
-    db
-      .select({
-        membershipId: governanceEvent.actorMembershipId,
+        membershipId: event.actorMembershipId,
         complete: sql<number>`coalesce(sum(case when ${leadTreatmentGovernance.isComplete} = true then 1 else 0 end), 0)`,
         pending: sql<number>`coalesce(sum(case when ${leadTreatmentGovernance.isComplete} = false then 1 else 0 end), 0)`,
       })
       .from(leadTreatmentGovernance)
       .innerJoin(
-        governanceEvent,
+        event,
         and(
-          eq(governanceEvent.id, leadTreatmentGovernance.timelineEventId),
-          eq(governanceEvent.partnerId, leadTreatmentGovernance.partnerId),
-          eq(governanceEvent.leadId, leadTreatmentGovernance.leadId)
+          eq(event.id, leadTreatmentGovernance.timelineEventId),
+          eq(event.partnerId, leadTreatmentGovernance.partnerId),
+          eq(event.leadId, leadTreatmentGovernance.leadId)
         )
       )
       .innerJoin(
@@ -1458,82 +1373,134 @@ export async function getProductivityAnalytics(
         and(
           ...leadConditions,
           eq(leadTreatmentGovernance.partnerId, context.partnerId),
-          inArray(governanceEvent.actorMembershipId, sellerIds),
-          gte(governanceEvent.occurredAt, period.start),
-          lt(governanceEvent.occurredAt, period.end)
+          inArray(event.actorMembershipId, sellerIds),
+          inArray(leadTreatmentGovernance.operationKind, [
+            "attempt",
+            "effective_contact",
+          ])
         )
       )
-      .groupBy(governanceEvent.actorMembershipId),
+      .groupBy(event.actorMembershipId),
+    db
+      .select({
+        membershipId: leadContactAttempts.actorMembershipId,
+        seconds: sql<
+          number | null
+        >`avg(timestampdiff(second, ${leads.receivedAt}, ${leadContactAttempts.occurredAt}))`,
+      })
+      .from(leadContactAttempts)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadContactAttempts.leadId),
+          eq(leads.partnerId, leadContactAttempts.partnerId)
+        )
+      )
+      .where(
+        and(
+          ...leadConditions,
+          eq(leadContactAttempts.partnerId, context.partnerId),
+          inArray(leadContactAttempts.actorMembershipId, sellerIds),
+          eq(leadContactAttempts.occurredAt, leads.firstAttemptAt),
+          gte(leadContactAttempts.occurredAt, period.start),
+          lt(leadContactAttempts.occurredAt, period.end)
+        )
+      )
+      .groupBy(leadContactAttempts.actorMembershipId),
+    db
+      .select({
+        membershipId: leadContacts.actorMembershipId,
+        seconds: sql<
+          number | null
+        >`avg(timestampdiff(second, ${leads.receivedAt}, ${leadContacts.occurredAt}))`,
+      })
+      .from(leadContacts)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadContacts.leadId),
+          eq(leads.partnerId, leadContacts.partnerId)
+        )
+      )
+      .where(
+        and(
+          ...leadConditions,
+          eq(leadContacts.partnerId, context.partnerId),
+          inArray(leadContacts.actorMembershipId, sellerIds),
+          eq(leadContacts.recordKind, "effective_contact"),
+          eq(leadContacts.occurredAt, leads.firstEffectiveContactAt),
+          gte(leadContacts.occurredAt, period.start),
+          lt(leadContacts.occurredAt, period.end)
+        )
+      )
+      .groupBy(leadContacts.actorMembershipId),
+    db
+      .select({
+        membershipId: event.actorMembershipId,
+        lastActivityAt: max(event.occurredAt),
+      })
+      .from(event)
+      .innerJoin(
+        leads,
+        and(eq(leads.id, event.leadId), eq(leads.partnerId, event.partnerId))
+      )
+      .where(
+        and(
+          ...leadConditions,
+          eq(event.partnerId, context.partnerId),
+          inArray(event.actorMembershipId, sellerIds),
+          inArray(event.type, [...OPERATION_EVENT_TYPES]),
+          gte(event.occurredAt, period.start),
+          lt(event.occurredAt, period.end)
+        )
+      )
+      .groupBy(event.actorMembershipId),
   ]);
-
-  addToRows(
-    portfolio.filter(
+  mutateRows(
+    portfolioRows.filter(
       (row): row is typeof row & { membershipId: number } =>
         row.membershipId !== null
     ),
     bySeller,
     (target, row) => {
-      target.leadsInPortfolio = numberOf(row.total);
-      target.leadsWithoutFirstContact = numberOf(row.withoutFirstContact);
+      target.leadsInPortfolio = numberOf(row.portfolio);
+      target.leadsAssignedInPeriod = numberOf(row.assigned);
+      target.leadsWithoutWork = numberOf(row.withoutWork);
     }
   );
-  addToRows(
-    assigned.filter(
-      (row): row is typeof row & { membershipId: number } =>
-        row.membershipId !== null
-    ),
-    bySeller,
-    (target, row) => {
-      target.leadsAssignedInPeriod = numberOf(row.total);
-    }
-  );
-  addToRows(contacts, bySeller, (target, row) => {
-    target.contacts = numberOf(row.contacts);
-    target.leadsTreated = numberOf(row.treated);
+  mutateRows(attemptRows, bySeller, (target, row) => {
+    target.attempts = numberOf(row.attempts);
+    target.leadsWithAttempt = numberOf(row.leads);
   });
-  addToRows(
-    completed.filter(
+  mutateRows(contactRows, bySeller, (target, row) => {
+    target.effectiveContacts = numberOf(row.contacts);
+    target.leadsWithEffectiveContact = numberOf(row.leads);
+    target.interested = numberOf(row.interested);
+  });
+  mutateRows(
+    workedRows.filter(
       (row): row is typeof row & { membershipId: number } =>
         row.membershipId !== null
     ),
     bySeller,
     (target, row) => {
-      target.leadsCompleted = numberOf(row.total);
+      target.leadsWorked = numberOf(row.worked);
     }
   );
-  addToRows(
-    conversions.filter(
-      (row): row is typeof row & { membershipId: number } =>
-        row.membershipId !== null
-    ),
-    bySeller,
-    (target, row) => {
-      target.conversions = numberOf(row.total);
-    }
-  );
-  addToRows(followupRows, bySeller, (target, row) => {
+  mutateRows(conversionRows, bySeller, (target, row) => {
+    target.conversions = numberOf(row.conversions);
+  });
+  mutateRows(followUpRows, bySeller, (target, row) => {
     target.followUpsCreated = numberOf(row.created);
     target.followUpsCompleted = numberOf(row.completed);
     target.followUpsOverdue = numberOf(row.overdue);
     target.followUpsPending = numberOf(row.pending);
-    target.followUpsDueByPeriodEnd = numberOf(row.dueByEnd);
+    target.followUpsFromAttempts = numberOf(row.attemptOrigin);
+    target.followUpsFromTreatments = numberOf(row.treatmentOrigin);
+    target.followUpsIndependent = numberOf(row.independentOrigin);
   });
-  addToRows(firstContacts, bySeller, (target, row) => {
-    target.firstContactAverageSeconds =
-      row.averageSeconds == null ? null : numberOf(row.averageSeconds);
-  });
-  addToRows(
-    lastActivity.filter(
-      (row): row is typeof row & { membershipId: number } =>
-        row.membershipId !== null
-    ),
-    bySeller,
-    (target, row) => {
-      target.lastActivityAt = row.lastActivityAt;
-    }
-  );
-  addToRows(
-    governance.filter(
+  mutateRows(
+    governanceRows.filter(
       (row): row is typeof row & { membershipId: number } =>
         row.membershipId !== null
     ),
@@ -1543,13 +1510,33 @@ export async function getProductivityAnalytics(
       target.governancePending = numberOf(row.pending);
     }
   );
-
+  mutateRows(attemptTimeRows, bySeller, (target, row) => {
+    target.firstAttemptAverageSeconds =
+      row.seconds == null ? null : numberOf(row.seconds);
+  });
+  mutateRows(contactTimeRows, bySeller, (target, row) => {
+    target.firstEffectiveContactAverageSeconds =
+      row.seconds == null ? null : numberOf(row.seconds);
+  });
+  mutateRows(
+    activityRows.filter(
+      (row): row is typeof row & { membershipId: number } =>
+        row.membershipId !== null
+    ),
+    bySeller,
+    (target, row) => {
+      target.lastActivityAt = row.lastActivityAt;
+    }
+  );
   const rows = Array.from(bySeller.values()).map(row => ({
     ...row,
-    treatmentRate: safeRate(row.leadsTreated, row.leadsAssignedInPeriod),
+    effectiveContactRate: safeRate(
+      row.leadsWithEffectiveContact,
+      row.leadsWorked
+    ),
     followUpCompletionRate: safeRate(
       row.followUpsCompleted,
-      row.followUpsCompleted + row.followUpsDueByPeriodEnd
+      row.followUpsCompleted + row.followUpsPending
     ),
   }));
   return {
@@ -1561,8 +1548,13 @@ export async function getProductivityAnalytics(
     },
     totals: {
       sellers: rows.length,
-      contacts: rows.reduce((total, row) => total + row.contacts, 0),
-      treated: rows.reduce((total, row) => total + row.leadsTreated, 0),
+      attempts: rows.reduce((total, row) => total + row.attempts, 0),
+      effectiveContacts: rows.reduce(
+        (total, row) => total + row.effectiveContacts,
+        0
+      ),
+      worked: rows.reduce((total, row) => total + row.leadsWorked, 0),
+      conversions: rows.reduce((total, row) => total + row.conversions, 0),
       followUpsOverdue: rows.reduce(
         (total, row) => total + row.followUpsOverdue,
         0
@@ -1607,10 +1599,11 @@ export async function listAnalyticsFilters(context: PartnerContext) {
       .orderBy(asc(pdvs.name)),
     listAnalyticsSellers(db, context, scope, {}),
   ]);
-  const campaignsById = new Map(campaignRows.map(row => [row.id, row]));
   return {
     timeZone: period.timeZone,
-    campaigns: Array.from(campaignsById.values()),
+    campaigns: Array.from(
+      new Map(campaignRows.map(row => [row.id, row])).values()
+    ),
     pdvs: pdvRows,
     sellers: sellers.map(seller => ({
       id: seller.membershipId,
@@ -1627,18 +1620,6 @@ export async function listAnalyticsFilters(context: PartnerContext) {
     ] as AnalyticsPeriodPreset[],
   };
 }
-
-export type AnalyticsReportColumn = { key: string; label: string };
-
-export type AnalyticsReportPage = {
-  type: AnalyticsReportType;
-  columns: AnalyticsReportColumn[];
-  rows: AnalyticsReportRow[];
-  total: number;
-  page: number;
-  pageSize: number;
-  period: { start: Date; end: Date; timeZone: string; label: string };
-};
 
 function reportPagination(
   input: AnalyticsReportInput,
@@ -1657,42 +1638,26 @@ function customFieldValue(value: unknown): string | number | null {
   return JSON.stringify(value);
 }
 
-function timelineStatusId(payload: unknown) {
-  let value: unknown = payload;
-  if (typeof value === "string") {
-    try {
-      value = JSON.parse(value) as unknown;
-    } catch {
-      return null;
-    }
-  }
-  if (!value || typeof value !== "object" || !("statusId" in value)) {
-    return null;
-  }
-  const statusId = Number((value as { statusId?: unknown }).statusId);
-  return Number.isInteger(statusId) && statusId > 0 ? statusId : null;
-}
-
 function leadReportColumns(
   customFields: Array<{ key: string; label: string }>
-) {
+): AnalyticsReportColumn[] {
   return [
     { key: "id", label: "Identificador" },
     { key: "campaign", label: "Campanha" },
     { key: "pdv", label: "PDV" },
     { key: "responsible", label: "Responsável" },
-    { key: "name", label: "Nome" },
+    { key: "name", label: "Lead" },
     { key: "phone", label: "Telefone" },
     { key: "email", label: "E-mail" },
-    { key: "status", label: "Status" },
-    { key: "source", label: "Origem" },
+    { key: "status", label: "Situação atual" },
     { key: "receivedAt", label: "Recebido em" },
-    { key: "assignedAt", label: "Atribuído em" },
-    { key: "firstContactAt", label: "Primeiro contato" },
-    { key: "lastActivityAt", label: "Última atividade" },
-    { key: "nextFollowUpAt", label: "Próximo follow-up pendente" },
-    { key: "completed", label: "Concluído" },
-    { key: "concludedAt", label: "Concluído em" },
+    { key: "firstAttemptAt", label: "Primeira tentativa" },
+    { key: "firstEffectiveContactAt", label: "Primeiro contato efetivo" },
+    { key: "nextFollowUpAt", label: "Próximo follow-up" },
+    { key: "attempts", label: "Tentativas" },
+    { key: "effectiveContacts", label: "Tratativas" },
+    { key: "hasConversion", label: "Possui conversão" },
+    { key: "conversionAt", label: "Data da conversão" },
     ...customFields.map(field => ({
       key: `custom_${field.key}`,
       label: field.label,
@@ -1709,10 +1674,15 @@ async function listLeadsReport(
   const { db, scope, period } = analytics;
   const pagination = reportPagination(input, maximum);
   const conditions = [
-    ...analyticsScopeConditions(context, scope, input),
+    ...scopeLeadConditions(context, scope, input),
     gte(leads.receivedAt, period.start),
     lt(leads.receivedAt, period.end),
   ];
+  const responsibleMembership = alias(
+    userPartners,
+    "report_lead_responsible_membership"
+  );
+  const responsibleUser = alias(users, "report_lead_responsible_user");
   const [customFields, records, totals] = await Promise.all([
     db
       .select({
@@ -1723,44 +1693,63 @@ async function listLeadsReport(
       .where(
         and(
           eq(customFieldDefinitions.partnerId, context.partnerId),
-          eq(customFieldDefinitions.entityType, "lead")
+          eq(customFieldDefinitions.entityType, "lead"),
+          eq(customFieldDefinitions.isActive, true)
         )
       )
       .orderBy(
         asc(customFieldDefinitions.sortOrder),
-        asc(customFieldDefinitions.id)
+        asc(customFieldDefinitions.key)
       ),
     db
       .select({
         id: leads.id,
         campaign: campaigns.name,
         pdv: pdvs.name,
-        responsible: users.name,
+        responsible: responsibleUser.name,
         name: leads.name,
         phone: leads.phone,
         email: leads.email,
         status: leadStatuses.label,
-        statusTerminal: leadStatuses.isTerminal,
-        source: leadSources.label,
         receivedAt: leads.receivedAt,
-        assignedAt: leads.assignedAt,
-        firstContactAt: leads.firstContactAt,
-        lastActivityAt: leads.lastActivityAt,
+        firstAttemptAt: leads.firstAttemptAt,
+        firstEffectiveContactAt: leads.firstEffectiveContactAt,
+        nextFollowUpAt: leads.nextFollowUpAt,
         customData: leads.customData,
+        attempts: sql<number>`(select count(*) from ${leadContactAttempts} where ${leadContactAttempts.partnerId} = ${leads.partnerId} and ${leadContactAttempts.leadId} = ${leads.id})`,
+        effectiveContacts: sql<number>`(select count(*) from ${leadContacts} where ${leadContacts.partnerId} = ${leads.partnerId} and ${leadContacts.leadId} = ${leads.id} and ${leadContacts.recordKind} = 'effective_contact')`,
+        conversionAt: sql<Date | null>`(select min(${leadConversions.occurredAt}) from ${leadConversions} where ${leadConversions.partnerId} = ${leads.partnerId} and ${leadConversions.leadId} = ${leads.id})`,
       })
       .from(leads)
-      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
-      .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
-      .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
-      .leftJoin(leadSources, eq(leadSources.id, leads.sourceId))
-      .leftJoin(
-        userPartners,
+      .innerJoin(
+        campaigns,
         and(
-          eq(userPartners.id, leads.assignedMembershipId),
-          eq(userPartners.partnerId, leads.partnerId)
+          eq(campaigns.id, leads.campaignId),
+          eq(campaigns.partnerId, leads.partnerId)
         )
       )
-      .leftJoin(users, eq(users.id, userPartners.userId))
+      .innerJoin(
+        pdvs,
+        and(eq(pdvs.id, leads.pdvId), eq(pdvs.partnerId, leads.partnerId))
+      )
+      .innerJoin(
+        leadStatuses,
+        and(
+          eq(leadStatuses.id, leads.statusId),
+          eq(leadStatuses.partnerId, leads.partnerId)
+        )
+      )
+      .leftJoin(
+        responsibleMembership,
+        and(
+          eq(responsibleMembership.id, leads.assignedMembershipId),
+          eq(responsibleMembership.partnerId, leads.partnerId)
+        )
+      )
+      .leftJoin(
+        responsibleUser,
+        eq(responsibleUser.id, responsibleMembership.userId)
+      )
       .where(and(...conditions))
       .orderBy(desc(leads.receivedAt), desc(leads.id))
       .limit(pagination.pageSize)
@@ -1770,70 +1759,8 @@ async function listLeadsReport(
       .from(leads)
       .where(and(...conditions)),
   ]);
-  const leadIds = records.map(record => record.id);
-  const [nextFollowUps, terminalStatuses, terminalEvents] = leadIds.length
-    ? await Promise.all([
-        db
-          .select({
-            leadId: followUps.leadId,
-            dueAt: min(followUps.dueAt),
-          })
-          .from(followUps)
-          .where(
-            and(
-              eq(followUps.partnerId, context.partnerId),
-              inArray(followUps.leadId, leadIds),
-              eq(followUps.status, "pending")
-            )
-          )
-          .groupBy(followUps.leadId),
-        db
-          .select({ id: leadStatuses.id })
-          .from(leadStatuses)
-          .where(
-            and(
-              eq(leadStatuses.partnerId, context.partnerId),
-              eq(leadStatuses.isTerminal, true)
-            )
-          ),
-        db
-          .select({
-            leadId: leadTimelineEvents.leadId,
-            occurredAt: leadTimelineEvents.occurredAt,
-            payloadJson: leadTimelineEvents.payloadJson,
-          })
-          .from(leadTimelineEvents)
-          .where(
-            and(
-              eq(leadTimelineEvents.partnerId, context.partnerId),
-              eq(leadTimelineEvents.type, "status_changed"),
-              inArray(leadTimelineEvents.leadId, leadIds)
-            )
-          )
-          .orderBy(
-            desc(leadTimelineEvents.occurredAt),
-            desc(leadTimelineEvents.id)
-          ),
-      ])
-    : [[], [], []];
-  const nextFollowUpByLead = new Map(
-    nextFollowUps.map(row => [row.leadId, row.dueAt])
-  );
-  const terminalStatusIds = new Set(terminalStatuses.map(row => row.id));
-  const concludedAtByLead = new Map<number, Date>();
-  for (const event of terminalEvents) {
-    const statusId = timelineStatusId(event.payloadJson);
-    if (
-      statusId &&
-      terminalStatusIds.has(statusId) &&
-      !concludedAtByLead.has(event.leadId)
-    ) {
-      concludedAtByLead.set(event.leadId, event.occurredAt);
-    }
-  }
-  const columns = leadReportColumns(customFields);
   return {
-    columns,
+    columns: leadReportColumns(customFields),
     rows: records.map(record => {
       const customData =
         record.customData && typeof record.customData === "object"
@@ -1843,26 +1770,181 @@ async function listLeadsReport(
         id: record.id,
         campaign: record.campaign,
         pdv: record.pdv,
-        responsible: record.responsible ?? "Sem responsável",
-        name: record.name ?? "",
+        responsible: record.responsible ?? "",
+        name: record.name ?? "Lead sem nome",
         phone: record.phone ?? "",
         email: record.email ?? "",
         status: record.status,
-        source: record.source ?? "",
         receivedAt: valueOfDate(record.receivedAt),
-        assignedAt: valueOfDate(record.assignedAt),
-        firstContactAt: valueOfDate(record.firstContactAt),
-        lastActivityAt: valueOfDate(record.lastActivityAt),
-        nextFollowUpAt: valueOfDate(nextFollowUpByLead.get(record.id)),
-        completed: record.statusTerminal ? "Sim" : "Não",
-        concludedAt: valueOfDate(concludedAtByLead.get(record.id)),
+        firstAttemptAt: valueOfDate(record.firstAttemptAt),
+        firstEffectiveContactAt: valueOfDate(record.firstEffectiveContactAt),
+        nextFollowUpAt: valueOfDate(record.nextFollowUpAt),
+        attempts: numberOf(record.attempts),
+        effectiveContacts: numberOf(record.effectiveContacts),
+        hasConversion: record.conversionAt ? "Sim" : "Não",
+        conversionAt: valueOfDate(record.conversionAt),
         ...Object.fromEntries(
           customFields.map(field => [
             `custom_${field.key}`,
             customFieldValue(customData[field.key]),
           ])
         ),
-      } as AnalyticsReportRow;
+      };
+    }),
+    total: numberOf(totals[0]?.total),
+    ...pagination,
+  };
+}
+
+function operationReportColumns(
+  kind: "attempt" | "treatment"
+): AnalyticsReportColumn[] {
+  return kind === "attempt"
+    ? [
+        { key: "lead", label: "Lead" },
+        { key: "campaign", label: "Campanha" },
+        { key: "pdv", label: "PDV" },
+        { key: "seller", label: "Vendedor" },
+        { key: "occurredAt", label: "Data/hora" },
+        { key: "channel", label: "Canal" },
+        { key: "result", label: "Resultado" },
+        { key: "category", label: "Categoria" },
+        { key: "summary", label: "Observação" },
+        { key: "followUp", label: "Follow-up gerado" },
+        { key: "governance", label: "Governança" },
+        { key: "evidenceRequired", label: "Evidência requerida" },
+        { key: "evidenceAvailable", label: "Evidência disponível" },
+      ]
+    : [
+        { key: "lead", label: "Lead" },
+        { key: "campaign", label: "Campanha" },
+        { key: "pdv", label: "PDV" },
+        { key: "seller", label: "Vendedor" },
+        { key: "occurredAt", label: "Data/hora" },
+        { key: "channel", label: "Canal" },
+        { key: "result", label: "Resultado" },
+        { key: "category", label: "Categoria" },
+        { key: "summary", label: "Resumo" },
+        { key: "resultingStatus", label: "Situação resultante" },
+        { key: "followUp", label: "Follow-up gerado" },
+        { key: "governance", label: "Governança" },
+        { key: "evidenceRequired", label: "Evidência requerida" },
+        { key: "evidenceAvailable", label: "Evidência disponível" },
+        { key: "conversion", label: "Conversão associada" },
+      ];
+}
+
+async function listAttemptReport(
+  analytics: AnalyticsContext,
+  context: PartnerContext,
+  input: AnalyticsReportInput,
+  maximum: number
+) {
+  const { db, scope, period } = analytics;
+  const pagination = reportPagination(input, maximum);
+  const conditions = [
+    ...scopeLeadConditions(context, scope, input),
+    eq(leadContactAttempts.partnerId, context.partnerId),
+    gte(leadContactAttempts.occurredAt, period.start),
+    lt(leadContactAttempts.occurredAt, period.end),
+  ];
+  const actor = alias(userPartners, "report_attempt_actor");
+  const actorUser = alias(users, "report_attempt_user");
+  const governance = alias(
+    leadTreatmentGovernance,
+    "report_attempt_governance"
+  );
+  const evidence = alias(leadEvidences, "report_attempt_evidence");
+  const [records, totals] = await Promise.all([
+    db
+      .select({
+        lead: leads.name,
+        campaign: campaigns.name,
+        pdv: pdvs.name,
+        seller: actorUser.name,
+        occurredAt: leadContactAttempts.occurredAt,
+        channel: leadContactAttempts.channel,
+        result: leadContactAttempts.resultLabel,
+        category: leadContactAttempts.resultCategory,
+        summary: leadContactAttempts.summary,
+        rule: governance.appliedRuleJson,
+        complete: governance.isComplete,
+        followUp: sql<number>`case when exists (select 1 from ${followUps} where ${followUps.partnerId} = ${leadContactAttempts.partnerId} and ${followUps.leadId} = ${leadContactAttempts.leadId} and ${followUps.originTimelineEventId} = ${leadContactAttempts.timelineEventId}) then 1 else 0 end`,
+        hasEvidence: sql<number>`case when exists (select 1 from ${evidence} where ${evidence.partnerId} = ${leadContactAttempts.partnerId} and ${evidence.leadId} = ${leadContactAttempts.leadId} and ${evidence.timelineEventId} = ${leadContactAttempts.timelineEventId} and ${evidence.deletedAt} is null and ${evidence.storageStatus} = 'available') then 1 else 0 end`,
+      })
+      .from(leadContactAttempts)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadContactAttempts.leadId),
+          eq(leads.partnerId, leadContactAttempts.partnerId)
+        )
+      )
+      .innerJoin(
+        campaigns,
+        and(
+          eq(campaigns.id, leads.campaignId),
+          eq(campaigns.partnerId, leads.partnerId)
+        )
+      )
+      .innerJoin(
+        pdvs,
+        and(eq(pdvs.id, leads.pdvId), eq(pdvs.partnerId, leads.partnerId))
+      )
+      .innerJoin(
+        actor,
+        and(
+          eq(actor.id, leadContactAttempts.actorMembershipId),
+          eq(actor.partnerId, leadContactAttempts.partnerId)
+        )
+      )
+      .innerJoin(actorUser, eq(actorUser.id, actor.userId))
+      .leftJoin(
+        governance,
+        and(
+          eq(governance.timelineEventId, leadContactAttempts.timelineEventId),
+          eq(governance.partnerId, leadContactAttempts.partnerId),
+          eq(governance.leadId, leadContactAttempts.leadId)
+        )
+      )
+      .where(and(...conditions))
+      .orderBy(
+        desc(leadContactAttempts.occurredAt),
+        desc(leadContactAttempts.id)
+      )
+      .limit(pagination.pageSize)
+      .offset(pagination.offset),
+    db
+      .select({ total: count() })
+      .from(leadContactAttempts)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadContactAttempts.leadId),
+          eq(leads.partnerId, leadContactAttempts.partnerId)
+        )
+      )
+      .where(and(...conditions)),
+  ]);
+  return {
+    columns: operationReportColumns("attempt"),
+    rows: records.map(record => {
+      const state = evidenceState(record.rule, record.hasEvidence);
+      return {
+        lead: record.lead ?? "Lead sem nome",
+        campaign: record.campaign,
+        pdv: record.pdv,
+        seller: record.seller,
+        occurredAt: valueOfDate(record.occurredAt),
+        channel: record.channel,
+        result: record.result,
+        category: record.category,
+        summary: record.summary ?? "",
+        followUp: numberOf(record.followUp) ? "Sim" : "Não",
+        governance: record.complete ? "Completa" : state.governance,
+        evidenceRequired: state.required ? "Sim" : "Não",
+        evidenceAvailable: state.available ? "Sim" : "Não",
+      };
     }),
     total: numberOf(totals[0]?.total),
     ...pagination,
@@ -1878,43 +1960,39 @@ async function listTreatmentReport(
   const { db, scope, period } = analytics;
   const pagination = reportPagination(input, maximum);
   const conditions = [
-    ...analyticsScopeConditions(context, scope, input),
+    ...scopeLeadConditions(context, scope, input),
     eq(leadContacts.partnerId, context.partnerId),
+    eq(leadContacts.recordKind, "effective_contact"),
     gte(leadContacts.occurredAt, period.start),
     lt(leadContacts.occurredAt, period.end),
   ];
+  const actor = alias(userPartners, "report_treatment_actor");
+  const actorUser = alias(users, "report_treatment_user");
+  const governance = alias(
+    leadTreatmentGovernance,
+    "report_treatment_governance"
+  );
   const evidence = alias(leadEvidences, "report_treatment_evidence");
-  const columns: AnalyticsReportColumn[] = [
-    { key: "lead", label: "Lead" },
-    { key: "campaign", label: "Campanha" },
-    { key: "pdv", label: "PDV" },
-    { key: "seller", label: "Vendedor" },
-    { key: "occurredAt", label: "Data/hora" },
-    { key: "channel", label: "Canal" },
-    { key: "outcome", label: "Resultado" },
-    { key: "summary", label: "Resumo" },
-    { key: "status", label: "Status atual" },
-    { key: "hasEvidence", label: "Evidência existente" },
-  ];
   const [records, totals] = await Promise.all([
     db
       .select({
         lead: leads.name,
         campaign: campaigns.name,
         pdv: pdvs.name,
-        seller: users.name,
+        seller: actorUser.name,
         occurredAt: leadContacts.occurredAt,
         channel: leadContacts.channel,
-        outcome: leadContacts.outcome,
+        result: leadContacts.resultLabel,
+        category: leadContacts.resultCategory,
         summary: leadContacts.summary,
-        status: leadStatuses.label,
-        hasEvidence: sql<number>`case when exists (
-          select 1 from ${evidence}
-          where ${evidence.partnerId} = ${leads.partnerId}
-            and ${evidence.leadId} = ${leads.id}
-            and ${evidence.deletedAt} is null
-            and ${evidence.storageStatus} = 'available'
-        ) then 1 else 0 end`,
+        rule: governance.appliedRuleJson,
+        complete: governance.isComplete,
+        resultingStatus: sql<
+          string | null
+        >`(select ${leadStatuses.label} from ${leadStatuses} where ${leadStatuses.partnerId} = ${leadContacts.partnerId} and ${leadStatuses.id} = cast(json_unquote(json_extract(${leadTimelineEvents.payloadJson}, '$.finalStatusId')) as unsigned) limit 1)`,
+        followUp: sql<number>`case when exists (select 1 from ${followUps} where ${followUps.partnerId} = ${leadContacts.partnerId} and ${followUps.leadId} = ${leadContacts.leadId} and ${followUps.originTimelineEventId} = ${leadContacts.timelineEventId}) then 1 else 0 end`,
+        hasEvidence: sql<number>`case when exists (select 1 from ${evidence} where ${evidence.partnerId} = ${leadContacts.partnerId} and ${evidence.leadId} = ${leadContacts.leadId} and ${evidence.timelineEventId} = ${leadContacts.timelineEventId} and ${evidence.deletedAt} is null and ${evidence.storageStatus} = 'available') then 1 else 0 end`,
+        conversionAt: leadConversions.occurredAt,
       })
       .from(leadContacts)
       .innerJoin(
@@ -1924,17 +2002,48 @@ async function listTreatmentReport(
           eq(leads.partnerId, leadContacts.partnerId)
         )
       )
-      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
-      .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
-      .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
       .innerJoin(
-        userPartners,
+        campaigns,
         and(
-          eq(userPartners.id, leadContacts.actorMembershipId),
-          eq(userPartners.partnerId, leadContacts.partnerId)
+          eq(campaigns.id, leads.campaignId),
+          eq(campaigns.partnerId, leads.partnerId)
         )
       )
-      .innerJoin(users, eq(users.id, userPartners.userId))
+      .innerJoin(
+        pdvs,
+        and(eq(pdvs.id, leads.pdvId), eq(pdvs.partnerId, leads.partnerId))
+      )
+      .innerJoin(
+        actor,
+        and(
+          eq(actor.id, leadContacts.actorMembershipId),
+          eq(actor.partnerId, leadContacts.partnerId)
+        )
+      )
+      .innerJoin(actorUser, eq(actorUser.id, actor.userId))
+      .innerJoin(
+        leadTimelineEvents,
+        and(
+          eq(leadTimelineEvents.id, leadContacts.timelineEventId),
+          eq(leadTimelineEvents.partnerId, leadContacts.partnerId),
+          eq(leadTimelineEvents.leadId, leadContacts.leadId)
+        )
+      )
+      .leftJoin(
+        governance,
+        and(
+          eq(governance.timelineEventId, leadContacts.timelineEventId),
+          eq(governance.partnerId, leadContacts.partnerId),
+          eq(governance.leadId, leadContacts.leadId)
+        )
+      )
+      .leftJoin(
+        leadConversions,
+        and(
+          eq(leadConversions.effectiveContactId, leadContacts.id),
+          eq(leadConversions.partnerId, leadContacts.partnerId)
+        )
+      )
       .where(and(...conditions))
       .orderBy(desc(leadContacts.occurredAt), desc(leadContacts.id))
       .limit(pagination.pageSize)
@@ -1952,6 +2061,140 @@ async function listTreatmentReport(
       .where(and(...conditions)),
   ]);
   return {
+    columns: operationReportColumns("treatment"),
+    rows: records.map(record => {
+      const state = evidenceState(record.rule, record.hasEvidence);
+      return {
+        lead: record.lead ?? "Lead sem nome",
+        campaign: record.campaign,
+        pdv: record.pdv,
+        seller: record.seller,
+        occurredAt: valueOfDate(record.occurredAt),
+        channel: record.channel,
+        result: record.result ?? "",
+        category: record.category ?? "",
+        summary: record.summary ?? "",
+        resultingStatus: record.resultingStatus ?? "",
+        followUp: numberOf(record.followUp) ? "Sim" : "Não",
+        governance: record.complete ? "Completa" : state.governance,
+        evidenceRequired: state.required ? "Sim" : "Não",
+        evidenceAvailable: state.available ? "Sim" : "Não",
+        conversion: record.conversionAt ? "Sim" : "Não",
+      };
+    }),
+    total: numberOf(totals[0]?.total),
+    ...pagination,
+  };
+}
+
+async function listConversionReport(
+  analytics: AnalyticsContext,
+  context: PartnerContext,
+  input: AnalyticsReportInput,
+  maximum: number
+) {
+  const { db, scope, period } = analytics;
+  const pagination = reportPagination(input, maximum);
+  const conditions = [
+    ...scopeLeadConditions(context, scope, input),
+    eq(leadConversions.partnerId, context.partnerId),
+    gte(leadConversions.occurredAt, period.start),
+    lt(leadConversions.occurredAt, period.end),
+  ];
+  const actor = alias(userPartners, "report_conversion_actor");
+  const actorUser = alias(users, "report_conversion_user");
+  const convertedStatus = alias(leadStatuses, "report_conversion_status");
+  const currentStatus = alias(leadStatuses, "report_conversion_current_status");
+  const [records, totals] = await Promise.all([
+    db
+      .select({
+        lead: leads.name,
+        campaign: campaigns.name,
+        pdv: pdvs.name,
+        seller: actorUser.name,
+        occurredAt: leadConversions.occurredAt,
+        result: leadContacts.resultLabel,
+        conversionStatus: convertedStatus.label,
+        currentStatus: currentStatus.label,
+        reopened: sql<number>`case when exists (select 1 from ${leadTimelineEvents} where ${leadTimelineEvents.partnerId} = ${leadConversions.partnerId} and ${leadTimelineEvents.leadId} = ${leadConversions.leadId} and ${leadTimelineEvents.type} = 'lead_reopened' and ${leadTimelineEvents.occurredAt} > ${leadConversions.occurredAt}) then 1 else 0 end`,
+      })
+      .from(leadConversions)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadConversions.leadId),
+          eq(leads.partnerId, leadConversions.partnerId)
+        )
+      )
+      .innerJoin(
+        campaigns,
+        and(
+          eq(campaigns.id, leads.campaignId),
+          eq(campaigns.partnerId, leads.partnerId)
+        )
+      )
+      .innerJoin(
+        pdvs,
+        and(eq(pdvs.id, leads.pdvId), eq(pdvs.partnerId, leads.partnerId))
+      )
+      .innerJoin(
+        actor,
+        and(
+          eq(actor.id, leadConversions.actorMembershipId),
+          eq(actor.partnerId, leadConversions.partnerId)
+        )
+      )
+      .innerJoin(actorUser, eq(actorUser.id, actor.userId))
+      .innerJoin(
+        leadContacts,
+        and(
+          eq(leadContacts.id, leadConversions.effectiveContactId),
+          eq(leadContacts.partnerId, leadConversions.partnerId),
+          eq(leadContacts.leadId, leadConversions.leadId)
+        )
+      )
+      .innerJoin(
+        convertedStatus,
+        and(
+          eq(convertedStatus.id, leadConversions.statusId),
+          eq(convertedStatus.partnerId, leadConversions.partnerId)
+        )
+      )
+      .innerJoin(
+        currentStatus,
+        and(
+          eq(currentStatus.id, leads.statusId),
+          eq(currentStatus.partnerId, leads.partnerId)
+        )
+      )
+      .where(and(...conditions))
+      .orderBy(desc(leadConversions.occurredAt), desc(leadConversions.id))
+      .limit(pagination.pageSize)
+      .offset(pagination.offset),
+    db
+      .select({ total: count() })
+      .from(leadConversions)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadConversions.leadId),
+          eq(leads.partnerId, leadConversions.partnerId)
+        )
+      )
+      .where(and(...conditions)),
+  ]);
+  const columns: AnalyticsReportColumn[] = [
+    { key: "lead", label: "Lead" },
+    { key: "campaign", label: "Campanha" },
+    { key: "pdv", label: "PDV" },
+    { key: "seller", label: "Vendedor" },
+    { key: "occurredAt", label: "Data/hora da conversão" },
+    { key: "result", label: "Resultado" },
+    { key: "conversionStatus", label: "Situação produzida" },
+    { key: "currentStatus", label: "Situação atual" },
+    { key: "reopened", label: "Reaberto posteriormente" },
+  ];
+  return {
     columns,
     rows: records.map(record => ({
       lead: record.lead ?? "Lead sem nome",
@@ -1959,11 +2202,10 @@ async function listTreatmentReport(
       pdv: record.pdv,
       seller: record.seller,
       occurredAt: valueOfDate(record.occurredAt),
-      channel: record.channel,
-      outcome: record.outcome,
-      summary: record.summary ?? "",
-      status: record.status,
-      hasEvidence: numberOf(record.hasEvidence) ? "Sim" : "Não",
+      result: record.result ?? "",
+      conversionStatus: record.conversionStatus,
+      currentStatus: record.currentStatus,
+      reopened: numberOf(record.reopened) ? "Sim" : "Não",
     })),
     total: numberOf(totals[0]?.total),
     ...pagination,
@@ -1979,39 +2221,29 @@ async function listFollowUpReport(
   const { db, scope, period, now } = analytics;
   const pagination = reportPagination(input, maximum);
   const conditions = [
-    ...analyticsScopeConditions(context, scope, input),
+    ...scopeLeadConditions(context, scope, input),
     eq(followUps.partnerId, context.partnerId),
     gte(followUps.dueAt, period.start),
     lt(followUps.dueAt, period.end),
   ];
-  const columns: AnalyticsReportColumn[] = [
-    { key: "lead", label: "Lead" },
-    { key: "responsible", label: "Responsável" },
-    { key: "pdv", label: "PDV" },
-    { key: "campaign", label: "Campanha" },
-    { key: "createdAt", label: "Criado em" },
-    { key: "dueAt", label: "Vencimento" },
-    { key: "status", label: "Status" },
-    { key: "derivedStatus", label: "Situação atual" },
-    { key: "completedAt", label: "Concluído em" },
-    { key: "cancelledAt", label: "Cancelado em" },
-    { key: "origin", label: "Origem/reagendamento" },
-  ];
-  const select = {
-    lead: leads.name,
-    responsible: users.name,
-    pdv: pdvs.name,
-    campaign: campaigns.name,
-    createdAt: followUps.createdAt,
-    dueAt: followUps.dueAt,
-    status: followUps.status,
-    completedAt: followUps.completedAt,
-    cancelledAt: followUps.cancelledAt,
-    rescheduledFromId: followUps.rescheduledFromId,
-  };
+  const owner = alias(userPartners, "report_follow_up_owner");
+  const ownerUser = alias(users, "report_follow_up_owner_user");
+  const origin = alias(leadTimelineEvents, "report_follow_up_origin");
   const [records, totals] = await Promise.all([
     db
-      .select(select)
+      .select({
+        lead: leads.name,
+        responsible: ownerUser.name,
+        pdv: pdvs.name,
+        campaign: campaigns.name,
+        createdAt: followUps.createdAt,
+        dueAt: followUps.dueAt,
+        status: followUps.status,
+        completedAt: followUps.completedAt,
+        cancelledAt: followUps.cancelledAt,
+        rescheduledFromId: followUps.rescheduledFromId,
+        originType: origin.type,
+      })
       .from(followUps)
       .innerJoin(
         leads,
@@ -2020,16 +2252,33 @@ async function listFollowUpReport(
           eq(leads.partnerId, followUps.partnerId)
         )
       )
-      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
-      .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
       .innerJoin(
-        userPartners,
+        campaigns,
         and(
-          eq(userPartners.id, followUps.ownerMembershipId),
-          eq(userPartners.partnerId, followUps.partnerId)
+          eq(campaigns.id, leads.campaignId),
+          eq(campaigns.partnerId, leads.partnerId)
         )
       )
-      .innerJoin(users, eq(users.id, userPartners.userId))
+      .innerJoin(
+        pdvs,
+        and(eq(pdvs.id, leads.pdvId), eq(pdvs.partnerId, leads.partnerId))
+      )
+      .innerJoin(
+        owner,
+        and(
+          eq(owner.id, followUps.ownerMembershipId),
+          eq(owner.partnerId, followUps.partnerId)
+        )
+      )
+      .innerJoin(ownerUser, eq(ownerUser.id, owner.userId))
+      .leftJoin(
+        origin,
+        and(
+          eq(origin.id, followUps.originTimelineEventId),
+          eq(origin.partnerId, followUps.partnerId),
+          eq(origin.leadId, followUps.leadId)
+        )
+      )
       .where(and(...conditions))
       .orderBy(asc(followUps.dueAt), asc(followUps.id))
       .limit(pagination.pageSize)
@@ -2046,6 +2295,25 @@ async function listFollowUpReport(
       )
       .where(and(...conditions)),
   ]);
+  const columns: AnalyticsReportColumn[] = [
+    { key: "lead", label: "Lead" },
+    { key: "responsible", label: "Responsável" },
+    { key: "pdv", label: "PDV" },
+    { key: "campaign", label: "Campanha" },
+    { key: "createdAt", label: "Criado em" },
+    { key: "dueAt", label: "Vencimento" },
+    { key: "status", label: "Status" },
+    { key: "derivedStatus", label: "Situação atual" },
+    { key: "completedAt", label: "Concluído em" },
+    { key: "cancelledAt", label: "Cancelado em" },
+    { key: "origin", label: "Origem" },
+  ];
+  const originLabel = (type: string | null) =>
+    type === "contact_attempted"
+      ? "Tentativa"
+      : type === "effective_contact_recorded"
+        ? "Tratativa"
+        : "Independente";
   return {
     columns,
     rows: records.map(record => ({
@@ -2067,8 +2335,8 @@ async function listFollowUpReport(
       completedAt: valueOfDate(record.completedAt),
       cancelledAt: valueOfDate(record.cancelledAt),
       origin: record.rescheduledFromId
-        ? `Reagendado do follow-up #${record.rescheduledFromId}`
-        : "Original",
+        ? `${originLabel(record.originType)} · reagendado`
+        : originLabel(record.originType),
     })),
     total: numberOf(totals[0]?.total),
     ...pagination,
@@ -2092,35 +2360,14 @@ async function listImportReport(
     conditions.push(eq(leadImportBatches.campaignId, input.campaignId));
   if (input.pdvId)
     conditions.push(eq(leadImportBatches.targetPdvId, input.pdvId));
-  // A batch without a fixed destination can contain multiple PDVs. It is not
-  // shown to a Manager because its aggregate counts cannot be safely split.
   if (scope.pdvIds)
     conditions.push(inArray(leadImportBatches.targetPdvId, scope.pdvIds));
-  const columns: AnalyticsReportColumn[] = [
-    { key: "batch", label: "Batch" },
-    { key: "campaign", label: "Campanha" },
-    { key: "fileName", label: "Arquivo" },
-    { key: "user", label: "Usuário" },
-    { key: "template", label: "Template" },
-    { key: "version", label: "Versão" },
-    { key: "total", label: "Total" },
-    { key: "valid", label: "Válidos" },
-    { key: "invalid", label: "Inválidos" },
-    { key: "imported", label: "Importados" },
-    { key: "duplicates", label: "Duplicados" },
-    { key: "rejected", label: "Rejeitados" },
-    { key: "status", label: "Status" },
-    { key: "createdAt", label: "Data" },
-  ];
   const [records, totals] = await Promise.all([
     db
       .select({
         batch: leadImportBatches.id,
         campaign: campaigns.name,
         fileName: leadImportBatches.fileName,
-        user: users.name,
-        template: importTemplates.name,
-        version: importTemplateVersions.versionNumber,
         total: leadImportBatches.totalRows,
         valid: leadImportBatches.validRows,
         invalid: leadImportBatches.invalidRows,
@@ -2131,27 +2378,11 @@ async function listImportReport(
         createdAt: leadImportBatches.createdAt,
       })
       .from(leadImportBatches)
-      .innerJoin(campaigns, eq(campaigns.id, leadImportBatches.campaignId))
-      .leftJoin(
-        userPartners,
+      .innerJoin(
+        campaigns,
         and(
-          eq(userPartners.id, leadImportBatches.importedByMembershipId),
-          eq(userPartners.partnerId, leadImportBatches.partnerId)
-        )
-      )
-      .leftJoin(users, eq(users.id, userPartners.userId))
-      .leftJoin(
-        importTemplateVersions,
-        and(
-          eq(importTemplateVersions.id, leadImportBatches.templateVersionId),
-          eq(importTemplateVersions.partnerId, leadImportBatches.partnerId)
-        )
-      )
-      .leftJoin(
-        importTemplates,
-        and(
-          eq(importTemplates.id, importTemplateVersions.templateId),
-          eq(importTemplates.partnerId, importTemplateVersions.partnerId)
+          eq(campaigns.id, leadImportBatches.campaignId),
+          eq(campaigns.partnerId, leadImportBatches.partnerId)
         )
       )
       .where(and(...conditions))
@@ -2163,76 +2394,28 @@ async function listImportReport(
       .from(leadImportBatches)
       .where(and(...conditions)),
   ]);
+  const columns: AnalyticsReportColumn[] = [
+    { key: "batch", label: "Batch" },
+    { key: "campaign", label: "Campanha" },
+    { key: "fileName", label: "Arquivo" },
+    { key: "total", label: "Total" },
+    { key: "valid", label: "Válidos" },
+    { key: "invalid", label: "Inválidos" },
+    { key: "imported", label: "Importados" },
+    { key: "duplicates", label: "Duplicados" },
+    { key: "rejected", label: "Rejeitados" },
+    { key: "status", label: "Status" },
+    { key: "createdAt", label: "Data" },
+  ];
   return {
     columns,
     rows: records.map(record => ({
-      batch: record.batch,
-      campaign: record.campaign,
-      fileName: record.fileName,
-      user: record.user ?? "",
-      template: record.template ?? "",
-      version: record.version ?? "",
-      total: record.total,
-      valid: record.valid,
-      invalid: record.invalid,
-      imported: record.imported,
-      duplicates: record.duplicates,
-      rejected: record.rejected,
-      status: record.status,
+      ...record,
       createdAt: valueOfDate(record.createdAt),
     })),
     total: numberOf(totals[0]?.total),
     ...pagination,
   };
-}
-
-function distributionPdvNames() {
-  const event = alias(leadTimelineEvents, "report_distribution_pdv_event");
-  const distributedLead = alias(leads, "report_distribution_pdv_lead");
-  const distributionPdv = alias(pdvs, "report_distribution_pdv");
-  return sql<string | null>`(
-    select group_concat(distinct ${distributionPdv.name} order by ${distributionPdv.name} separator ', ')
-    from ${event}
-    inner join ${distributedLead}
-      on ${distributedLead.id} = ${event.leadId}
-      and ${distributedLead.partnerId} = ${event.partnerId}
-    inner join ${distributionPdv}
-      on ${distributionPdv.id} = ${distributedLead.pdvId}
-      and ${distributionPdv.partnerId} = ${distributedLead.partnerId}
-    where ${event.partnerId} = ${leadDistributionBatches.partnerId}
-      and cast(json_unquote(json_extract(${event.payloadJson}, '$.batchId')) as unsigned) = ${leadDistributionBatches.id}
-  )`;
-}
-
-function distributionBatchScopeCondition(
-  scope: AnalyticsScope,
-  selectedPdvId?: number
-) {
-  const event = alias(leadTimelineEvents, "report_distribution_scope_event");
-  const distributedLead = alias(leads, "report_distribution_scope_lead");
-  const targetPdvIds = selectedPdvId ? [selectedPdvId] : scope.pdvIds;
-  if (!targetPdvIds) return null;
-  const isInsideScope = inArray(distributedLead.pdvId, targetPdvIds);
-  const isOutsideScope = notInArray(distributedLead.pdvId, targetPdvIds);
-  // Batch totals are only exposed when every successful event belongs to the
-  // caller's PDV filter. This avoids leaking a mixed-PDV batch total.
-  return sql`exists (
-    select 1 from ${event}
-    inner join ${distributedLead}
-      on ${distributedLead.id} = ${event.leadId}
-      and ${distributedLead.partnerId} = ${event.partnerId}
-    where ${event.partnerId} = ${leadDistributionBatches.partnerId}
-      and cast(json_unquote(json_extract(${event.payloadJson}, '$.batchId')) as unsigned) = ${leadDistributionBatches.id}
-      and ${isInsideScope}
-  ) and not exists (
-    select 1 from ${event}
-    inner join ${distributedLead}
-      on ${distributedLead.id} = ${event.leadId}
-      and ${distributedLead.partnerId} = ${event.partnerId}
-    where ${event.partnerId} = ${leadDistributionBatches.partnerId}
-      and cast(json_unquote(json_extract(${event.payloadJson}, '$.batchId')) as unsigned) = ${leadDistributionBatches.id}
-      and ${isOutsideScope}
-  )`;
 }
 
 async function listDistributionReport(
@@ -2243,6 +2426,16 @@ async function listDistributionReport(
 ) {
   const { db, scope, period } = analytics;
   const pagination = reportPagination(input, maximum);
+  if (scope.pdvIds) {
+    // A distribution batch can span several PDVs and cannot be split safely.
+    // Managers use the operational distribution screen for scoped detail.
+    return {
+      columns: [] as AnalyticsReportColumn[],
+      rows: [] as AnalyticsReportRow[],
+      total: 0,
+      ...pagination,
+    };
+  }
   const conditions: SQL[] = [
     eq(leadDistributionBatches.partnerId, context.partnerId),
     gte(leadDistributionBatches.createdAt, period.start),
@@ -2250,28 +2443,11 @@ async function listDistributionReport(
   ];
   if (input.campaignId)
     conditions.push(eq(leadDistributionBatches.campaignId, input.campaignId));
-  const scopeCondition = distributionBatchScopeCondition(scope, input.pdvId);
-  if (scopeCondition) conditions.push(scopeCondition);
-  const columns: AnalyticsReportColumn[] = [
-    { key: "operation", label: "Operação" },
-    { key: "campaign", label: "Campanha" },
-    { key: "pdvs", label: "PDV(s)" },
-    { key: "actor", label: "Ator" },
-    { key: "strategy", label: "Estratégia" },
-    { key: "requested", label: "Solicitados" },
-    { key: "processed", label: "Processados" },
-    { key: "success", label: "Sucesso" },
-    { key: "skipped", label: "Ignorados" },
-    { key: "failed", label: "Falhas" },
-    { key: "createdAt", label: "Data" },
-  ];
   const [records, totals] = await Promise.all([
     db
       .select({
         operation: leadDistributionBatches.type,
         campaign: campaigns.name,
-        pdvs: distributionPdvNames(),
-        actor: users.name,
         strategy: leadDistributionBatches.strategy,
         requested: leadDistributionBatches.requestedCount,
         processed: leadDistributionBatches.processedCount,
@@ -2283,9 +2459,11 @@ async function listDistributionReport(
       .from(leadDistributionBatches)
       .innerJoin(
         campaigns,
-        eq(campaigns.id, leadDistributionBatches.campaignId)
+        and(
+          eq(campaigns.id, leadDistributionBatches.campaignId),
+          eq(campaigns.partnerId, leadDistributionBatches.partnerId)
+        )
       )
-      .innerJoin(users, eq(users.id, leadDistributionBatches.actorUserId))
       .where(and(...conditions))
       .orderBy(
         desc(leadDistributionBatches.createdAt),
@@ -2298,19 +2476,21 @@ async function listDistributionReport(
       .from(leadDistributionBatches)
       .where(and(...conditions)),
   ]);
+  const columns: AnalyticsReportColumn[] = [
+    { key: "operation", label: "Operação" },
+    { key: "campaign", label: "Campanha" },
+    { key: "strategy", label: "Estratégia" },
+    { key: "requested", label: "Solicitados" },
+    { key: "processed", label: "Processados" },
+    { key: "success", label: "Sucesso" },
+    { key: "skipped", label: "Ignorados" },
+    { key: "failed", label: "Falhas" },
+    { key: "createdAt", label: "Data" },
+  ];
   return {
     columns,
     rows: records.map(record => ({
-      operation: record.operation,
-      campaign: record.campaign,
-      pdvs: record.pdvs ?? "Sem Leads processados",
-      actor: record.actor,
-      strategy: record.strategy,
-      requested: record.requested,
-      processed: record.processed,
-      success: record.success,
-      skipped: record.skipped,
-      failed: record.failed,
+      ...record,
       createdAt: valueOfDate(record.createdAt),
     })),
     total: numberOf(totals[0]?.total),
@@ -2318,7 +2498,7 @@ async function listDistributionReport(
   };
 }
 
-/** SQL-paginated report registry. None of these data sets is loaded in the browser before filtering. */
+/** SQL-paginated report registry. Each fact has an explicit official source. */
 export async function listAnalyticsReport(
   context: PartnerContext,
   input: AnalyticsReportInput,
@@ -2327,28 +2507,29 @@ export async function listAnalyticsReport(
   if (
     context.role === "seller" &&
     (input.type === "imports" || input.type === "distributions")
-  ) {
+  )
     throw new Error("Este relatório é destinado à gestão do parceiro");
-  }
   const analytics = await createAnalyticsContext(context, input);
   const maximum = options.maximum ?? REPORT_PAGE_MAX;
-  let result:
-    | Awaited<ReturnType<typeof listLeadsReport>>
-    | Awaited<ReturnType<typeof listTreatmentReport>>
-    | Awaited<ReturnType<typeof listFollowUpReport>>
-    | Awaited<ReturnType<typeof listImportReport>>
-    | Awaited<ReturnType<typeof listDistributionReport>>;
-  if (input.type === "leads") {
-    result = await listLeadsReport(analytics, context, input, maximum);
-  } else if (input.type === "treatments") {
-    result = await listTreatmentReport(analytics, context, input, maximum);
-  } else if (input.type === "follow_ups") {
-    result = await listFollowUpReport(analytics, context, input, maximum);
-  } else if (input.type === "imports") {
-    result = await listImportReport(analytics, context, input, maximum);
-  } else {
-    result = await listDistributionReport(analytics, context, input, maximum);
-  }
+  const result =
+    input.type === "leads"
+      ? await listLeadsReport(analytics, context, input, maximum)
+      : input.type === "attempts"
+        ? await listAttemptReport(analytics, context, input, maximum)
+        : input.type === "treatments"
+          ? await listTreatmentReport(analytics, context, input, maximum)
+          : input.type === "conversions"
+            ? await listConversionReport(analytics, context, input, maximum)
+            : input.type === "follow_ups"
+              ? await listFollowUpReport(analytics, context, input, maximum)
+              : input.type === "imports"
+                ? await listImportReport(analytics, context, input, maximum)
+                : await listDistributionReport(
+                    analytics,
+                    context,
+                    input,
+                    maximum
+                  );
   return {
     type: input.type,
     columns: result.columns,
@@ -2367,7 +2548,6 @@ export async function listAnalyticsReport(
 
 function csvCell(value: string | number | null | undefined) {
   let text = value == null ? "" : String(value);
-  // Prevent a value imported from a lead from being evaluated as an Excel formula.
   if (/^[=+\-@]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
@@ -2383,7 +2563,6 @@ export function formatAnalyticsCsv(
   return `\ufeff${[header, ...body].join("\r\n")}\r\n`;
 }
 
-/** Export calls the same scoped SQL report provider and records only safe audit metadata. */
 export async function exportAnalyticsReport(
   context: PartnerContext,
   input: Omit<AnalyticsReportInput, "page" | "pageSize">
@@ -2393,11 +2572,10 @@ export async function exportAnalyticsReport(
     { ...input, page: 1, pageSize: EXPORT_ROW_MAX },
     { maximum: EXPORT_ROW_MAX }
   );
-  if (report.total > EXPORT_ROW_MAX) {
+  if (report.total > EXPORT_ROW_MAX)
     throw new Error(
       `A exportação encontrou mais de ${EXPORT_ROW_MAX} linhas. Refine os filtros antes de exportar.`
     );
-  }
   const db = await getV2Db();
   await writeV2Audit(db, {
     partnerId: context.partnerId,
@@ -2420,7 +2598,7 @@ export async function exportAnalyticsReport(
     .toISOString()
     .slice(0, 10);
   return {
-    fileName: `playcell-v2-${input.type}-${from}-${until}.csv`,
+    fileName: `fluxo-${input.type}-${from}-${until}.csv`,
     content: formatAnalyticsCsv(report.columns, report.rows),
     total: report.rows.length,
   };

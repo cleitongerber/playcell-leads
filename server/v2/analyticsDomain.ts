@@ -33,36 +33,37 @@ type Parts = {
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * These definitions are the sole business vocabulary used by the V2 analytics
- * service. They deliberately distinguish stock indicators ("agora") from
- * flow indicators ("no período") so a date filter cannot imply history that
- * the operational model does not retain.
+ * Official 016.4 analytics vocabulary. Flow facts use their append-only
+ * entities; current lead status remains a separate snapshot and never creates
+ * a commercial conversion by inference.
  */
 export const analyticsMetricDefinitions = {
   leadsReceived:
     "Leads cuja receivedAt pertence ao período operacional selecionado.",
-  leadsAvailable:
-    "Snapshot atual: leads sem assignedMembershipId, não excluídos, com status open/in_progress e campanha/PDV operacionalmente ativos dentro do escopo.",
-  leadsInPortfolio:
-    "Snapshot atual: leads com assignedMembershipId, não excluídos e status open/in_progress dentro do escopo.",
-  leadsTreated:
-    "Leads distintos com ao menos um lead_contact válido ocorrido no período; status sozinho nunca conta como tratativa.",
-  leadsCompleted:
-    "Leads distintos com uma mudança de status para um status terminal no período. O evento da timeline é a fonte temporal.",
+  leadsWorked:
+    "Leads distintos com uma tentativa de contato ou tratativa efetiva ocorrida no período. Abrir WhatsApp, abrir ligação, visualizar ou anotar não conta como trabalho.",
+  leadsWithAttempt:
+    "Leads distintos com registro em lead_contact_attempts no período.",
+  attempts:
+    "Quantidade de registros append-only em lead_contact_attempts no período.",
+  leadsWithEffectiveContact:
+    "Leads distintos com lead_contacts.recordKind = effective_contact no período.",
+  effectiveContacts:
+    "Quantidade de lead_contacts com recordKind = effective_contact registrados no período.",
+  interested:
+    "Leads distintos com tratativa efetiva cujo snapshot resultCategory = interested no período.",
   conversions:
-    "Leads distintos com mudança de status para um status terminal da categoria completed no período. Estados de descarte pertencem à categoria discarded e não convertem.",
-  firstContact:
-    "Primeiro lead_contact válido, persistido em leads.firstContactAt. Leads ainda sem primeiro contato não recebem duração zero.",
-  firstContactTime:
-    "Média de firstContactAt - receivedAt apenas para Leads cujo primeiro contato ocorreu no período.",
+    "Eventos históricos em lead_conversions ocorridos no período. Uma mudança administrativa de situação não entra nesta métrica.",
+  firstAttempt:
+    "leads.firstAttemptAt; primeiro fato de tentativa no modelo oficial.",
+  firstEffectiveContact:
+    "leads.firstEffectiveContactAt; primeiro fato de interação efetiva no modelo oficial.",
   followUpOverdue:
-    "Snapshot atual derivado de follow_ups.status = pending e dueAt < agora; overdue nunca é persistido.",
-  followUpToday:
-    "Snapshot atual derivado de follow_ups.status = pending e dueAt dentro do dia operacional do parceiro.",
-  treatmentRate:
-    "Leads recebidos no período que possuem ao menos um contato até o fim do período, divididos pelos Leads recebidos no período.",
-  followUpCompletionRate:
-    "Follow-ups concluídos no período divididos por concluídos no período mais pendentes com vencimento até o fim do período. Cancelados não entram no denominador.",
+    "Snapshot atual: follow_ups.status = pending e dueAt anterior a agora no fuso do parceiro. Overdue é derivado, não persistido.",
+  effectiveContactRate:
+    "Leads com contato efetivo no período divididos por Leads trabalhados no período.",
+  conversionRate:
+    "Leads convertidos no período divididos por Leads com contato efetivo no período.",
 } as const;
 
 function partsAt(date: Date, timeZone: string): Parts {
@@ -149,11 +150,7 @@ function asIsoDate(parts: Pick<Parts, "year" | "month" | "day">) {
   return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
 }
 
-/**
- * Resolves date-only filters on the server using partner_settings.timezone.
- * The comparison interval is [start, end), so adjacent periods never double
- * count events. The previous comparison range has the identical elapsed span.
- */
+/** Resolves [start, end) in the partner timezone so periods do not overlap. */
 export function resolveAnalyticsPeriod(
   timeZone: string,
   input: AnalyticsDateRangeInput = {},
@@ -174,8 +171,9 @@ export function resolveAnalyticsPeriod(
     if (
       startOfPartnerDay(startParts, timeZone) >=
       startOfPartnerDay(endParts, timeZone)
-    )
+    ) {
       throw new Error("O início do período deve ser anterior ao fim");
+    }
     label = `${input.fromDate} a ${input.toDate}`;
   } else if (preset === "today") {
     startParts = today;
@@ -193,8 +191,7 @@ export function resolveAnalyticsPeriod(
     const weekday = new Date(
       Date.UTC(today.year, today.month - 1, today.day)
     ).getUTCDay();
-    const daysSinceMonday = (weekday + 6) % 7;
-    startParts = addCalendarDays(today, -daysSinceMonday);
+    startParts = addCalendarDays(today, -((weekday + 6) % 7));
     endParts = addCalendarDays(today, 1);
     label = "Esta semana";
   } else {
@@ -240,17 +237,17 @@ export function dateForAnalyticsInput(date: Date, timeZone: string) {
   return asIsoDate(partsAt(date, timeZone));
 }
 
-/** Deterministic mirror of the SQL definitions, used to test the metric math. */
+/** Deterministic unit-test mirror for the official SQL facts. */
 export type AnalyticsMetricLead = {
   receivedAt: Date;
   operational: boolean;
   assigned: boolean;
-  firstContactAt?: Date | null;
-  contactDates: Date[];
-  assignmentDates: Date[];
-  terminalDates: Date[];
+  attemptDates: Date[];
+  effectiveContactDates: Date[];
+  interestedDates: Date[];
   conversionDates: Date[];
-  lastActivityAt?: Date | null;
+  firstAttemptAt?: Date | null;
+  firstEffectiveContactAt?: Date | null;
 };
 
 export type AnalyticsMetricFollowUp = {
@@ -271,47 +268,68 @@ export function calculateAnalyticsMetricSamples(
   period: Pick<AnalyticsPeriod, "start" | "end">,
   now: Date
 ) {
-  const cohort = leads.filter(lead => isInPeriod(lead.receivedAt, period));
-  const firstContactValues = leads
+  const received = leads.filter(lead => isInPeriod(lead.receivedAt, period));
+  const hasAttempt = (lead: AnalyticsMetricLead) =>
+    lead.attemptDates.some(date => isInPeriod(date, period));
+  const hasEffective = (lead: AnalyticsMetricLead) =>
+    lead.effectiveContactDates.some(date => isInPeriod(date, period));
+  const worked = leads.filter(lead => hasAttempt(lead) || hasEffective(lead));
+  const firstAttemptValues = leads
     .filter(
-      lead => lead.firstContactAt && isInPeriod(lead.firstContactAt, period)
+      lead => lead.firstAttemptAt && isInPeriod(lead.firstAttemptAt, period)
     )
     .map(
       lead =>
-        (lead.firstContactAt!.getTime() - lead.receivedAt.getTime()) / 1_000
+        (lead.firstAttemptAt!.getTime() - lead.receivedAt.getTime()) / 1_000
     );
-  const average = firstContactValues.length
-    ? firstContactValues.reduce((total, value) => total + value, 0) /
-      firstContactValues.length
-    : null;
+  const firstEffectiveValues = leads
+    .filter(
+      lead =>
+        lead.firstEffectiveContactAt &&
+        isInPeriod(lead.firstEffectiveContactAt, period)
+    )
+    .map(
+      lead =>
+        (lead.firstEffectiveContactAt!.getTime() - lead.receivedAt.getTime()) /
+        1_000
+    );
+  const average = (values: number[]) =>
+    values.length
+      ? values.reduce((total, value) => total + value, 0) / values.length
+      : null;
+
   return {
-    received: cohort.length,
-    available: leads.filter(lead => lead.operational && !lead.assigned).length,
-    portfolio: leads.filter(lead => lead.operational && lead.assigned).length,
-    treated: leads.filter(lead =>
-      lead.contactDates.some(date => isInPeriod(date, period))
+    received: received.length,
+    worked: worked.length,
+    leadsWithAttempt: leads.filter(hasAttempt).length,
+    attempts: leads.reduce(
+      (total, lead) =>
+        total +
+        lead.attemptDates.filter(date => isInPeriod(date, period)).length,
+      0
+    ),
+    leadsWithEffectiveContact: leads.filter(hasEffective).length,
+    effectiveContacts: leads.reduce(
+      (total, lead) =>
+        total +
+        lead.effectiveContactDates.filter(date => isInPeriod(date, period))
+          .length,
+      0
+    ),
+    interested: leads.filter(lead =>
+      lead.interestedDates.some(date => isInPeriod(date, period))
     ).length,
-    completed: leads.filter(lead =>
-      lead.terminalDates.some(date => isInPeriod(date, period))
-    ).length,
-    converted: leads.filter(lead =>
+    conversions: leads.filter(lead =>
       lead.conversionDates.some(date => isInPeriod(date, period))
     ).length,
-    cohortAssigned: cohort.filter(lead =>
-      lead.assignmentDates.some(date => date < period.end)
-    ).length,
-    cohortTreated: cohort.filter(lead =>
-      lead.contactDates.some(date => date < period.end)
-    ).length,
-    cohortCompleted: cohort.filter(lead =>
-      lead.terminalDates.some(date => date < period.end)
-    ).length,
-    cohortConverted: cohort.filter(lead =>
-      lead.conversionDates.some(date => date < period.end)
-    ).length,
-    firstContactAverageSeconds: average,
-    withoutFirstContact: leads.filter(
-      lead => lead.operational && lead.assigned && !lead.firstContactAt
+    firstAttemptAverageSeconds: average(firstAttemptValues),
+    firstEffectiveContactAverageSeconds: average(firstEffectiveValues),
+    withoutWork: leads.filter(
+      lead =>
+        lead.operational &&
+        lead.assigned &&
+        !lead.firstAttemptAt &&
+        !lead.firstEffectiveContactAt
     ).length,
     followUpsOverdue: followUps.filter(
       followUp => followUp.status === "pending" && followUp.dueAt < now

@@ -12,9 +12,17 @@ describe("V2 analytics domain", () => {
   const zone = "America/Sao_Paulo";
 
   it("defines metrics from operational entities rather than simulated status", () => {
-    expect(analyticsMetricDefinitions.leadsTreated).toContain("lead_contact");
+    expect(analyticsMetricDefinitions.leadsWorked).toContain("tentativa");
+    expect(analyticsMetricDefinitions.attempts).toContain(
+      "lead_contact_attempts"
+    );
+    expect(analyticsMetricDefinitions.effectiveContacts).toContain(
+      "effective_contact"
+    );
     expect(analyticsMetricDefinitions.followUpOverdue).toContain("pending");
-    expect(analyticsMetricDefinitions.conversions).toContain("completed");
+    expect(analyticsMetricDefinitions.conversions).toContain(
+      "lead_conversions"
+    );
   });
 
   it("resolves a partner-local day around UTC midnight", () => {
@@ -49,7 +57,7 @@ describe("V2 analytics domain", () => {
     expect(durationLabel(3_660)).toBe("1h 1min");
   });
 
-  it("calculates received, treated, terminal, conversion and overdue metrics from real event dates", () => {
+  it("calculates attempts, effective contacts, conversions and overdue follow-ups from real facts", () => {
     const period = resolveAnalyticsPeriod(zone, {
       preset: "custom",
       fromDate: "2026-09-01",
@@ -62,37 +70,40 @@ describe("V2 analytics domain", () => {
           receivedAt: at("2026-09-02"),
           operational: true,
           assigned: true,
-          firstContactAt: new Date("2026-09-02T12:10:00.000Z"),
-          contactDates: [at("2026-09-02")],
-          assignmentDates: [at("2026-09-02")],
-          terminalDates: [at("2026-09-03")],
+          attemptDates: [at("2026-09-02")],
+          effectiveContactDates: [at("2026-09-03")],
+          interestedDates: [at("2026-09-03")],
           conversionDates: [at("2026-09-03")],
+          firstAttemptAt: new Date("2026-09-02T12:10:00.000Z"),
+          firstEffectiveContactAt: new Date("2026-09-03T12:10:00.000Z"),
         },
         {
           receivedAt: at("2026-09-03"),
           operational: true,
           assigned: false,
-          contactDates: [],
-          assignmentDates: [],
-          terminalDates: [],
+          attemptDates: [],
+          effectiveContactDates: [],
+          interestedDates: [],
           conversionDates: [],
         },
         {
           receivedAt: at("2026-08-28"),
           operational: true,
           assigned: true,
-          contactDates: [at("2026-09-04")],
-          assignmentDates: [at("2026-08-28")],
-          terminalDates: [at("2026-09-05")],
+          attemptDates: [at("2026-09-04")],
+          effectiveContactDates: [at("2026-09-05")],
+          interestedDates: [],
           conversionDates: [],
+          firstAttemptAt: at("2026-09-04"),
+          firstEffectiveContactAt: at("2026-09-05"),
         },
         {
           receivedAt: at("2026-08-20"),
           operational: true,
           assigned: true,
-          contactDates: [],
-          assignmentDates: [at("2026-08-20")],
-          terminalDates: [],
+          attemptDates: [],
+          effectiveContactDates: [],
+          interestedDates: [],
           conversionDates: [],
         },
       ],
@@ -107,18 +118,17 @@ describe("V2 analytics domain", () => {
 
     expect(metrics).toMatchObject({
       received: 2,
-      available: 1,
-      portfolio: 3,
-      treated: 2,
-      completed: 2,
-      converted: 1,
-      cohortAssigned: 1,
-      cohortTreated: 1,
-      cohortCompleted: 1,
-      cohortConverted: 1,
-      withoutFirstContact: 2,
+      worked: 2,
+      leadsWithAttempt: 2,
+      attempts: 2,
+      leadsWithEffectiveContact: 2,
+      effectiveContacts: 2,
+      interested: 1,
+      conversions: 1,
+      withoutWork: 1,
       followUpsOverdue: 1,
     });
-    expect(metrics.firstContactAverageSeconds).toBe(600);
+    expect(metrics.firstAttemptAverageSeconds).toBe(302_700);
+    expect(metrics.firstEffectiveContactAverageSeconds).toBe(389_100);
   });
 });

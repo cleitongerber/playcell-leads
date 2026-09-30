@@ -264,4 +264,22 @@ describe("V2 migration tenant-key contract", () => {
     expect(migration).not.toContain("INSERT INTO `partners`");
     expect(migration).not.toContain("DELETE FROM");
   });
+
+  it("makes the unified journey the default without dropping historical compatibility", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle-v2/0013_v2_unified_lead_journey.sql"),
+      "utf8"
+    );
+
+    expect(migration).toContain("MODIFY COLUMN `leadJourneyMode`");
+    expect(migration).toContain("DEFAULT 'separated_contact_v1'");
+    expect(migration).not.toContain("UPDATE `leads`");
+    expect(migration).not.toContain("DELETE FROM");
+    expect(migration).not.toContain("DROP ");
+    expect(
+      getTableConfig(partnerSettings).columns.find(
+        column => column.name === "leadJourneyMode"
+      )?.default
+    ).toBe("separated_contact_v1");
+  });
 });

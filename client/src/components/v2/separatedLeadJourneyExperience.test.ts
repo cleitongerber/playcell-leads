@@ -5,19 +5,20 @@ import { describe, expect, it } from "vitest";
 const readProjectFile = (path: string) =>
   readFileSync(resolve(process.cwd(), path), "utf8");
 
-describe("016.3 separated lead journey experience contract", () => {
-  const legacyDetail = readProjectFile("client/src/pages/V2Leads.tsx");
+describe("016.4 unified lead journey experience contract", () => {
+  const leadsPage = readProjectFile("client/src/pages/V2Leads.tsx");
+  const app = readProjectFile("client/src/App.tsx");
   const workspace = readProjectFile(
     "client/src/components/v2/V2SeparatedLeadJourney.tsx"
   );
   const styles = readProjectFile("client/src/index.css");
 
-  it("keeps the legacy detail isolated and selects the new workspace only from the backend mode", () => {
-    expect(legacyDetail).toContain("partnerSettings.leadJourneyMode");
-    expect(legacyDetail).toContain("<V2SeparatedLeadJourney />");
-    expect(legacyDetail).toContain("function V2LegacyLeadDetail()");
-    expect(legacyDetail).toContain("leads.contact.useMutation");
-    expect(legacyDetail).toContain("leads.changeStatus.useMutation");
+  it("uses the new workspace as the only operational detail route", () => {
+    expect(app).toContain("<V2SeparatedLeadJourney />");
+    expect(leadsPage).not.toContain("partnerSettings.leadJourneyMode");
+    expect(leadsPage).not.toContain("V2LegacyLeadDetail");
+    expect(leadsPage).not.toContain("leads.contact.useMutation");
+    expect(leadsPage).not.toContain("leads.changeStatus.useMutation");
   });
 
   it("uses only separated commands in the new workspace and preserves idempotent intents", () => {

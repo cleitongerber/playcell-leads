@@ -1,16 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  presentNextLeadAction,
-  usesSeparatedLeadJourney,
-} from "./leadJourneyPresentation";
+import { presentNextLeadAction } from "./leadJourneyPresentation";
 
-describe("separated lead journey presentation", () => {
-  it("fails closed to the legacy workspace unless the backend explicitly enables it", () => {
-    expect(usesSeparatedLeadJourney(undefined)).toBe(false);
-    expect(usesSeparatedLeadJourney("legacy")).toBe(false);
-    expect(usesSeparatedLeadJourney("separated_contact_v1")).toBe(true);
-  });
-
+describe("unified lead journey presentation", () => {
   it("presents backend next-action states without deriving commercial rules in React", () => {
     expect(
       presentNextLeadAction({

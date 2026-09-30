@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { getSessionCookieOptions } from "../_core/cookies";
-import { getV2Db } from "./database";
 import { loginV2WithPassword } from "./auth";
 import {
   createV2SessionToken,
@@ -18,13 +17,11 @@ import {
 import {
   addLeadNote,
   assumeLead,
-  changeLeadStatus,
   createLead,
   getLeadDetail,
   initializeLeadConfiguration,
   listLeadConfiguration,
   listLeads,
-  recordLeadContact,
   saveLeadSource,
   saveLeadStatus,
 } from "./leadService";
@@ -86,7 +83,6 @@ import {
   getWhatsAppInitialMessageTemplate,
   updateWhatsAppInitialMessageTemplate,
 } from "./whatsappTemplateService";
-import { getPartnerLeadJourneyMode } from "./leadJourneySettings";
 import {
   listInteractionResultConfiguration,
   deactivateInteractionResult,
@@ -271,7 +267,9 @@ const analyticsFiltersInput = z.object({
 const analyticsReportInput = analyticsFiltersInput.extend({
   type: z.enum([
     "leads",
+    "attempts",
     "treatments",
+    "conversions",
     "follow_ups",
     "imports",
     "distributions",
@@ -366,14 +364,6 @@ export const v2FoundationRouter = v2Router({
       ),
   }),
   partnerSettings: v2Router({
-    // Read-only rollout signal. A missing or invalid value fails closed to
-    // legacy in the service, so the client never enables an unfinished flow.
-    leadJourneyMode: v2PartnerProcedure.query(async ({ ctx }) => {
-      const db = await getV2Db();
-      return {
-        mode: await getPartnerLeadJourneyMode(db, ctx.partner.partnerId),
-      };
-    }),
     whatsappTemplate: v2PartnerProcedure.query(({ ctx }) =>
       getWhatsAppInitialMessageTemplate(ctx.partner)
     ),
@@ -612,32 +602,6 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .mutation(({ ctx, input }) => distributeLeads(ctx.partner, input)),
-    changeStatus: v2PartnerProcedure
-      .input(
-        z.object({
-          id: z.number().int().positive(),
-          statusId: z.number().int().positive(),
-        })
-      )
-      .mutation(({ ctx, input }) =>
-        changeLeadStatus(ctx.partner, input.id, input.statusId)
-      ),
-    contact: v2PartnerProcedure
-      .input(
-        z.object({
-          id: z.number().int().positive(),
-          channel: z.string().min(1).max(48),
-          outcome: z.string().min(1).max(96),
-          summary: z.string().max(5_000).nullable().optional(),
-          occurredAt: z.coerce.date().optional(),
-          statusId: z.number().int().positive().optional(),
-          followUpDueAt: z.coerce.date().nullable().optional(),
-          followUpNote: z.string().max(5_000).nullable().optional(),
-        })
-      )
-      .mutation(({ ctx, input }) =>
-        recordLeadContact(ctx.partner, input.id, input)
-      ),
     note: v2PartnerProcedure
       .input(
         z.object({
@@ -648,9 +612,8 @@ export const v2FoundationRouter = v2Router({
       .mutation(({ ctx, input }) =>
         addLeadNote(ctx.partner, input.id, input.text)
       ),
-    // Separated journey commands are backend-only in 016.2. Their services
-    // reject legacy partners explicitly, so these procedures cannot change an
-    // existing tenant's current seller flow before its controlled rollout.
+    // The separated attempt/contact commands are the single operational
+    // journey. The backend remains the source of truth for every policy.
     registerAttempt: v2PartnerProcedure
       .input(
         z.object({
@@ -867,8 +830,8 @@ export const v2FoundationRouter = v2Router({
       .mutation(({ ctx, input }) =>
         setCampaignGovernance(ctx.partner, input.campaignId, input.setting)
       ),
-    // Exposed as API-only configuration for the separated journey. It does
-    // not alter the legacy contact governance or any current seller screen.
+    // Attempt governance is configured independently from effective-contact
+    // governance; the unified workspace resolves both on the server.
     attemptPartner: v2PartnerAdminProcedure.query(({ ctx }) =>
       getPartnerAttemptGovernance(ctx.partner)
     ),

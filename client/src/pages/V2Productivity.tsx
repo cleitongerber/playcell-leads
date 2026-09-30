@@ -25,93 +25,108 @@ function percent(value: number | null | undefined) {
 
 function duration(seconds: number | null | undefined) {
   if (seconds == null) return "—";
-  const value = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(value / 3600);
-  const minutes = Math.floor((value % 3600) / 60);
-  return hours ? `${hours}h ${minutes}min` : `${minutes}min`;
+  const rounded = Math.max(0, Math.round(seconds));
+  const days = Math.floor(rounded / 86_400);
+  const hours = Math.floor((rounded % 86_400) / 3_600);
+  const minutes = Math.floor((rounded % 3_600) / 60);
+  return days
+    ? `${days}d ${hours}h`
+    : hours
+      ? `${hours}h ${minutes}min`
+      : `${minutes}min`;
 }
 
-type ProductivitySeller = {
+type SellerRow = {
   membershipId: number;
   name: string;
   pdvNames: string[];
   leadsInPortfolio: number;
   leadsAssignedInPeriod: number;
-  leadsTreated: number;
-  treatmentRate: number | null;
-  contacts: number;
-  leadsCompleted: number;
+  leadsWorked: number;
+  attempts: number;
+  leadsWithAttempt: number;
+  effectiveContacts: number;
+  leadsWithEffectiveContact: number;
+  interested: number;
   conversions: number;
   followUpsCreated: number;
   followUpsCompleted: number;
   followUpsOverdue: number;
-  followUpCompletionRate: number | null;
-  firstContactAverageSeconds: number | null;
-  leadsWithoutFirstContact: number;
+  followUpsPending: number;
+  followUpsFromAttempts: number;
+  followUpsFromTreatments: number;
+  followUpsIndependent: number;
+  firstAttemptAverageSeconds: number | null;
+  firstEffectiveContactAverageSeconds: number | null;
+  leadsWithoutWork: number;
   governanceComplete: number;
   governancePending: number;
-  lastActivityAt: Date | string | null;
+  lastActivityAt: Date | null;
+  effectiveContactRate: number | null;
+  followUpCompletionRate: number | null;
 };
 
-function MobileSellerCard({
+function SellerCard({
   row,
   expanded,
   onToggle,
   onSelect,
 }: {
-  row: ProductivitySeller;
+  row: SellerRow;
   expanded: boolean;
   onToggle: () => void;
   onSelect?: () => void;
 }) {
-  const detailsId = `seller-details-${row.membershipId}`;
+  const detailsId = `productivity-seller-${row.membershipId}`;
   return (
     <article className="v2-mobile-record rounded-lg border p-3">
       <div className="flex items-start justify-between gap-3">
-        {onSelect ? (
-          <button
-            type="button"
-            className="min-w-0 text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onSelect}
-          >
-            {row.name}
-          </button>
-        ) : (
-          <p className="min-w-0 font-medium">{row.name}</p>
-        )}
+        <button
+          className="min-w-0 text-left"
+          onClick={onSelect}
+          disabled={!onSelect}
+        >
+          <p className="font-semibold">{row.name}</p>
+          <p className="text-xs text-muted-foreground">
+            {row.pdvNames.join(", ")}
+          </p>
+        </button>
         {row.followUpsOverdue ? (
-          <Badge variant="destructive">
-            {row.followUpsOverdue} FU vencidos
-          </Badge>
-        ) : (
-          <Badge variant="secondary">Sem FU vencido</Badge>
-        )}
+          <Badge variant="destructive">{row.followUpsOverdue} vencido(s)</Badge>
+        ) : null}
       </div>
-      <p className="text-xs text-muted-foreground">
-        {row.pdvNames.join(", ") || "Sem PDV"}
-      </p>
-      <div className="v2-mobile-detail-grid text-sm text-muted-foreground">
+      <div className="v2-mobile-detail-grid mt-3 text-sm text-muted-foreground">
         <span>
-          Carteira <strong>{number(row.leadsInPortfolio)}</strong>
+          Carteira{" "}
+          <strong className="text-foreground">
+            {number(row.leadsInPortfolio)}
+          </strong>
         </span>
         <span>
-          Atribuídos <strong>{number(row.leadsAssignedInPeriod)}</strong>
+          Trabalhados{" "}
+          <strong className="text-foreground">{number(row.leadsWorked)}</strong>
         </span>
         <span>
-          Taxa de tratamento <strong>{percent(row.treatmentRate)}</strong>
+          Contatos{" "}
+          <strong className="text-foreground">
+            {number(row.effectiveContacts)}
+          </strong>
         </span>
         <span>
-          Conversões <strong>{number(row.conversions)}</strong>
+          Conversões{" "}
+          <strong className="text-foreground">{number(row.conversions)}</strong>
         </span>
-        <span className="col-span-2">
-          Tempo até 1º contato{" "}
-          <strong>{duration(row.firstContactAverageSeconds)}</strong>
+        <span>
+          Taxa contato{" "}
+          <strong className="text-foreground">
+            {percent(row.effectiveContactRate)}
+          </strong>
         </span>
       </div>
       <Button
         type="button"
         variant="ghost"
-        className="v2-mobile-disclosure-trigger w-full justify-between px-2"
+        className="v2-mobile-disclosure-trigger mt-2 w-full justify-between px-2"
         aria-expanded={expanded}
         aria-controls={detailsId}
         onClick={onToggle}
@@ -125,40 +140,56 @@ function MobileSellerCard({
           className="v2-mobile-detail-grid border-t pt-3 text-sm text-muted-foreground"
         >
           <span>
-            Leads tratados <strong>{number(row.leadsTreated)}</strong>
+            Tentativas{" "}
+            <strong className="text-foreground">{number(row.attempts)}</strong>
           </span>
           <span>
-            Contatos <strong>{number(row.contacts)}</strong>
+            Com tentativa{" "}
+            <strong className="text-foreground">
+              {number(row.leadsWithAttempt)}
+            </strong>
           </span>
           <span>
-            Leads concluídos <strong>{number(row.leadsCompleted)}</strong>
+            Interessados{" "}
+            <strong className="text-foreground">
+              {number(row.interested)}
+            </strong>
           </span>
           <span>
-            FU criados <strong>{number(row.followUpsCreated)}</strong>
+            FU criados{" "}
+            <strong className="text-foreground">
+              {number(row.followUpsCreated)}
+            </strong>
           </span>
           <span>
-            FU concluídos <strong>{number(row.followUpsCompleted)}</strong>
+            FU concluídos{" "}
+            <strong className="text-foreground">
+              {number(row.followUpsCompleted)}
+            </strong>
           </span>
           <span>
-            Taxa de FU <strong>{percent(row.followUpCompletionRate)}</strong>
+            Taxa FU{" "}
+            <strong className="text-foreground">
+              {percent(row.followUpCompletionRate)}
+            </strong>
           </span>
           <span>
-            Sem 1º contato{" "}
-            <strong>{number(row.leadsWithoutFirstContact)}</strong>
+            1ª tentativa{" "}
+            <strong className="text-foreground">
+              {duration(row.firstAttemptAverageSeconds)}
+            </strong>
+          </span>
+          <span>
+            1º contato{" "}
+            <strong className="text-foreground">
+              {duration(row.firstEffectiveContactAverageSeconds)}
+            </strong>
           </span>
           <span>
             Governança{" "}
-            <strong>
+            <strong className="text-foreground">
               {row.governanceComplete} completa(s) · {row.governancePending}{" "}
               pendente(s)
-            </strong>
-          </span>
-          <span className="col-span-2">
-            Última atividade{" "}
-            <strong>
-              {row.lastActivityAt
-                ? new Date(row.lastActivityAt).toLocaleString("pt-BR")
-                : "—"}
             </strong>
           </span>
         </div>
@@ -176,44 +207,49 @@ export default function V2Productivity() {
     enabled: canQuery,
   });
   const access = v2trpc.access.context.useQuery();
-
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
         eyebrow="Gestão"
-        title="Produtividade operacional"
-        description="Contatos, disciplina de follow-up e governança são calculados por vendedor a partir das entidades reais."
+        title="Produtividade"
+        description="Esforço, contato efetivo, disciplina de follow-up e resultado por vendedor."
       />
-
       <AnalyticsFilters value={filters} onChange={setFilters} />
-
       {!canQuery ? (
         <Card>
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            Informe as duas datas do período personalizado.
+            Informe as duas datas para consultar o período personalizado.
           </CardContent>
         </Card>
       ) : productivity.isLoading ? (
-        <V2LoadingState label="Calculando produtividade operacional" />
+        <V2LoadingState label="Calculando produtividade" />
       ) : productivity.isError ? (
         <V2ErrorState
-          message="Não foi possível carregar a produtividade autorizada."
+          message="Não foi possível carregar a produtividade no seu escopo."
           onRetry={() => productivity.refetch()}
         />
       ) : productivity.data ? (
         <>
-          <section className="v2-metric-grid sm:grid-cols-2 xl:grid-cols-4">
+          <section className="v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
             <Summary
               title="Vendedores visíveis"
               value={number(productivity.data.totals.sellers)}
             />
             <Summary
-              title="Contatos realizados"
-              value={number(productivity.data.totals.contacts)}
+              title="Leads trabalhados"
+              value={number(productivity.data.totals.worked)}
             />
             <Summary
-              title="Leads tratados"
-              value={number(productivity.data.totals.treated)}
+              title="Tentativas"
+              value={number(productivity.data.totals.attempts)}
+            />
+            <Summary
+              title="Contatos efetivos"
+              value={number(productivity.data.totals.effectiveContacts)}
+            />
+            <Summary
+              title="Conversões"
+              value={number(productivity.data.totals.conversions)}
             />
             <Summary
               title="Follow-ups vencidos"
@@ -225,9 +261,8 @@ export default function V2Productivity() {
             <CardHeader>
               <CardTitle>Equipe no período</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Clique em um vendedor para restringir a própria visão. Taxa de
-                tratamento: Leads com contato no período ÷ Leads atribuídos no
-                período.
+                Trabalho é tentativa ou tratativa efetiva. A taxa de contato
+                efetivo é Leads com contato efetivo ÷ Leads trabalhados.
               </p>
             </CardHeader>
             <CardContent>
@@ -235,7 +270,7 @@ export default function V2Productivity() {
                 <>
                   <div className="grid gap-3 md:hidden">
                     {productivity.data.sellers.map(row => (
-                      <MobileSellerCard
+                      <SellerCard
                         key={row.membershipId}
                         row={row}
                         expanded={expandedSellerIds.includes(row.membershipId)}
@@ -265,20 +300,18 @@ export default function V2Productivity() {
                           <th className="p-2">Vendedor</th>
                           <th className="p-2">PDVs</th>
                           <th className="p-2">Carteira</th>
-                          <th className="p-2">Atribuídos</th>
-                          <th className="p-2">Tratados</th>
-                          <th className="p-2">Taxa</th>
-                          <th className="p-2">Contatos</th>
-                          <th className="p-2">Concluídos</th>
+                          <th className="p-2">Trabalhados</th>
+                          <th className="p-2">Tentativas</th>
+                          <th className="p-2">Contatos efetivos</th>
+                          <th className="p-2">Taxa contato</th>
+                          <th className="p-2">Interessados</th>
                           <th className="p-2">Conversões</th>
                           <th className="p-2">FU criados</th>
                           <th className="p-2">FU concluídos</th>
                           <th className="p-2">FU vencidos</th>
-                          <th className="p-2">Taxa FU</th>
+                          <th className="p-2">1ª tentativa</th>
                           <th className="p-2">1º contato</th>
-                          <th className="p-2">Sem 1º contato</th>
                           <th className="p-2">Governança</th>
-                          <th className="p-2">Última atividade</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -289,7 +322,8 @@ export default function V2Productivity() {
                           >
                             <td className="p-2 font-medium">
                               <button
-                                className="text-left hover:underline"
+                                className="text-left hover:underline disabled:no-underline"
+                                disabled={access.data?.role === "seller"}
                                 onClick={() =>
                                   access.data?.role !== "seller" &&
                                   setFilters({
@@ -307,17 +341,15 @@ export default function V2Productivity() {
                             <td className="p-2">
                               {number(row.leadsInPortfolio)}
                             </td>
+                            <td className="p-2">{number(row.leadsWorked)}</td>
+                            <td className="p-2">{number(row.attempts)}</td>
                             <td className="p-2">
-                              {number(row.leadsAssignedInPeriod)}
+                              {number(row.effectiveContacts)}
                             </td>
-                            <td className="p-2">{number(row.leadsTreated)}</td>
                             <td className="p-2">
-                              {percent(row.treatmentRate)}
+                              {percent(row.effectiveContactRate)}
                             </td>
-                            <td className="p-2">{number(row.contacts)}</td>
-                            <td className="p-2">
-                              {number(row.leadsCompleted)}
-                            </td>
+                            <td className="p-2">{number(row.interested)}</td>
                             <td className="p-2">{number(row.conversions)}</td>
                             <td className="p-2">
                               {number(row.followUpsCreated)}
@@ -335,24 +367,16 @@ export default function V2Productivity() {
                               )}
                             </td>
                             <td className="p-2">
-                              {percent(row.followUpCompletionRate)}
+                              {duration(row.firstAttemptAverageSeconds)}
                             </td>
                             <td className="p-2">
-                              {duration(row.firstContactAverageSeconds)}
-                            </td>
-                            <td className="p-2">
-                              {number(row.leadsWithoutFirstContact)}
+                              {duration(
+                                row.firstEffectiveContactAverageSeconds
+                              )}
                             </td>
                             <td className="p-2">
                               {row.governanceComplete} completa(s) ·{" "}
                               {row.governancePending} pendente(s)
-                            </td>
-                            <td className="p-2">
-                              {row.lastActivityAt
-                                ? new Date(row.lastActivityAt).toLocaleString(
-                                    "pt-BR"
-                                  )
-                                : "—"}
                             </td>
                           </tr>
                         ))}

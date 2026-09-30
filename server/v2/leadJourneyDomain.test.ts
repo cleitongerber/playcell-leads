@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  deriveNextLeadAction,
-  normalizeLeadJourneyMode,
-  usesSeparatedContactJourney,
-} from "./leadJourneyDomain";
+import { deriveNextLeadAction } from "./leadJourneyDomain";
 
 const baseInput = {
   timeZone: "America/Sao_Paulo",
@@ -13,17 +9,7 @@ const baseInput = {
   hasEffectiveContact: false,
 };
 
-describe("016.1 lead journey domain foundation", () => {
-  it("fails closed to legacy until a partner is explicitly migrated", () => {
-    expect(normalizeLeadJourneyMode(undefined)).toBe("legacy");
-    expect(normalizeLeadJourneyMode("unknown")).toBe("legacy");
-    expect(normalizeLeadJourneyMode("separated_contact_v1")).toBe(
-      "separated_contact_v1"
-    );
-    expect(usesSeparatedContactJourney("legacy")).toBe(false);
-    expect(usesSeparatedContactJourney("separated_contact_v1")).toBe(true);
-  });
-
+describe("unified lead journey domain", () => {
   it("keeps blocking governance above a terminal lead and all follow-ups", () => {
     expect(
       deriveNextLeadAction({

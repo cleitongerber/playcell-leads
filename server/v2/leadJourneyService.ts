@@ -36,7 +36,6 @@ import {
   resolveEffectiveGovernance,
 } from "./governanceService";
 import { deriveNextLeadAction, type NextLeadAction } from "./leadJourneyDomain";
-import { getPartnerLeadJourneyMode } from "./leadJourneySettings";
 import {
   commandReplayDisposition,
   assertOperationRequestKey,
@@ -359,27 +358,16 @@ async function assertOperationalMembership(context: PartnerContext) {
   return context.membershipId;
 }
 
-async function assertSeparatedJourney(db: V2Database, context: PartnerContext) {
-  const mode = await getPartnerLeadJourneyMode(db, context.partnerId);
-  if (mode !== "separated_contact_v1") {
-    throw new LeadJourneyOperationError(
-      "NEW_LEAD_JOURNEY_NOT_ENABLED",
-      "NEW_LEAD_JOURNEY_NOT_ENABLED"
-    );
-  }
-}
-
 /**
- * Active choices for an operational form. This is deliberately separate from
- * the Partner Admin configuration API: sellers need labels and policies for
- * their permitted partner, never the ability to mutate the catalogue.
+ * Active choices for the unified operational form. Sellers receive labels and
+ * policies for their permitted partner, never the ability to mutate the
+ * catalogue.
  */
 export async function listOperationalInteractionResults(
   context: PartnerContext,
   interactionKind: LeadInteractionKind
 ) {
   const db = await getV2Db();
-  await assertSeparatedJourney(db, context);
   return listPartnerInteractionResults(db, context.partnerId, interactionKind);
 }
 
@@ -393,7 +381,6 @@ export async function getLeadOperationRequirements(
   input: LeadOperationRequirementsInput
 ) {
   const db = await getV2Db();
-  await assertSeparatedJourney(db, context);
   const lead = await loadLead(db, context, input.leadId);
   await assertLeadScope(db, context, lead, "read");
 
@@ -1166,7 +1153,6 @@ export async function registerAttempt(
   input: RegisterAttemptInput
 ) {
   const db = await getV2Db();
-  await assertSeparatedJourney(db, context);
   const actorMembershipId = await assertOperationalMembership(context);
   return db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
@@ -1311,7 +1297,6 @@ export async function recordEffectiveContact(
   input: RecordEffectiveContactInput
 ) {
   const db = await getV2Db();
-  await assertSeparatedJourney(db, context);
   const actorMembershipId = await assertOperationalMembership(context);
   return db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
@@ -1594,7 +1579,6 @@ export async function changeAdministrativeStatus(
   input: ChangeAdministrativeStatusInput
 ) {
   const db = await getV2Db();
-  await assertSeparatedJourney(db, context);
   return db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
     const command = await startCommand(
@@ -1700,7 +1684,6 @@ export async function reopenLead(
   input: ReopenLeadInput
 ) {
   const db = await getV2Db();
-  await assertSeparatedJourney(db, context);
   assertReopenRole(context.role);
   return db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
@@ -1816,7 +1799,6 @@ export async function getLeadNextAction(
   leadId: number
 ) {
   const db = await getV2Db();
-  await assertSeparatedJourney(db, context);
   const lead = await loadLead(db, context, leadId);
   await assertLeadScope(db, context, lead, "read");
   return deriveOperationalNextAction(db, context.partnerId, lead.id);

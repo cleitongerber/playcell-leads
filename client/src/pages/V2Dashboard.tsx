@@ -4,21 +4,21 @@ import {
 } from "@/components/v2/AnalyticsFilters";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { v2trpc } from "@/lib/v2trpc";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path } from "@/lib/operationalNavigation";
+import { v2trpc } from "@/lib/v2trpc";
 import {
   BellRing,
-  CalendarDays,
   CheckCircle2,
   Clock3,
   Inbox,
   MessageSquareText,
+  PhoneCall,
+  Send,
   Timer,
   TrendingUp,
   UserRoundX,
-  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -42,9 +42,11 @@ function duration(seconds: number | null | undefined) {
   const days = Math.floor(rounded / 86_400);
   const hours = Math.floor((rounded % 86_400) / 3_600);
   const minutes = Math.floor((rounded % 3_600) / 60);
-  if (days) return `${days}d ${hours}h`;
-  if (hours) return `${hours}h ${minutes}min`;
-  return `${minutes}min`;
+  return days
+    ? `${days}d ${hours}h`
+    : hours
+      ? `${hours}h ${minutes}min`
+      : `${minutes}min`;
 }
 
 function delta(value: number | null | undefined) {
@@ -129,11 +131,9 @@ export default function V2Dashboard() {
       <V2PageHeader
         eyebrow="Gestão"
         title="Dashboard operacional"
-        description="Leitura atual da operação. Estoques são posições de agora; fluxos respeitam o período selecionado."
+        description="Fatos operacionais no período selecionado e pendências atuais no seu escopo."
       />
-
       <AnalyticsFilters value={filters} onChange={setFilters} />
-
       {!canQuery ? (
         <Card>
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
@@ -149,7 +149,7 @@ export default function V2Dashboard() {
         />
       ) : dashboard.data ? (
         <>
-          <section className="v2-metric-grid sm:grid-cols-2 xl:grid-cols-5">
+          <section className="v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
             <MetricCard
               title="Leads recebidos"
               value={number(dashboard.data.cards.leadsReceived)}
@@ -157,37 +157,28 @@ export default function V2Dashboard() {
               icon={Inbox}
             />
             <MetricCard
-              title="Leads disponíveis"
-              value={number(dashboard.data.cards.leadsAvailable)}
-              href={leadPath("available")}
-              icon={UserRoundX}
-            />
-            <MetricCard
-              title="Leads em carteira"
-              value={number(dashboard.data.cards.leadsInPortfolio)}
-              href={leadPath("all", {
-                assignment: "assigned",
-                assignedMembershipId: filters.sellerMembershipId,
-              })}
-              icon={UsersRound}
-            />
-            <MetricCard
-              title="Leads tratados"
-              value={number(dashboard.data.cards.leadsTreated)}
-              comparison={dashboard.data.comparisons.leadsTreated}
+              title="Leads trabalhados"
+              value={number(dashboard.data.cards.leadsWorked)}
+              comparison={dashboard.data.comparisons.leadsWorked}
               icon={MessageSquareText}
             />
             <MetricCard
-              title="Leads concluídos"
-              value={number(dashboard.data.cards.leadsCompleted)}
-              comparison={dashboard.data.comparisons.leadsCompleted}
-              icon={CheckCircle2}
+              title="Tentativas"
+              value={number(dashboard.data.cards.attempts)}
+              comparison={dashboard.data.comparisons.attempts}
+              icon={Send}
             />
             <MetricCard
-              title="Taxa de conversão"
-              value={percent(dashboard.data.cards.conversionRate)}
-              comparison={dashboard.data.comparisons.conversionRate}
-              icon={TrendingUp}
+              title="Contatos efetivos"
+              value={number(dashboard.data.cards.effectiveContacts)}
+              comparison={dashboard.data.comparisons.effectiveContacts}
+              icon={PhoneCall}
+            />
+            <MetricCard
+              title="Conversões"
+              value={number(dashboard.data.cards.conversions)}
+              comparison={dashboard.data.comparisons.conversions}
+              icon={CheckCircle2}
             />
             <MetricCard
               title="Follow-ups vencidos"
@@ -196,26 +187,6 @@ export default function V2Dashboard() {
               href={followUpPath("overdue")}
               icon={BellRing}
             />
-            <MetricCard
-              title="Follow-ups para hoje"
-              value={number(dashboard.data.cards.followUpsToday)}
-              href={followUpPath("today")}
-              icon={CalendarDays}
-            />
-            <MetricCard
-              title="Tempo médio até 1º contato"
-              value={duration(dashboard.data.cards.firstContactAverageSeconds)}
-              icon={Timer}
-            />
-            <MetricCard
-              title="Sem primeiro contato"
-              value={number(dashboard.data.cards.leadsWithoutFirstContact)}
-              href={leadPath("all", {
-                firstContact: "missing",
-                assignedMembershipId: filters.sellerMembershipId,
-              })}
-              icon={Clock3}
-            />
           </section>
 
           <section className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
@@ -223,16 +194,17 @@ export default function V2Dashboard() {
               <CardHeader>
                 <CardTitle>Funil do período</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Coorte de Leads recebidos até o fim de{" "}
-                  {dashboard.data.period.label.toLowerCase()}.
+                  Coorte de Leads recebidos no período, acompanhada até o fim
+                  dele.
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 {[
                   ["Recebidos", dashboard.data.funnel.received],
-                  ["Atribuídos", dashboard.data.funnel.assigned],
-                  ["Tratados", dashboard.data.funnel.treated],
-                  ["Concluídos", dashboard.data.funnel.completed],
+                  ["Trabalhados", dashboard.data.funnel.worked],
+                  ["Com tentativa", dashboard.data.funnel.attempted],
+                  ["Com contato efetivo", dashboard.data.funnel.contacted],
+                  ["Interessados", dashboard.data.funnel.interested],
                   ["Convertidos", dashboard.data.funnel.converted],
                 ].map(([label, raw]) => {
                   const count = Number(raw);
@@ -279,9 +251,9 @@ export default function V2Dashboard() {
                   })}
                   className="v2-health-item block rounded-md border p-3 hover:bg-muted/40"
                 >
-                  <p className="text-sm">Atribuídos sem primeiro contato</p>
+                  <p className="text-sm">Atribuídos sem trabalho</p>
                   <strong>
-                    {number(dashboard.data.health.assignedWithoutFirstContact)}
+                    {number(dashboard.data.health.assignedWithoutWork)}
                   </strong>
                 </Link>
                 <Link
@@ -294,32 +266,67 @@ export default function V2Dashboard() {
                   </strong>
                 </Link>
                 <div className="v2-health-item rounded-md border p-3">
-                  <p className="text-sm">
-                    Sem atividade há{" "}
-                    {Math.max(
-                      1,
-                      Math.ceil(dashboard.data.health.staleLeadMinutes / 1440)
-                    )}{" "}
-                    dia(s)
-                  </p>
-                  <strong>{number(dashboard.data.health.staleLeads)}</strong>
-                </div>
-                <div className="v2-health-item rounded-md border p-3">
-                  <p className="text-sm">Pendências de governança</p>
+                  <p className="text-sm">Pendências documentais</p>
                   <strong>
                     {number(dashboard.data.health.governancePending)}
+                  </strong>
+                </div>
+                <div className="v2-health-item rounded-md border p-3">
+                  <p className="text-sm">Aguardando resposta</p>
+                  <strong>
+                    {number(dashboard.data.health.awaitingResponse)}
+                  </strong>
+                </div>
+                <div className="v2-health-item rounded-md border p-3">
+                  <p className="text-sm">
+                    Follow-ups residuais em Leads terminais
+                  </p>
+                  <strong>
+                    {number(dashboard.data.health.terminalResidualFollowUps)}
                   </strong>
                 </div>
               </CardContent>
             </Card>
           </section>
 
-          <OverviewTable
+          <section className="v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
+            <MetricCard
+              title="Taxa de contato efetivo"
+              value={percent(dashboard.data.cards.effectiveContactRate)}
+              comparison={dashboard.data.comparisons.effectiveContactRate}
+              icon={TrendingUp}
+            />
+            <MetricCard
+              title="Taxa de conversão"
+              value={percent(dashboard.data.cards.conversionRate)}
+              comparison={dashboard.data.comparisons.conversionRate}
+              icon={TrendingUp}
+            />
+            <MetricCard
+              title="Interessados"
+              value={number(dashboard.data.cards.interested)}
+              icon={CheckCircle2}
+            />
+            <MetricCard
+              title="Tempo até 1ª tentativa"
+              value={duration(dashboard.data.cards.firstAttemptAverageSeconds)}
+              icon={Timer}
+            />
+            <MetricCard
+              title="Tempo até 1º contato"
+              value={duration(
+                dashboard.data.cards.firstEffectiveContactAverageSeconds
+              )}
+              icon={Clock3}
+            />
+          </section>
+
+          <Overview
             title="Campanhas"
             rows={dashboard.data.campaigns}
             campaign
           />
-          <OverviewTable title="PDVs" rows={dashboard.data.pdvs} />
+          <Overview title="PDVs" rows={dashboard.data.pdvs} />
           <p className="text-xs text-muted-foreground">
             Período:{" "}
             {new Date(dashboard.data.period.start).toLocaleString("pt-BR")} até{" "}
@@ -332,23 +339,25 @@ export default function V2Dashboard() {
   );
 }
 
-function OverviewTable({
+type OverviewRow = {
+  id: number;
+  name: string;
+  leads: number;
+  attempts: number;
+  effectiveContacts: number;
+  interested: number;
+  conversions: number;
+  conversionRate: number | null;
+  followUpsOverdue: number;
+};
+
+function Overview({
   title,
   rows,
   campaign = false,
 }: {
   title: string;
-  rows: Array<{
-    id: number;
-    name: string;
-    leads: number;
-    treated: number;
-    completed: number;
-    conversions: number;
-    conversionRate: number | null;
-    followUpsOverdue: number;
-    firstContactAverageSeconds: number | null;
-  }>;
+  rows: OverviewRow[];
   campaign?: boolean;
 }) {
   return (
@@ -361,12 +370,12 @@ function OverviewTable({
           <>
             <div className="grid gap-3 md:hidden">
               {rows.map(row => (
-                <div
+                <article
                   key={row.id}
                   className="v2-mobile-record rounded-lg border p-3"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 font-medium">
+                  <div className="flex justify-between gap-3">
+                    <strong>
                       {campaign ? (
                         <Link
                           href={`/v2/campaigns/${row.id}`}
@@ -377,7 +386,7 @@ function OverviewTable({
                       ) : (
                         row.name
                       )}
-                    </div>
+                    </strong>
                     <Badge
                       variant={
                         row.followUpsOverdue ? "destructive" : "secondary"
@@ -388,23 +397,23 @@ function OverviewTable({
                         : "Sem vencidos"}
                     </Badge>
                   </div>
-                  <div className="v2-mobile-detail-grid text-sm text-muted-foreground">
+                  <div className="v2-mobile-detail-grid mt-3 text-sm text-muted-foreground">
                     <span>
-                      Leads{" "}
+                      Tentativas{" "}
                       <strong className="text-foreground">
-                        {number(row.leads)}
+                        {number(row.attempts)}
                       </strong>
                     </span>
                     <span>
-                      Tratados{" "}
+                      Contatos{" "}
                       <strong className="text-foreground">
-                        {number(row.treated)}
+                        {number(row.effectiveContacts)}
                       </strong>
                     </span>
                     <span>
-                      Concluídos{" "}
+                      Interessados{" "}
                       <strong className="text-foreground">
-                        {number(row.completed)}
+                        {number(row.interested)}
                       </strong>
                     </span>
                     <span>
@@ -413,20 +422,8 @@ function OverviewTable({
                         {number(row.conversions)}
                       </strong>
                     </span>
-                    <span>
-                      Taxa{" "}
-                      <strong className="text-foreground">
-                        {percent(row.conversionRate)}
-                      </strong>
-                    </span>
-                    <span>
-                      1º contato{" "}
-                      <strong className="text-foreground">
-                        {duration(row.firstContactAverageSeconds)}
-                      </strong>
-                    </span>
                   </div>
-                </div>
+                </article>
               ))}
             </div>
             <div className="v2-table-scroll hidden md:block">
@@ -434,13 +431,13 @@ function OverviewTable({
                 <thead className="border-b text-left text-muted-foreground">
                   <tr>
                     <th className="p-2">{title.slice(0, -1)}</th>
-                    <th className="p-2">Leads</th>
-                    <th className="p-2">Tratados</th>
-                    <th className="p-2">Concluídos</th>
+                    <th className="p-2">Base</th>
+                    <th className="p-2">Tentativas</th>
+                    <th className="p-2">Contatos</th>
+                    <th className="p-2">Interessados</th>
                     <th className="p-2">Conversões</th>
                     <th className="p-2">Taxa</th>
                     <th className="p-2">Vencidos</th>
-                    <th className="p-2">1º contato</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -456,8 +453,9 @@ function OverviewTable({
                         )}
                       </td>
                       <td className="p-2">{number(row.leads)}</td>
-                      <td className="p-2">{number(row.treated)}</td>
-                      <td className="p-2">{number(row.completed)}</td>
+                      <td className="p-2">{number(row.attempts)}</td>
+                      <td className="p-2">{number(row.effectiveContacts)}</td>
+                      <td className="p-2">{number(row.interested)}</td>
                       <td className="p-2">{number(row.conversions)}</td>
                       <td className="p-2">{percent(row.conversionRate)}</td>
                       <td className="p-2">
@@ -468,9 +466,6 @@ function OverviewTable({
                         ) : (
                           "0"
                         )}
-                      </td>
-                      <td className="p-2">
-                        {duration(row.firstContactAverageSeconds)}
                       </td>
                     </tr>
                   ))}
