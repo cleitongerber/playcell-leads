@@ -1,10 +1,16 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import { createHash } from "crypto";
-import { pdvs, type MembershipRole, userPartners, userPdvAssignments, users } from "../../drizzle-v2/schema";
+import {
+  pdvs,
+  type MembershipRole,
+  userPartners,
+  userPdvAssignments,
+  users,
+} from "../../drizzle-v2/schema";
 import { type PartnerContext } from "./access";
 import { getV2Db, type V2Database } from "./database";
 import { requireMembershipPdvTenant } from "./operationalScope";
-import { hashV2Password } from "./password";
+import { hashV2Password, verifyV2Password } from "./password";
 import { requirePartnerAdministrator, writeV2Audit } from "./partnerService";
 
 type MembershipInput = {
@@ -21,27 +27,45 @@ function localOpenId(email: string) {
   return `local:${createHash("sha256").update(email).digest("hex")}`;
 }
 
-async function getMembershipInPartner(db: V2Database, partnerId: number, membershipId: number) {
+async function getMembershipInPartner(
+  db: V2Database,
+  partnerId: number,
+  membershipId: number
+) {
   const membership = (
     await db
       .select()
       .from(userPartners)
-      .where(and(eq(userPartners.id, membershipId), eq(userPartners.partnerId, partnerId)))
+      .where(
+        and(
+          eq(userPartners.id, membershipId),
+          eq(userPartners.partnerId, partnerId)
+        )
+      )
       .limit(1)
   )[0];
   if (!membership) throw new Error("Acesso do usuário não encontrado");
   return membership;
 }
 
-async function validatePdvScope(db: V2Database, partnerId: number, pdvIds: number[]) {
+async function validatePdvScope(
+  db: V2Database,
+  partnerId: number,
+  pdvIds: number[]
+) {
   const uniqueIds = Array.from(new Set(pdvIds));
   if (!uniqueIds.length) return uniqueIds;
   const scopedPdvs = await db
     .select({ id: pdvs.id, isActive: pdvs.isActive })
     .from(pdvs)
     .where(and(eq(pdvs.partnerId, partnerId), inArray(pdvs.id, uniqueIds)));
-  if (scopedPdvs.length !== uniqueIds.length || scopedPdvs.some(pdv => !pdv.isActive)) {
-    throw new Error("Um ou mais PDVs não estão ativos ou não pertencem ao parceiro atual");
+  if (
+    scopedPdvs.length !== uniqueIds.length ||
+    scopedPdvs.some(pdv => !pdv.isActive)
+  ) {
+    throw new Error(
+      "Um ou mais PDVs não estão ativos ou não pertencem ao parceiro atual"
+    );
   }
   return uniqueIds;
 }
@@ -52,13 +76,25 @@ async function replacePdvScope(
   membershipId: number,
   pdvIds: number[]
 ) {
-  const membership = await getMembershipInPartner(db, context.partnerId, membershipId);
+  const membership = await getMembershipInPartner(
+    db,
+    context.partnerId,
+    membershipId
+  );
   requireMembershipPdvTenant(context, membership.partnerId, context.partnerId);
   const validIds = await validatePdvScope(db, context.partnerId, pdvIds);
   const current = await db
-    .select({ pdvId: userPdvAssignments.pdvId, isActive: userPdvAssignments.isActive })
+    .select({
+      pdvId: userPdvAssignments.pdvId,
+      isActive: userPdvAssignments.isActive,
+    })
     .from(userPdvAssignments)
-    .where(and(eq(userPdvAssignments.partnerId, context.partnerId), eq(userPdvAssignments.membershipId, membershipId)));
+    .where(
+      and(
+        eq(userPdvAssignments.partnerId, context.partnerId),
+        eq(userPdvAssignments.membershipId, membershipId)
+      )
+    );
   const wanted = new Set(validIds);
 
   for (const assignment of current) {
@@ -66,7 +102,12 @@ async function replacePdvScope(
       await db
         .update(userPdvAssignments)
         .set({ isActive: false, updatedAt: new Date() })
-        .where(and(eq(userPdvAssignments.membershipId, membershipId), eq(userPdvAssignments.pdvId, assignment.pdvId)));
+        .where(
+          and(
+            eq(userPdvAssignments.membershipId, membershipId),
+            eq(userPdvAssignments.pdvId, assignment.pdvId)
+          )
+        );
       await writeV2Audit(db, {
         partnerId: context.partnerId,
         actorUserId: context.userId,
@@ -83,14 +124,21 @@ async function replacePdvScope(
     const previous = current.find(item => item.pdvId === pdvId);
     await db
       .insert(userPdvAssignments)
-      .values({ partnerId: context.partnerId, membershipId, pdvId, isActive: true })
+      .values({
+        partnerId: context.partnerId,
+        membershipId,
+        pdvId,
+        isActive: true,
+      })
       .onDuplicateKeyUpdate({ set: { isActive: true, updatedAt: new Date() } });
     if (!previous?.isActive) {
       await writeV2Audit(db, {
         partnerId: context.partnerId,
         actorUserId: context.userId,
         actorMembershipId: context.membershipId,
-        action: previous ? "membership_pdv_assignment_reactivated" : "membership_pdv_assignment_created",
+        action: previous
+          ? "membership_pdv_assignment_reactivated"
+          : "membership_pdv_assignment_created",
         entityType: "user_pdv_assignment",
         entityId: `${membershipId}:${pdvId}`,
         metadata: { membershipId, pdvId },
@@ -101,18 +149,31 @@ async function replacePdvScope(
 
 export async function createPartnerUser(
   context: PartnerContext,
-  input: { name: string; email: string; password: string; role: MembershipRole; pdvIds: number[] }
+  input: {
+    name: string;
+    email: string;
+    password: string;
+    role: MembershipRole;
+    pdvIds: number[];
+  }
 ) {
   requirePartnerAdministrator(context, context.partnerId, input.role);
   const name = input.name.trim();
   const email = normalizeEmail(input.email);
   if (!name) throw new Error("Nome é obrigatório");
-  if (input.password.length < 8) throw new Error("A senha inicial deve ter no mínimo 8 caracteres");
+  if (input.password.length < 8)
+    throw new Error("A senha inicial deve ter no mínimo 8 caracteres");
   const db = await getV2Db();
 
   return db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
-    let user = (await transactionDb.select().from(users).where(eq(users.email, email)).limit(1))[0];
+    let user = (
+      await transactionDb
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1)
+    )[0];
     const isNewUser = !user;
     if (!user) {
       const inserted = await tx.insert(users).values({
@@ -120,33 +181,63 @@ export async function createPartnerUser(
         email,
         name,
         passwordHash: await hashV2Password(input.password),
+        mustChangePassword: true,
         loginMethod: "password",
       });
-      const userId = Number((inserted as unknown as [{ insertId?: number }])[0]?.insertId);
-      user = (await transactionDb.select().from(users).where(eq(users.id, userId)).limit(1))[0];
+      const userId = Number(
+        (inserted as unknown as [{ insertId?: number }])[0]?.insertId
+      );
+      user = (
+        await transactionDb
+          .select()
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1)
+      )[0];
     }
     if (!user) throw new Error("Não foi possível criar o usuário");
-    if (!user.isActive) throw new Error("O usuário está inativo globalmente e deve ser reativado por um Super Admin");
+    if (!user.isActive)
+      throw new Error(
+        "O usuário está inativo globalmente e deve ser reativado por um Super Admin"
+      );
 
     const previous = (
       await transactionDb
         .select()
         .from(userPartners)
-        .where(and(eq(userPartners.userId, user.id), eq(userPartners.partnerId, context.partnerId)))
+        .where(
+          and(
+            eq(userPartners.userId, user.id),
+            eq(userPartners.partnerId, context.partnerId)
+          )
+        )
         .limit(1)
     )[0];
     await tx
       .insert(userPartners)
-      .values({ userId: user.id, partnerId: context.partnerId, role: input.role, isActive: true })
-      .onDuplicateKeyUpdate({ set: { role: input.role, isActive: true, updatedAt: new Date() } });
+      .values({
+        userId: user.id,
+        partnerId: context.partnerId,
+        role: input.role,
+        isActive: true,
+      })
+      .onDuplicateKeyUpdate({
+        set: { role: input.role, isActive: true, updatedAt: new Date() },
+      });
     const membership = (
       await transactionDb
         .select()
         .from(userPartners)
-        .where(and(eq(userPartners.userId, user.id), eq(userPartners.partnerId, context.partnerId)))
+        .where(
+          and(
+            eq(userPartners.userId, user.id),
+            eq(userPartners.partnerId, context.partnerId)
+          )
+        )
         .limit(1)
     )[0];
-    if (!membership) throw new Error("Não foi possível associar o usuário ao parceiro");
+    if (!membership)
+      throw new Error("Não foi possível associar o usuário ao parceiro");
     await replacePdvScope(transactionDb, context, membership.id, input.pdvIds);
 
     await writeV2Audit(transactionDb, {
@@ -173,6 +264,134 @@ export async function createPartnerUser(
   });
 }
 
+/** Updates global identity only after resolving the target through this tenant's membership. */
+export async function updatePartnerUser(
+  context: PartnerContext,
+  membershipId: number,
+  input: { name: string; email: string }
+) {
+  const name = input.name.trim();
+  const email = normalizeEmail(input.email);
+  if (!name) throw new Error("Nome é obrigatório");
+  const db = await getV2Db();
+  return db.transaction(async tx => {
+    const transactionDb = tx as unknown as V2Database;
+    const membership = await getMembershipInPartner(
+      transactionDb,
+      context.partnerId,
+      membershipId
+    );
+    // A Partner Admin must not take control of another partner administrator.
+    requirePartnerAdministrator(context, context.partnerId, membership.role);
+    const target = (
+      await transactionDb
+        .select()
+        .from(users)
+        .where(eq(users.id, membership.userId))
+        .limit(1)
+    )[0];
+    if (!target) throw new Error("Usuário não encontrado");
+    const duplicate = (
+      await transactionDb
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.email, email), ne(users.id, target.id)))
+        .limit(1)
+    )[0];
+    if (duplicate) throw new Error("Já existe um usuário com este e-mail");
+    await tx
+      .update(users)
+      .set({ name, email, updatedAt: new Date() })
+      .where(eq(users.id, target.id));
+    await writeV2Audit(transactionDb, {
+      partnerId: context.partnerId,
+      actorUserId: context.userId,
+      actorMembershipId: context.membershipId,
+      action: "user_identity_updated",
+      entityType: "user",
+      entityId: target.id,
+      metadata: {
+        nameChanged: target.name !== name,
+        emailChanged: target.email !== email,
+      },
+    });
+  });
+}
+
+export async function resetPartnerUserPassword(
+  context: PartnerContext,
+  membershipId: number,
+  password: string
+) {
+  if (password.length < 8)
+    throw new Error("A nova senha deve ter no mínimo 8 caracteres");
+  const db = await getV2Db();
+  return db.transaction(async tx => {
+    const transactionDb = tx as unknown as V2Database;
+    const membership = await getMembershipInPartner(
+      transactionDb,
+      context.partnerId,
+      membershipId
+    );
+    requirePartnerAdministrator(context, context.partnerId, membership.role);
+    await tx
+      .update(users)
+      .set({
+        passwordHash: await hashV2Password(password),
+        mustChangePassword: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, membership.userId));
+    await writeV2Audit(transactionDb, {
+      partnerId: context.partnerId,
+      actorUserId: context.userId,
+      actorMembershipId: context.membershipId,
+      action: "user_password_reset",
+      entityType: "user",
+      entityId: membership.userId,
+      metadata: { mustChangePassword: true },
+    });
+  });
+}
+
+export async function changeOwnPassword(
+  userId: number,
+  input: { currentPassword?: string; password: string }
+) {
+  if (input.password.length < 8)
+    throw new Error("A nova senha deve ter no mínimo 8 caracteres");
+  const db = await getV2Db();
+  const user = (
+    await db.select().from(users).where(eq(users.id, userId)).limit(1)
+  )[0];
+  if (!user || !user.isActive) throw new Error("Usuário não encontrado");
+  // A forced first change intentionally accepts the temporary password already used at login.
+  if (
+    !user.mustChangePassword &&
+    !(
+      input.currentPassword &&
+      (await verifyV2Password(input.currentPassword, user.passwordHash))
+    )
+  ) {
+    throw new Error("Senha atual inválida");
+  }
+  if (
+    user.mustChangePassword &&
+    input.currentPassword &&
+    !(await verifyV2Password(input.currentPassword, user.passwordHash))
+  ) {
+    throw new Error("Senha atual inválida");
+  }
+  await db
+    .update(users)
+    .set({
+      passwordHash: await hashV2Password(input.password),
+      mustChangePassword: false,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
+}
+
 export async function updatePartnerMembership(
   context: PartnerContext,
   membershipId: number,
@@ -182,15 +401,37 @@ export async function updatePartnerMembership(
   const db = await getV2Db();
   return db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
-    const membership = await getMembershipInPartner(transactionDb, context.partnerId, membershipId);
-    const user = (await transactionDb.select().from(users).where(eq(users.id, membership.userId)).limit(1))[0];
+    const membership = await getMembershipInPartner(
+      transactionDb,
+      context.partnerId,
+      membershipId
+    );
+    const user = (
+      await transactionDb
+        .select()
+        .from(users)
+        .where(eq(users.id, membership.userId))
+        .limit(1)
+    )[0];
     if (!user) throw new Error("Usuário não encontrado");
-    if (input.isActive && !user.isActive) throw new Error("Não é possível reativar acesso de usuário globalmente inativo");
+    if (input.isActive && !user.isActive)
+      throw new Error(
+        "Não é possível reativar acesso de usuário globalmente inativo"
+      );
 
     await tx
       .update(userPartners)
-      .set({ role: input.role, isActive: input.isActive, updatedAt: new Date() })
-      .where(and(eq(userPartners.id, membershipId), eq(userPartners.partnerId, context.partnerId)));
+      .set({
+        role: input.role,
+        isActive: input.isActive,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(userPartners.id, membershipId),
+          eq(userPartners.partnerId, context.partnerId)
+        )
+      );
     if (membership.role !== input.role) {
       await writeV2Audit(transactionDb, {
         partnerId: context.partnerId,
@@ -207,23 +448,42 @@ export async function updatePartnerMembership(
         partnerId: context.partnerId,
         actorUserId: context.userId,
         actorMembershipId: context.membershipId,
-        action: input.isActive ? "membership_activated" : "membership_deactivated",
+        action: input.isActive
+          ? "membership_activated"
+          : "membership_deactivated",
         entityType: "user_partner",
         entityId: membershipId,
       });
     }
-    if (input.pdvIds) await replacePdvScope(transactionDb, context, membershipId, input.pdvIds);
+    if (input.pdvIds)
+      await replacePdvScope(transactionDb, context, membershipId, input.pdvIds);
   });
 }
 
-export async function setGlobalUserActive(context: PartnerContext, userId: number, isActive: boolean) {
-  if (context.role !== "super_admin") throw new Error("Apenas Super Admin pode alterar o status global do usuário");
+export async function setGlobalUserActive(
+  context: PartnerContext,
+  userId: number,
+  isActive: boolean
+) {
+  if (context.role !== "super_admin")
+    throw new Error(
+      "Apenas Super Admin pode alterar o status global do usuário"
+    );
   const db = await getV2Db();
-  const target = (await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1))[0];
+  const target = (
+    await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+  )[0];
   if (!target) throw new Error("Usuário não encontrado");
   await db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
-    await tx.update(users).set({ isActive, updatedAt: new Date() }).where(eq(users.id, userId));
+    await tx
+      .update(users)
+      .set({ isActive, updatedAt: new Date() })
+      .where(eq(users.id, userId));
     await writeV2Audit(transactionDb, {
       actorUserId: context.userId,
       action: isActive ? "user_global_activated" : "user_global_deactivated",
@@ -243,6 +503,7 @@ export async function listPartnerUsers(context: PartnerContext) {
       name: users.name,
       email: users.email,
       userIsActive: users.isActive,
+      mustChangePassword: users.mustChangePassword,
       role: userPartners.role,
       membershipIsActive: userPartners.isActive,
       pdvId: pdvs.id,
@@ -251,19 +512,39 @@ export async function listPartnerUsers(context: PartnerContext) {
     })
     .from(userPartners)
     .innerJoin(users, eq(users.id, userPartners.userId))
-    .leftJoin(userPdvAssignments, eq(userPdvAssignments.membershipId, userPartners.id))
+    .leftJoin(
+      userPdvAssignments,
+      eq(userPdvAssignments.membershipId, userPartners.id)
+    )
     .leftJoin(pdvs, eq(pdvs.id, userPdvAssignments.pdvId))
     .where(eq(userPartners.partnerId, context.partnerId))
     .orderBy(asc(users.name));
 
-  const grouped = new Map<number, (typeof rows)[number] & { pdvs: Array<{ id: number; name: string; isActive: boolean }> }>();
+  const grouped = new Map<
+    number,
+    (typeof rows)[number] & {
+      pdvs: Array<{ id: number; name: string; isActive: boolean }>;
+    }
+  >();
   for (const row of rows) {
     let person = grouped.get(row.membershipId);
     if (!person) {
       person = { ...row, pdvs: [] };
       grouped.set(row.membershipId, person);
     }
-    if (row.pdvId && row.pdvName) person.pdvs.push({ id: row.pdvId, name: row.pdvName, isActive: row.assignmentIsActive ?? false });
+    if (row.pdvId && row.pdvName)
+      person.pdvs.push({
+        id: row.pdvId,
+        name: row.pdvName,
+        isActive: row.assignmentIsActive ?? false,
+      });
   }
-  return Array.from(grouped.values()).map(({ pdvId: _pdvId, pdvName: _pdvName, assignmentIsActive: _assignment, ...person }) => person);
+  return Array.from(grouped.values()).map(
+    ({
+      pdvId: _pdvId,
+      pdvName: _pdvName,
+      assignmentIsActive: _assignment,
+      ...person
+    }) => person
+  );
 }

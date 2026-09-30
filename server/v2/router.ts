@@ -13,6 +13,7 @@ import {
   setCampaignFrozen,
   transitionCampaign,
   updateCampaign,
+  deleteDraftCampaign,
 } from "./campaignService";
 import {
   addLeadNote,
@@ -106,8 +107,11 @@ import {
 } from "./pdvService";
 import {
   createPartnerUser,
+  changeOwnPassword,
   listPartnerUsers,
+  resetPartnerUserPassword,
   setGlobalUserActive,
+  updatePartnerUser,
   updatePartnerMembership,
 } from "./userService";
 import {
@@ -122,6 +126,7 @@ import {
   v2PartnerAdminProcedure,
   v2PartnerOrSuperProcedure,
   v2PartnerProcedure,
+  v2PasswordChangeProcedure,
   v2PublicProcedure,
   v2ProtectedProcedure,
   v2Router,
@@ -292,6 +297,7 @@ export const v2FoundationRouter = v2Router({
             email: ctx.user.email,
             systemRole: ctx.user.systemRole,
             isActive: ctx.user.isActive,
+            mustChangePassword: ctx.user.mustChangePassword,
           }
         : null
     ),
@@ -321,6 +327,14 @@ export const v2FoundationRouter = v2Router({
       });
       return { success: true } as const;
     }),
+    changePassword: v2PasswordChangeProcedure
+      .input(
+        z.object({
+          currentPassword: z.string().min(8).max(256).optional(),
+          password: z.string().min(8).max(256),
+        })
+      )
+      .mutation(({ ctx, input }) => changeOwnPassword(ctx.user.id, input)),
   }),
   access: v2Router({
     context: v2PartnerProcedure.query(({ ctx }) => ctx.partner),
@@ -435,6 +449,31 @@ export const v2FoundationRouter = v2Router({
       .mutation(({ ctx, input }) =>
         updatePartnerMembership(ctx.partner, input.membershipId, input)
       ),
+    update: v2PartnerAdminProcedure
+      .input(
+        z.object({
+          membershipId: z.number().int().positive(),
+          name: z.string().min(1).max(160),
+          email: z.string().email().max(320),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        updatePartnerUser(ctx.partner, input.membershipId, input)
+      ),
+    resetPassword: v2PartnerAdminProcedure
+      .input(
+        z.object({
+          membershipId: z.number().int().positive(),
+          password: z.string().min(8).max(256),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        resetPartnerUserPassword(
+          ctx.partner,
+          input.membershipId,
+          input.password
+        )
+      ),
     setGlobalActive: v2PartnerProcedure
       .input(
         z.object({ userId: z.number().int().positive(), isActive: z.boolean() })
@@ -496,6 +535,9 @@ export const v2FoundationRouter = v2Router({
       .mutation(({ ctx, input }) =>
         setCampaignFrozen(ctx.partner, input.id, input.isFrozen)
       ),
+    deleteDraft: v2PartnerAdminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => deleteDraftCampaign(ctx.partner, input.id)),
   }),
   leads: v2Router({
     configuration: v2PartnerProcedure.query(({ ctx }) =>

@@ -6,6 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   blankGovernanceRule,
   GovernanceRuleEditor,
   governanceFormToInput,
@@ -18,7 +26,7 @@ import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { v2trpc } from "@/lib/v2trpc";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Link, useRoute } from "wouter";
+import { Link, useLocation, useRoute } from "wouter";
 
 type CampaignForm = {
   code: string;
@@ -255,6 +263,7 @@ export default function V2Campaigns() {
 
 export function V2CampaignDetail() {
   const [, params] = useRoute("/v2/campaigns/:id");
+  const [, setLocation] = useLocation();
   const id = Number(params?.id);
   const detail = v2trpc.campaigns.get.useQuery(
     { id },
@@ -264,6 +273,7 @@ export function V2CampaignDetail() {
   const pdvs = v2trpc.pdvs.list.useQuery({ includeInactive: false });
   const utils = v2trpc.useUtils();
   const [editing, setEditing] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [form, setForm] = useState<CampaignForm>(blank);
   const [governanceMode, setGovernanceMode] = useState<"inherit" | "override">(
     "inherit"
@@ -287,6 +297,14 @@ export function V2CampaignDetail() {
       utils.campaigns.get.invalidate({ id });
       utils.campaigns.list.invalidate();
       toast.success("Campanha atualizada");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const deleteDraft = v2trpc.campaigns.deleteDraft.useMutation({
+    onSuccess: () => {
+      toast.success("Campanha em rascunho excluída");
+      utils.campaigns.list.invalidate();
+      setLocation("/v2/campaigns");
     },
     onError: error => toast.error(error.message),
   });
@@ -533,6 +551,16 @@ export function V2CampaignDetail() {
                     Editar
                   </Button>
                 )}
+                {canManage &&
+                  campaign.status === "draft" &&
+                  (detail.data?.metrics.total ?? 0) === 0 && (
+                    <Button
+                      variant="destructive"
+                      onClick={() => setDeleteOpen(true)}
+                    >
+                      Excluir campanha
+                    </Button>
+                  )}
                 {canManage && nextStatus && (
                   <Button
                     onClick={() =>
@@ -561,6 +589,29 @@ export function V2CampaignDetail() {
           )}
         </CardContent>
       </Card>
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir campanha?</DialogTitle>
+            <DialogDescription>
+              Esta campanha ainda está em rascunho e não possui Leads. A
+              exclusão é permanente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteDraft.isPending}
+              onClick={() => deleteDraft.mutate({ id })}
+            >
+              {deleteDraft.isPending ? "Excluindo…" : "Excluir campanha"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {canDistribute && (
         <CampaignLeadManagement
           campaign={{

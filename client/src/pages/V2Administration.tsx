@@ -6,6 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -64,10 +72,17 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   });
   const [editing, setEditing] = useState<{
     membershipId: number;
+    name: string;
+    email: string;
     role: Role;
     isActive: boolean;
     pdvIds: number[];
   } | null>(null);
+  const [resetTarget, setResetTarget] = useState<{
+    membershipId: number;
+    name: string;
+  } | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState("");
   const [whatsappTemplate, setWhatsappTemplate] = useState("");
   const whatsappTemplateInputRef = useRef<HTMLTextAreaElement>(null);
   const enabled = Boolean(partnerId);
@@ -165,6 +180,19 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       setEditing(null);
       refresh();
       toast.success("Acesso atualizado");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const updateUser = v2trpc.users.update.useMutation({
+    onError: error => toast.error(error.message),
+  });
+  const resetPassword = v2trpc.users.resetPassword.useMutation({
+    onSuccess: () => {
+      setResetTarget(null);
+      setTemporaryPassword("");
+      toast.success(
+        "Senha temporária definida. O usuário deverá alterá-la no próximo acesso."
+      );
     },
     onError: error => toast.error(error.message),
   });
@@ -557,7 +585,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Editar acesso do usuário</CardTitle>
+                <CardTitle>Editar usuário</CardTitle>
               </CardHeader>
               <CardContent>
                 {editing ? (
@@ -565,12 +593,60 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     className="space-y-3"
                     onSubmit={event => {
                       event.preventDefault();
-                      updateMembership.mutate(editing);
+                      if (!editing.name.trim()) {
+                        toast.error("Nome é obrigatório");
+                        return;
+                      }
+                      updateUser.mutate(
+                        {
+                          membershipId: editing.membershipId,
+                          name: editing.name,
+                          email: editing.email,
+                        },
+                        {
+                          onSuccess: () =>
+                            updateMembership.mutate({
+                              membershipId: editing.membershipId,
+                              role: editing.role,
+                              isActive: editing.isActive,
+                              pdvIds: editing.pdvIds,
+                            }),
+                        }
+                      );
                     }}
                   >
                     <p className="text-sm text-muted-foreground">
                       A alteração vale para os próximos acessos e não modifica o
                       histórico comercial já registrado.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>Nome</Label>
+                        <Input
+                          required
+                          value={editing.name}
+                          onChange={event =>
+                            setEditing({ ...editing, name: event.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>E-mail</Label>
+                        <Input
+                          required
+                          type="email"
+                          value={editing.email}
+                          onChange={event =>
+                            setEditing({
+                              ...editing,
+                              email: event.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                    <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Acesso ao parceiro
                     </p>
                     <Select
                       value={editing.role}
@@ -607,9 +683,11 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     <div className="flex gap-2">
                       <Button
                         type="submit"
-                        disabled={updateMembership.isPending}
+                        disabled={
+                          updateMembership.isPending || updateUser.isPending
+                        }
                       >
-                        Salvar escopo
+                        Salvar usuário
                       </Button>
                       <Button
                         type="button"
@@ -622,8 +700,8 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                   </form>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    Selecione “Editar acesso” em um usuário para mudar perfil,
-                    PDVs ou status apenas neste parceiro.
+                    Selecione “Editar usuário” para mudar os dados do cadastro e
+                    o acesso ao parceiro.
                   </p>
                 )}
               </CardContent>
@@ -677,6 +755,8 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                       onClick={() =>
                         setEditing({
                           membershipId: person.membershipId,
+                          name: person.name,
+                          email: person.email,
                           role: person.role,
                           isActive: person.membershipIsActive,
                           pdvIds: person.pdvs
@@ -685,7 +765,19 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                         })
                       }
                     >
-                      Editar acesso
+                      Editar usuário
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setResetTarget({
+                          membershipId: person.membershipId,
+                          name: person.name,
+                        })
+                      }
+                    >
+                      Redefinir senha
                     </Button>
                     {isSuperAdmin && (
                       <Button
@@ -708,6 +800,63 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
               ))}
             </CardContent>
           </Card>
+          <Dialog
+            open={Boolean(resetTarget)}
+            onOpenChange={open => {
+              if (!open) {
+                setResetTarget(null);
+                setTemporaryPassword("");
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Redefinir senha</DialogTitle>
+                <DialogDescription>
+                  Defina uma senha temporária para {resetTarget?.name}. A senha
+                  atual nunca é exibida e o usuário deverá criar uma nova senha
+                  no próximo acesso.
+                </DialogDescription>
+              </DialogHeader>
+              <form
+                className="space-y-4"
+                onSubmit={event => {
+                  event.preventDefault();
+                  if (resetTarget)
+                    resetPassword.mutate({
+                      membershipId: resetTarget.membershipId,
+                      password: temporaryPassword,
+                    });
+                }}
+              >
+                <div className="space-y-1.5">
+                  <Label htmlFor="temporary-password">Senha temporária</Label>
+                  <Input
+                    id="temporary-password"
+                    type="password"
+                    minLength={8}
+                    required
+                    value={temporaryPassword}
+                    onChange={event => setTemporaryPassword(event.target.value)}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setResetTarget(null)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={resetPassword.isPending}>
+                    {resetPassword.isPending
+                      ? "Redefinindo…"
+                      : "Redefinir senha"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </main>

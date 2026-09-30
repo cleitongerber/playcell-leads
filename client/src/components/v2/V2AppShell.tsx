@@ -25,6 +25,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { InstallAppButton } from "@/components/InstallAppButton";
 import { v2trpc } from "@/lib/v2trpc";
 import { cn } from "@/lib/utils";
@@ -37,6 +44,7 @@ import {
   ClipboardList,
   FileText,
   LayoutDashboard,
+  KeyRound,
   LogOut,
   Menu,
   MoreHorizontal,
@@ -72,6 +80,7 @@ type V2SessionUser = {
   email: string;
   systemRole: "none" | "super_admin";
   isActive: boolean;
+  mustChangePassword: boolean;
 };
 
 const V2SessionContext = createContext<V2SessionUser | null>(null);
@@ -266,11 +275,13 @@ function UserMenu({
   user,
   role,
   onLogout,
+  onChangePassword,
   compact = false,
 }: {
   user: V2SessionUser;
   role: V2NavigationRole | null;
   onLogout: () => void;
+  onChangePassword: () => void;
   compact?: boolean;
 }) {
   const initials = user.name
@@ -312,6 +323,10 @@ function UserMenu({
           <p className="truncate text-xs text-muted-foreground">{user.email}</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem className="cursor-pointer" onClick={onChangePassword}>
+          <KeyRound className="mr-2 size-4" />
+          Alterar minha senha
+        </DropdownMenuItem>
         <DropdownMenuItem
           className="cursor-pointer text-destructive focus:text-destructive"
           onClick={onLogout}
@@ -321,6 +336,104 @@ function UserMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function PasswordChangeForm({
+  forced,
+  onComplete,
+}: {
+  forced: boolean;
+  onComplete: () => void;
+}) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const utils = v2trpc.useUtils();
+  const change = v2trpc.auth.changePassword.useMutation({
+    onSuccess: async () => {
+      await utils.auth.me.invalidate();
+      toast.success("Senha atualizada com segurança");
+      onComplete();
+    },
+    onError: error => toast.error(error.message),
+  });
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={event => {
+        event.preventDefault();
+        if (password !== confirmation) {
+          toast.error("A confirmação da senha não confere");
+          return;
+        }
+        change.mutate({ ...(forced ? {} : { currentPassword }), password });
+      }}
+    >
+      {!forced && (
+        <div className="space-y-2">
+          <Label htmlFor="current-password">Senha atual</Label>
+          <Input
+            id="current-password"
+            type="password"
+            autoComplete="current-password"
+            minLength={8}
+            required
+            value={currentPassword}
+            onChange={event => setCurrentPassword(event.target.value)}
+          />
+        </div>
+      )}
+      <div className="space-y-2">
+        <Label htmlFor="new-password">Nova senha</Label>
+        <Input
+          id="new-password"
+          type="password"
+          autoComplete="new-password"
+          minLength={8}
+          required
+          value={password}
+          onChange={event => setPassword(event.target.value)}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="new-password-confirmation">Confirme a nova senha</Label>
+        <Input
+          id="new-password-confirmation"
+          type="password"
+          autoComplete="new-password"
+          minLength={8}
+          required
+          value={confirmation}
+          onChange={event => setConfirmation(event.target.value)}
+        />
+      </div>
+      <Button className="w-full" disabled={change.isPending}>
+        {change.isPending ? "Salvando…" : "Salvar nova senha"}
+      </Button>
+    </form>
+  );
+}
+
+function PasswordChangeGate({ user }: { user: V2SessionUser }) {
+  return (
+    <main className="v2-login-shell">
+      <section
+        className="v2-login-card"
+        aria-labelledby="password-change-title"
+      >
+        <FluxoBrand />
+        <div>
+          <h1 id="password-change-title" className="v2-login-title">
+            Crie sua nova senha
+          </h1>
+          <p className="v2-login-description">
+            Por segurança, altere a senha temporária antes de acessar o FLUXO.
+          </p>
+        </div>
+        <PasswordChangeForm forced onComplete={() => undefined} />
+      </section>
+    </main>
   );
 }
 
@@ -340,6 +453,7 @@ function ShellFrame({
     }
   });
   const [moreOpen, setMoreOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const initialSelection = useRef(false);
   const utils = v2trpc.useUtils();
   const partners = v2trpc.partners.available.useQuery();
@@ -445,6 +559,7 @@ function ShellFrame({
             role={role}
             compact
             onLogout={() => logout.mutate()}
+            onChangePassword={() => setPasswordOpen(true)}
           />
         </div>
       </aside>
@@ -470,6 +585,7 @@ function ShellFrame({
               user={user}
               role={role}
               onLogout={() => logout.mutate()}
+              onChangePassword={() => setPasswordOpen(true)}
             />
           </div>
         </header>
@@ -508,6 +624,21 @@ function ShellFrame({
           <span>Mais</span>
         </button>
       </nav>
+
+      <Dialog open={passwordOpen} onOpenChange={setPasswordOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar minha senha</DialogTitle>
+            <DialogDescription>
+              Confirme sua senha atual e defina uma nova senha.
+            </DialogDescription>
+          </DialogHeader>
+          <PasswordChangeForm
+            forced={false}
+            onComplete={() => setPasswordOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
         <SheetContent side="bottom" className="v2-mobile-more-sheet">
@@ -551,6 +682,8 @@ export function V2AppShell({ children }: { children: ReactNode }) {
   const me = v2trpc.auth.me.useQuery(undefined, { retry: false });
   if (me.isLoading) return <ShellLoading />;
   if (!me.data) return <V2Login />;
+  if (me.data.mustChangePassword)
+    return <PasswordChangeGate user={me.data as V2SessionUser} />;
   return (
     <V2SessionContext.Provider value={me.data as V2SessionUser}>
       <ShellFrame user={me.data as V2SessionUser}>{children}</ShellFrame>

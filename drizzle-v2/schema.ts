@@ -145,6 +145,8 @@ export const users = mysqlTable(
     email: varchar("email", { length: 320 }).notNull(),
     name: varchar("name", { length: 160 }).notNull(),
     passwordHash: varchar("passwordHash", { length: 255 }),
+    /** A temporary password is valid only to complete the password-change gate. */
+    mustChangePassword: boolean("mustChangePassword").notNull().default(false),
     loginMethod: varchar("loginMethod", { length: 64 })
       .notNull()
       .default("password"),

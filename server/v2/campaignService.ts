@@ -1,7 +1,10 @@
 import { and, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import {
   campaignPdvs,
+  campaignGovernanceOverrides,
+  campaignImportPolicies,
   campaigns,
+  leadImportBatches,
   leadStatuses,
   leads,
   pdvs,
@@ -363,6 +366,114 @@ export async function setCampaignFrozen(
       entityType: "campaign",
       entityId: campaignId,
     });
+  });
+}
+
+/** Permanently removes only a never-operated draft, preserving audit evidence first. */
+export async function deleteDraftCampaign(
+  context: PartnerContext,
+  campaignId: number
+) {
+  requirePdvAdministration(context);
+  const db = await getV2Db();
+  return db.transaction(async tx => {
+    const transactionDb = tx as unknown as V2Database;
+    const campaign = await getCampaignInPartner(
+      transactionDb,
+      context,
+      campaignId
+    );
+    if (campaign.status !== "draft")
+      throw new Error("Somente campanhas em rascunho podem ser excluídas");
+    // The conditional delete makes the eligibility check and deletion one atomic operation.
+    const leadCount =
+      (
+        await transactionDb
+          .select({ total: count() })
+          .from(leads)
+          .where(
+            and(
+              eq(leads.partnerId, context.partnerId),
+              eq(leads.campaignId, campaignId)
+            )
+          )
+      )[0]?.total ?? 0;
+    if (Number(leadCount) > 0)
+      throw new Error("Campanhas com Leads não podem ser excluídas");
+    const importCount =
+      (
+        await transactionDb
+          .select({ total: count() })
+          .from(leadImportBatches)
+          .where(
+            and(
+              eq(leadImportBatches.partnerId, context.partnerId),
+              eq(leadImportBatches.campaignId, campaignId)
+            )
+          )
+      )[0]?.total ?? 0;
+    if (Number(importCount) > 0)
+      throw new Error(
+        "Campanhas com histórico de importação não podem ser excluídas"
+      );
+
+    await writeV2Audit(transactionDb, {
+      partnerId: context.partnerId,
+      actorUserId: context.userId,
+      actorMembershipId: context.membershipId,
+      action: "campaign_deleted_draft",
+      entityType: "campaign",
+      entityId: campaignId,
+      metadata: {
+        code: campaign.code,
+        name: campaign.name,
+        status: campaign.status,
+      },
+    });
+    // Audit FK restricts campaign deletion only through campaign fields, not the audit entity.
+    // These configuration-only records are safe to remove only after the
+    // operational-history checks above have passed.
+    await tx
+      .delete(campaignGovernanceOverrides)
+      .where(
+        and(
+          eq(campaignGovernanceOverrides.partnerId, context.partnerId),
+          eq(campaignGovernanceOverrides.campaignId, campaignId)
+        )
+      );
+    await tx
+      .delete(campaignImportPolicies)
+      .where(
+        and(
+          eq(campaignImportPolicies.partnerId, context.partnerId),
+          eq(campaignImportPolicies.campaignId, campaignId)
+        )
+      );
+    await tx
+      .delete(campaignPdvs)
+      .where(
+        and(
+          eq(campaignPdvs.partnerId, context.partnerId),
+          eq(campaignPdvs.campaignId, campaignId)
+        )
+      );
+    const deleted = await tx
+      .delete(campaigns)
+      .where(
+        and(
+          eq(campaigns.id, campaignId),
+          eq(campaigns.partnerId, context.partnerId),
+          eq(campaigns.status, "draft"),
+          sql`not exists (select 1 from leads where leads.partnerId = ${context.partnerId} and leads.campaignId = ${campaignId})`
+        )
+      );
+    const affected = Number(
+      (deleted as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0
+    );
+    if (affected !== 1)
+      throw new Error(
+        "A campanha recebeu atividade enquanto era excluída. Tente novamente."
+      );
   });
 }
 

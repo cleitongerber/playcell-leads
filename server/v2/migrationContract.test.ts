@@ -15,6 +15,7 @@ import {
   followUps,
   partnerGovernanceRules,
   partnerSettings,
+  users,
 } from "../../drizzle-v2/schema";
 
 describe("V2 migration tenant-key contract", () => {
@@ -281,5 +282,21 @@ describe("V2 migration tenant-key contract", () => {
         column => column.name === "leadJourneyMode"
       )?.default
     ).toBe("separated_contact_v1");
+  });
+
+  it("adds the pilot password gate incrementally without altering existing hashes", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle-v2/0014_v2_pilot_user_readiness.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("ADD COLUMN `mustChangePassword`");
+    expect(migration).toContain("DEFAULT false");
+    expect(migration).not.toContain("passwordHash");
+    expect(migration).not.toContain("UPDATE `users`");
+    expect(
+      getTableConfig(users).columns.some(
+        column => column.name === "mustChangePassword"
+      )
+    ).toBe(true);
   });
 });
