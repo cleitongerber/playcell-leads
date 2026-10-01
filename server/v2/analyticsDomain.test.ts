@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   analyticsMetricDefinitions,
+  calculateEvidenceCoverage,
   calculateAnalyticsMetricSamples,
   durationLabel,
+  followUpOperationalSituation,
   percentageChange,
   resolveAnalyticsPeriod,
   safeRate,
@@ -55,6 +57,64 @@ describe("V2 analytics domain", () => {
     expect(percentageChange(3, 0)).toBeNull();
     expect(durationLabel(null)).toBe("—");
     expect(durationLabel(3_660)).toBe("1h 1min");
+  });
+
+  it("calculates evidence coverage per eligible treatment, keeping optional absence out of mandatory pending", () => {
+    expect(
+      calculateEvidenceCoverage([
+        { evidenceCount: 1, evidenceRequired: true },
+        { evidenceCount: 0, evidenceRequired: true },
+        { evidenceCount: 0, evidenceRequired: false },
+      ])
+    ).toEqual({
+      eligible: 3,
+      withEvidence: 1,
+      withoutEvidence: 2,
+      coverage: 1 / 3,
+      requiredPending: 1,
+    });
+    expect(calculateEvidenceCoverage([])).toEqual({
+      eligible: 0,
+      withEvidence: 0,
+      withoutEvidence: 0,
+      coverage: null,
+      requiredPending: 0,
+    });
+  });
+
+  it("keeps overdue derived and distinguishes today, future, completed and cancelled follow-ups", () => {
+    const now = new Date("2026-10-01T13:00:00.000Z");
+    const dayEnd = new Date("2026-10-02T03:00:00.000Z");
+    expect(
+      followUpOperationalSituation(
+        "pending",
+        new Date("2026-10-01T12:59:00.000Z"),
+        now,
+        dayEnd
+      )
+    ).toBe("Vencido");
+    expect(
+      followUpOperationalSituation(
+        "pending",
+        new Date("2026-10-01T18:00:00.000Z"),
+        now,
+        dayEnd
+      )
+    ).toBe("Hoje");
+    expect(
+      followUpOperationalSituation(
+        "pending",
+        new Date("2026-10-02T13:00:00.000Z"),
+        now,
+        dayEnd
+      )
+    ).toBe("A vencer");
+    expect(followUpOperationalSituation("completed", now, now, dayEnd)).toBe(
+      "Concluído"
+    );
+    expect(followUpOperationalSituation("cancelled", now, now, dayEnd)).toBe(
+      "Cancelado"
+    );
   });
 
   it("calculates attempts, effective contacts, conversions and overdue follow-ups from real facts", () => {

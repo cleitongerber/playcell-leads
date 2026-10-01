@@ -64,6 +64,10 @@ export const analyticsMetricDefinitions = {
     "Leads com contato efetivo no período divididos por Leads trabalhados no período.",
   conversionRate:
     "Leads convertidos no período divididos por Leads com contato efetivo no período.",
+  evidenceCoverage:
+    "Tratativas efetivas elegíveis no período com pelo menos uma evidência available no mesmo timelineEventId, divididas pelo total de tratativas efetivas elegíveis. Ausência opcional não é pendência de governança.",
+  requiredEvidencePending:
+    "Tratativas efetivas cujo snapshot de governança exige evidência e que ainda não possuem evidência available no mesmo timelineEventId.",
 } as const;
 
 function partsAt(date: Date, timeZone: string): Parts {
@@ -215,6 +219,41 @@ export function resolveAnalyticsPeriod(
 
 export function safeRate(numerator: number, denominator: number) {
   return denominator > 0 ? numerator / denominator : null;
+}
+
+export type EvidenceCoverageSample = {
+  evidenceCount: number;
+  evidenceRequired: boolean;
+};
+
+/** Shared mathematical contract for treatment-event evidence coverage. */
+export function calculateEvidenceCoverage(samples: EvidenceCoverageSample[]) {
+  const eligible = samples.length;
+  const withEvidence = samples.filter(
+    sample => sample.evidenceCount > 0
+  ).length;
+  return {
+    eligible,
+    withEvidence,
+    withoutEvidence: eligible - withEvidence,
+    coverage: safeRate(withEvidence, eligible),
+    requiredPending: samples.filter(
+      sample => sample.evidenceRequired && sample.evidenceCount === 0
+    ).length,
+  };
+}
+
+export function followUpOperationalSituation(
+  status: "pending" | "completed" | "cancelled",
+  dueAt: Date,
+  now: Date,
+  partnerDayEnd: Date
+) {
+  if (status === "completed") return "Concluído";
+  if (status === "cancelled") return "Cancelado";
+  if (dueAt < now) return "Vencido";
+  if (dueAt < partnerDayEnd) return "Hoje";
+  return "A vencer";
 }
 
 export function percentageChange(current: number, previous: number) {

@@ -119,6 +119,7 @@ import {
   getDashboardAnalytics,
   getProductivityAnalytics,
   listAnalyticsFilters,
+  listAnalyticsHealthDetails,
   listAnalyticsReport,
 } from "./analyticsService";
 import {
@@ -278,6 +279,30 @@ const analyticsReportInput = analyticsFiltersInput.extend({
     "follow_ups",
     "imports",
     "distributions",
+  ]),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(1).max(100).default(25),
+  evidenceFilter: z
+    .enum(["with_evidence", "without_evidence", "required_pending"])
+    .optional(),
+  followUpSituation: z
+    .enum(["overdue", "today", "upcoming", "pending", "completed", "cancelled"])
+    .optional(),
+  followUpDateField: z.enum(["dueAt", "createdAt"]).optional(),
+});
+
+const analyticsHealthDetailInput = analyticsFiltersInput.extend({
+  kind: z.enum([
+    "unassigned",
+    "assigned_without_work",
+    "follow_ups_overdue",
+    "governance_pending",
+    "awaiting_response",
+    "terminal_residual_follow_ups",
+    "evidence_eligible",
+    "evidence_with",
+    "evidence_without",
+    "evidence_required_pending",
   ]),
   page: z.number().int().min(1).default(1),
   pageSize: z.number().int().min(1).max(100).default(25),
@@ -1072,6 +1097,11 @@ export const v2FoundationRouter = v2Router({
       .input(analyticsFiltersInput.optional())
       .query(({ ctx, input }) =>
         getDashboardAnalytics(ctx.partner, input ?? {})
+      ),
+    healthDetails: v2PartnerProcedure
+      .input(analyticsHealthDetailInput)
+      .query(({ ctx, input }) =>
+        listAnalyticsHealthDetails(ctx.partner, input)
       ),
     productivity: v2PartnerProcedure
       .input(analyticsFiltersInput.optional())

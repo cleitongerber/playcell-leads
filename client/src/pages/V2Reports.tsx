@@ -47,12 +47,36 @@ function display(value: string | number | null | undefined) {
 export default function V2Reports() {
   const [filters, setFilters] = useAnalyticsUrlFilters();
   const [type, setType] = useState<ReportType>("leads");
+  const [evidenceFilter, setEvidenceFilter] = useState<
+    "all" | "with_evidence" | "without_evidence" | "required_pending"
+  >("all");
+  const [followUpSituation, setFollowUpSituation] = useState<
+    | "all"
+    | "overdue"
+    | "today"
+    | "upcoming"
+    | "pending"
+    | "completed"
+    | "cancelled"
+  >("all");
+  const [followUpDateField, setFollowUpDateField] = useState<
+    "dueAt" | "createdAt"
+  >("dueAt");
   const [page, setPage] = useState(1);
   const [expandedRows, setExpandedRows] = useState<number[]>([]);
   const access = v2trpc.access.context.useQuery();
   const canQuery =
     filters.preset !== "custom" || Boolean(filters.fromDate && filters.toDate);
-  const input = { ...filters, type, page, pageSize: 25 };
+  const input = {
+    ...filters,
+    type,
+    page,
+    pageSize: 25,
+    evidenceFilter: evidenceFilter === "all" ? undefined : evidenceFilter,
+    followUpSituation:
+      followUpSituation === "all" ? undefined : followUpSituation,
+    followUpDateField: type === "follow_ups" ? followUpDateField : undefined,
+  };
   const report = v2trpc.analytics.reports.list.useQuery(input, {
     enabled: canQuery,
   });
@@ -96,6 +120,8 @@ export default function V2Reports() {
                 setType(value as ReportType);
                 setPage(1);
                 setExpandedRows([]);
+                setEvidenceFilter("all");
+                setFollowUpSituation("all");
               }}
             >
               <SelectTrigger id="report-type">
@@ -116,10 +142,109 @@ export default function V2Reports() {
               </SelectContent>
             </Select>
           </div>
+          {(type === "leads" || type === "treatments") && (
+            <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
+              <label
+                className="text-sm font-medium"
+                htmlFor="report-evidence-filter"
+              >
+                Evidências
+              </label>
+              <Select
+                value={evidenceFilter}
+                onValueChange={value => {
+                  setEvidenceFilter(value as typeof evidenceFilter);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger id="report-evidence-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="with_evidence">Com evidência</SelectItem>
+                  <SelectItem value="without_evidence">
+                    Sem evidência
+                  </SelectItem>
+                  <SelectItem value="required_pending">
+                    Pendência obrigatória
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {type === "follow_ups" && (
+            <>
+              <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
+                <label
+                  className="text-sm font-medium"
+                  htmlFor="report-follow-up-situation"
+                >
+                  Situação operacional
+                </label>
+                <Select
+                  value={followUpSituation}
+                  onValueChange={value => {
+                    setFollowUpSituation(value as typeof followUpSituation);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger id="report-follow-up-situation">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    <SelectItem value="overdue">Vencidos</SelectItem>
+                    <SelectItem value="today">Hoje</SelectItem>
+                    <SelectItem value="upcoming">A vencer</SelectItem>
+                    <SelectItem value="pending">Pendentes</SelectItem>
+                    <SelectItem value="completed">Concluídos</SelectItem>
+                    <SelectItem value="cancelled">Cancelados</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
+                <label
+                  className="text-sm font-medium"
+                  htmlFor="report-follow-up-date"
+                >
+                  Período por
+                </label>
+                <Select
+                  value={followUpDateField}
+                  onValueChange={value => {
+                    setFollowUpDateField(value as typeof followUpDateField);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger id="report-follow-up-date">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dueAt">
+                      Data prevista de retorno
+                    </SelectItem>
+                    <SelectItem value="createdAt">Data de criação</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
           <Button
             className="sm:ml-auto"
             disabled={!canQuery || exportCsv.isPending || !report.data?.total}
-            onClick={() => exportCsv.mutate({ ...filters, type })}
+            onClick={() =>
+              exportCsv.mutate({
+                ...filters,
+                type,
+                evidenceFilter:
+                  evidenceFilter === "all" ? undefined : evidenceFilter,
+                followUpSituation:
+                  followUpSituation === "all" ? undefined : followUpSituation,
+                followUpDateField:
+                  type === "follow_ups" ? followUpDateField : undefined,
+              })
+            }
           >
             Exportar CSV
           </Button>

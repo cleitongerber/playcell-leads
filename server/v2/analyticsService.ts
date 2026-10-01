@@ -80,6 +80,33 @@ export type AnalyticsReportInput = AnalyticsFilters & {
   type: AnalyticsReportType;
   page: number;
   pageSize: number;
+  evidenceFilter?: "with_evidence" | "without_evidence" | "required_pending";
+  followUpSituation?:
+    | "overdue"
+    | "today"
+    | "upcoming"
+    | "pending"
+    | "completed"
+    | "cancelled";
+  followUpDateField?: "dueAt" | "createdAt";
+};
+
+export type AnalyticsHealthDetailKind =
+  | "unassigned"
+  | "assigned_without_work"
+  | "follow_ups_overdue"
+  | "governance_pending"
+  | "awaiting_response"
+  | "terminal_residual_follow_ups"
+  | "evidence_eligible"
+  | "evidence_with"
+  | "evidence_without"
+  | "evidence_required_pending";
+
+export type AnalyticsHealthDetailInput = AnalyticsFilters & {
+  kind: AnalyticsHealthDetailKind;
+  page: number;
+  pageSize: number;
 };
 
 export type AnalyticsReportRow = Record<string, string | number | null>;
@@ -146,6 +173,12 @@ function evidenceState(rule: unknown, hasEvidence: number | boolean) {
     available,
     governance: required && !available ? "Pendente" : "Completa",
   };
+}
+
+function documentaryStatus(rule: unknown, evidenceCount: number | boolean) {
+  const required = parseRule(rule).evidenceRequired === true;
+  if (!required) return "Não exigida";
+  return Number(evidenceCount) > 0 ? "Atendida" : "Pendente";
 }
 
 function scopeLeadConditions(
@@ -682,6 +715,67 @@ async function queryDashboardStocks(
   };
 }
 
+/**
+ * Coverage is deliberately calculated per effective-contact event, not per
+ * Lead. The correlated evidence lookup is backed by the existing
+ * partner/event/active-storage index and keeps optional evidence distinct from
+ * a documentary governance failure.
+ */
+async function queryEvidenceCoverage(
+  analytics: AnalyticsContext,
+  context: PartnerContext,
+  filters: AnalyticsFilters
+) {
+  const { db, scope, period } = analytics;
+  const governance = alias(
+    leadTreatmentGovernance,
+    "analytics_evidence_governance"
+  );
+  const evidenceExists = sql<number>`exists (select 1 from ${leadEvidences} where ${leadEvidences.partnerId} = ${leadContacts.partnerId} and ${leadEvidences.leadId} = ${leadContacts.leadId} and ${leadEvidences.timelineEventId} = ${leadContacts.timelineEventId} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available')`;
+  const requiredEvidence = sql<number>`coalesce(json_extract(${governance.appliedRuleJson}, '$.evidenceRequired'), false)`;
+  const conditions = withPeriod(
+    [
+      ...scopeLeadConditions(context, scope, filters),
+      eq(leadContacts.partnerId, context.partnerId),
+      eq(leadContacts.recordKind, "effective_contact"),
+    ],
+    leadContacts.occurredAt,
+    period
+  );
+  const rows = await db
+    .select({
+      eligible: count(),
+      withEvidence: sql<number>`coalesce(sum(case when ${evidenceExists} then 1 else 0 end), 0)`,
+      requiredPending: sql<number>`coalesce(sum(case when ${requiredEvidence} and not ${evidenceExists} then 1 else 0 end), 0)`,
+    })
+    .from(leadContacts)
+    .innerJoin(
+      leads,
+      and(
+        eq(leads.id, leadContacts.leadId),
+        eq(leads.partnerId, leadContacts.partnerId)
+      )
+    )
+    .leftJoin(
+      governance,
+      and(
+        eq(governance.partnerId, leadContacts.partnerId),
+        eq(governance.leadId, leadContacts.leadId),
+        eq(governance.timelineEventId, leadContacts.timelineEventId)
+      )
+    )
+    .where(and(...conditions));
+  const eligible = numberOf(rows[0]?.eligible);
+  const withEvidence = numberOf(rows[0]?.withEvidence);
+  return {
+    eligible,
+    withEvidence,
+    withoutEvidence: Math.max(0, eligible - withEvidence),
+    coverage: safeRate(withEvidence, eligible),
+    requiredPending: numberOf(rows[0]?.requiredPending),
+  };
+}
+
 async function queryFirstResponseTimes(
   analytics: AnalyticsContext,
   context: PartnerContext,
@@ -899,6 +993,7 @@ export async function getDashboardAnalytics(
     previousActivity,
     funnel,
     stocks,
+    evidenceCoverage,
     times,
     campaignsOverview,
     pdvsOverview,
@@ -930,6 +1025,7 @@ export async function getDashboardAnalytics(
     }),
     queryCohortFunnel(db, context, scope, filters, period),
     queryDashboardStocks(analytics, context, filters),
+    queryEvidenceCoverage(analytics, context, filters),
     queryFirstResponseTimes(analytics, context, filters),
     queryOverviewDimension(analytics, context, filters, "campaign"),
     queryOverviewDimension(analytics, context, filters, "pdv"),
@@ -1016,10 +1112,339 @@ export async function getDashboardAnalytics(
       governancePending: stocks.governancePending,
       awaitingResponse: stocks.awaitingResponse,
       terminalResidualFollowUps: stocks.terminalResidualFollowUps,
+      evidenceCoverage,
     },
     campaigns: campaignsOverview,
     pdvs: pdvsOverview,
   };
+}
+
+export type AnalyticsHealthDetailRow = {
+  id: number;
+  leadId: number;
+  lead: string;
+  campaign: string;
+  pdv: string;
+  responsible: string;
+  occurredAt: Date | null;
+  detail: string;
+  evidenceCount: number | null;
+  documentaryStatus: "Atendida" | "Pendente" | "Não exigida" | null;
+};
+
+/**
+ * Drill-down provider for dashboard health. Each branch reads the same fact
+ * table and predicate as its dashboard counter; rows are SQL-paginated and
+ * scoped before they leave the backend.
+ */
+export async function listAnalyticsHealthDetails(
+  context: PartnerContext,
+  input: AnalyticsHealthDetailInput
+) {
+  const analytics = await createAnalyticsContext(context, input);
+  const { db, scope, period, now } = analytics;
+  const pagination = reportPagination(input);
+  const responsibleMembership = alias(
+    userPartners,
+    "health_detail_responsible_membership"
+  );
+  const responsibleUser = alias(users, "health_detail_responsible_user");
+  const leadConditions = scopeLeadConditions(context, scope, input);
+  const fields = {
+    leadId: leads.id,
+    lead: leads.name,
+    campaign: campaigns.name,
+    pdv: pdvs.name,
+    responsible: responsibleUser.name,
+  };
+  const joinLeadContext = (query: any) =>
+    query
+      .innerJoin(
+        campaigns,
+        and(
+          eq(campaigns.id, leads.campaignId),
+          eq(campaigns.partnerId, leads.partnerId)
+        )
+      )
+      .innerJoin(
+        pdvs,
+        and(eq(pdvs.id, leads.pdvId), eq(pdvs.partnerId, leads.partnerId))
+      )
+      .leftJoin(
+        responsibleMembership,
+        and(
+          eq(responsibleMembership.id, leads.assignedMembershipId),
+          eq(responsibleMembership.partnerId, leads.partnerId)
+        )
+      )
+      .leftJoin(
+        responsibleUser,
+        eq(responsibleUser.id, responsibleMembership.userId)
+      );
+  const present = (rows: Array<any>, total: number) => ({
+    kind: input.kind,
+    rows: rows.map(row => ({
+      id: Number(row.id),
+      leadId: Number(row.leadId),
+      lead: row.lead ?? "Lead sem nome",
+      campaign: row.campaign,
+      pdv: row.pdv,
+      responsible: row.responsible ?? "Sem responsável",
+      occurredAt: row.occurredAt ?? null,
+      detail: row.detail ?? "",
+      evidenceCount:
+        row.evidenceCount == null ? null : numberOf(row.evidenceCount),
+      documentaryStatus: row.documentaryStatus ?? null,
+    })) as AnalyticsHealthDetailRow[],
+    total,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+  });
+
+  if (
+    input.kind === "evidence_eligible" ||
+    input.kind === "evidence_with" ||
+    input.kind === "evidence_without" ||
+    input.kind === "evidence_required_pending"
+  ) {
+    const governance = alias(
+      leadTreatmentGovernance,
+      "health_detail_governance"
+    );
+    const evidenceCount = sql<number>`(select count(*) from ${leadEvidences} where ${leadEvidences.partnerId} = ${leadContacts.partnerId} and ${leadEvidences.leadId} = ${leadContacts.leadId} and ${leadEvidences.timelineEventId} = ${leadContacts.timelineEventId} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available')`;
+    const required = sql<number>`coalesce(json_extract(${governance.appliedRuleJson}, '$.evidenceRequired'), false)`;
+    const conditions: SQL[] = withPeriod(
+      [
+        ...leadConditions,
+        eq(leadContacts.partnerId, context.partnerId),
+        eq(leadContacts.recordKind, "effective_contact"),
+      ],
+      leadContacts.occurredAt,
+      period
+    );
+    if (input.kind === "evidence_with")
+      conditions.push(sql`${evidenceCount} > 0`);
+    if (input.kind === "evidence_without")
+      conditions.push(sql`${evidenceCount} = 0`);
+    if (input.kind === "evidence_required_pending")
+      conditions.push(sql`${required} and ${evidenceCount} = 0`);
+    const base = db
+      .select({
+        id: leadContacts.id,
+        ...fields,
+        occurredAt: leadContacts.occurredAt,
+        detail: leadContacts.resultLabel,
+        evidenceCount,
+        documentaryStatus: sql<
+          "Atendida" | "Pendente" | "Não exigida"
+        >`case when not ${required} then 'Não exigida' when ${evidenceCount} > 0 then 'Atendida' else 'Pendente' end`,
+      })
+      .from(leadContacts)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadContacts.leadId),
+          eq(leads.partnerId, leadContacts.partnerId)
+        )
+      )
+      .leftJoin(
+        governance,
+        and(
+          eq(governance.partnerId, leadContacts.partnerId),
+          eq(governance.leadId, leadContacts.leadId),
+          eq(governance.timelineEventId, leadContacts.timelineEventId)
+        )
+      );
+    const [rows, totals] = await Promise.all([
+      joinLeadContext(base)
+        .where(and(...conditions))
+        .orderBy(desc(leadContacts.occurredAt), desc(leadContacts.id))
+        .limit(pagination.pageSize)
+        .offset(pagination.offset),
+      db
+        .select({ total: count() })
+        .from(leadContacts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContacts.leadId),
+            eq(leads.partnerId, leadContacts.partnerId)
+          )
+        )
+        .leftJoin(
+          governance,
+          and(
+            eq(governance.partnerId, leadContacts.partnerId),
+            eq(governance.leadId, leadContacts.leadId),
+            eq(governance.timelineEventId, leadContacts.timelineEventId)
+          )
+        )
+        .where(and(...conditions)),
+    ]);
+    return present(rows, numberOf(totals[0]?.total));
+  }
+
+  if (input.kind === "follow_ups_overdue") {
+    const conditions: SQL[] = [
+      ...leadConditions,
+      eq(followUps.partnerId, context.partnerId),
+      eq(followUps.status, "pending"),
+      lt(followUps.dueAt, now),
+    ];
+    const base = db
+      .select({
+        id: followUps.id,
+        ...fields,
+        occurredAt: followUps.dueAt,
+        detail: sql<string>`'Follow-up vencido'`,
+        evidenceCount: sql<number | null>`null`,
+        documentaryStatus: sql<null>`null`,
+      })
+      .from(followUps)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, followUps.leadId),
+          eq(leads.partnerId, followUps.partnerId)
+        )
+      );
+    const [rows, totals] = await Promise.all([
+      joinLeadContext(base)
+        .where(and(...conditions))
+        .orderBy(asc(followUps.dueAt), asc(followUps.id))
+        .limit(pagination.pageSize)
+        .offset(pagination.offset),
+      db
+        .select({ total: count() })
+        .from(followUps)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, followUps.leadId),
+            eq(leads.partnerId, followUps.partnerId)
+          )
+        )
+        .where(and(...conditions)),
+    ]);
+    return present(rows, numberOf(totals[0]?.total));
+  }
+
+  if (input.kind === "governance_pending") {
+    const conditions: SQL[] = [
+      ...leadConditions,
+      eq(leadTreatmentGovernance.partnerId, context.partnerId),
+      eq(leadTreatmentGovernance.isComplete, false),
+      inArray(leadTreatmentGovernance.operationKind, [
+        "attempt",
+        "effective_contact",
+      ]),
+    ];
+    const base = db
+      .select({
+        id: leadTreatmentGovernance.id,
+        ...fields,
+        occurredAt: leadTimelineEvents.occurredAt,
+        detail: sql<string>`'Requisito documental ou operacional pendente'`,
+        evidenceCount: sql<number | null>`null`,
+        documentaryStatus: sql<null>`null`,
+      })
+      .from(leadTreatmentGovernance)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadTreatmentGovernance.leadId),
+          eq(leads.partnerId, leadTreatmentGovernance.partnerId)
+        )
+      )
+      .innerJoin(
+        leadTimelineEvents,
+        and(
+          eq(leadTimelineEvents.id, leadTreatmentGovernance.timelineEventId),
+          eq(leadTimelineEvents.partnerId, leadTreatmentGovernance.partnerId),
+          eq(leadTimelineEvents.leadId, leadTreatmentGovernance.leadId)
+        )
+      );
+    const [rows, totals] = await Promise.all([
+      joinLeadContext(base)
+        .where(and(...conditions))
+        .orderBy(
+          desc(leadTimelineEvents.occurredAt),
+          desc(leadTreatmentGovernance.id)
+        )
+        .limit(pagination.pageSize)
+        .offset(pagination.offset),
+      db
+        .select({ total: count() })
+        .from(leadTreatmentGovernance)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadTreatmentGovernance.leadId),
+            eq(leads.partnerId, leadTreatmentGovernance.partnerId)
+          )
+        )
+        .where(and(...conditions)),
+    ]);
+    return present(rows, numberOf(totals[0]?.total));
+  }
+
+  const terminal = alias(leadStatuses, "health_detail_terminal_status");
+  const conditions: SQL[] = [...leadConditions];
+  let occurredAt: SQL<Date | null> | typeof leads.lastActivityAt =
+    leads.lastActivityAt;
+  let detail: SQL<string> = sql<string>`''`;
+  if (input.kind === "unassigned") {
+    conditions.push(
+      isNull(leads.assignedMembershipId),
+      eq(terminal.isTerminal, false)
+    );
+    detail = sql<string>`'Sem responsável atribuído'`;
+  } else if (input.kind === "assigned_without_work") {
+    conditions.push(
+      isNotNull(leads.assignedMembershipId),
+      isNull(leads.firstAttemptAt),
+      isNull(leads.firstEffectiveContactAt),
+      eq(terminal.isTerminal, false)
+    );
+    detail = sql<string>`'Ainda sem tentativa ou tratativa'`;
+  } else if (input.kind === "awaiting_response") {
+    conditions.push(
+      eq(terminal.isTerminal, false),
+      sql`exists (select 1 from ${leadContactAttempts} where ${leadContactAttempts.partnerId} = ${leads.partnerId} and ${leadContactAttempts.leadId} = ${leads.id} and ${leadContactAttempts.resultCategory} = 'awaiting_response')`
+    );
+    occurredAt = sql<Date | null>`(select max(${leadContactAttempts.occurredAt}) from ${leadContactAttempts} where ${leadContactAttempts.partnerId} = ${leads.partnerId} and ${leadContactAttempts.leadId} = ${leads.id} and ${leadContactAttempts.resultCategory} = 'awaiting_response')`;
+    detail = sql<string>`'Aguardando resposta'`;
+  } else if (input.kind === "terminal_residual_follow_ups") {
+    conditions.push(
+      eq(terminal.isTerminal, true),
+      sql`exists (select 1 from ${followUps} where ${followUps.partnerId} = ${leads.partnerId} and ${followUps.leadId} = ${leads.id} and ${followUps.status} = 'pending')`
+    );
+    detail = sql<string>`'Follow-up pendente anterior à conclusão'`;
+  }
+  const base = db
+    .select({
+      id: leads.id,
+      ...fields,
+      occurredAt,
+      detail,
+      evidenceCount: sql<number | null>`null`,
+      documentaryStatus: sql<null>`null`,
+    })
+    .from(leads)
+    .innerJoin(terminal, eq(terminal.id, leads.statusId));
+  const [rows, totals] = await Promise.all([
+    joinLeadContext(base)
+      .where(and(...conditions))
+      .orderBy(desc(leads.lastActivityAt), desc(leads.id))
+      .limit(pagination.pageSize)
+      .offset(pagination.offset),
+    db
+      .select({ total: count() })
+      .from(leads)
+      .innerJoin(terminal, eq(terminal.id, leads.statusId))
+      .where(and(...conditions)),
+  ]);
+  return present(rows, numberOf(totals[0]?.total));
 }
 
 async function listAnalyticsSellers(
@@ -1622,7 +2047,7 @@ export async function listAnalyticsFilters(context: PartnerContext) {
 }
 
 function reportPagination(
-  input: AnalyticsReportInput,
+  input: Pick<AnalyticsReportInput, "page" | "pageSize">,
   maximum = REPORT_PAGE_MAX
 ) {
   const page = Math.max(1, input.page);
@@ -1656,6 +2081,15 @@ function leadReportColumns(
     { key: "nextFollowUpAt", label: "Próximo follow-up" },
     { key: "attempts", label: "Tentativas" },
     { key: "effectiveContacts", label: "Tratativas" },
+    { key: "hasEvidence", label: "Possui alguma evidência" },
+    { key: "evidenceCount", label: "Evidências disponíveis" },
+    { key: "eligibleTreatments", label: "Tratativas elegíveis" },
+    { key: "treatmentsWithEvidence", label: "Tratativas com evidência" },
+    { key: "evidenceCoverage", label: "Cobertura de evidências" },
+    {
+      key: "requiredEvidencePending",
+      label: "Possui pendência obrigatória",
+    },
     { key: "hasConversion", label: "Possui conversão" },
     { key: "conversionAt", label: "Data da conversão" },
     ...customFields.map(field => ({
@@ -1673,11 +2107,23 @@ async function listLeadsReport(
 ) {
   const { db, scope, period } = analytics;
   const pagination = reportPagination(input, maximum);
-  const conditions = [
+  const evidenceCount = sql<number>`(select count(*) from ${leadEvidences} where ${leadEvidences.partnerId} = ${leads.partnerId} and ${leadEvidences.leadId} = ${leads.id} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available')`;
+  const eligibleTreatments = sql<number>`(select count(*) from ${leadContacts} where ${leadContacts.partnerId} = ${leads.partnerId} and ${leadContacts.leadId} = ${leads.id} and ${leadContacts.recordKind} = 'effective_contact')`;
+  const treatmentsWithEvidence = sql<number>`(select count(*) from ${leadContacts} where ${leadContacts.partnerId} = ${leads.partnerId} and ${leadContacts.leadId} = ${leads.id} and ${leadContacts.recordKind} = 'effective_contact' and exists (select 1 from ${leadEvidences} where ${leadEvidences.partnerId} = ${leadContacts.partnerId} and ${leadEvidences.leadId} = ${leadContacts.leadId} and ${leadEvidences.timelineEventId} = ${leadContacts.timelineEventId} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available'))`;
+  const requiredEvidencePending = sql<number>`(select count(*) from ${leadContacts} inner join ${leadTreatmentGovernance} on ${leadTreatmentGovernance.partnerId} = ${leadContacts.partnerId} and ${leadTreatmentGovernance.leadId} = ${leadContacts.leadId} and ${leadTreatmentGovernance.timelineEventId} = ${leadContacts.timelineEventId} where ${leadContacts.partnerId} = ${leads.partnerId} and ${leadContacts.leadId} = ${leads.id} and ${leadContacts.recordKind} = 'effective_contact' and coalesce(json_extract(${leadTreatmentGovernance.appliedRuleJson}, '$.evidenceRequired'), false) and not exists (select 1 from ${leadEvidences} where ${leadEvidences.partnerId} = ${leadContacts.partnerId} and ${leadEvidences.leadId} = ${leadContacts.leadId} and ${leadEvidences.timelineEventId} = ${leadContacts.timelineEventId} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available'))`;
+  const conditions: SQL[] = [
     ...scopeLeadConditions(context, scope, input),
     gte(leads.receivedAt, period.start),
     lt(leads.receivedAt, period.end),
   ];
+  if (input.evidenceFilter === "with_evidence")
+    conditions.push(sql`${evidenceCount} > 0`);
+  if (input.evidenceFilter === "without_evidence")
+    conditions.push(
+      sql`${eligibleTreatments} > 0 and ${treatmentsWithEvidence} = 0`
+    );
+  if (input.evidenceFilter === "required_pending")
+    conditions.push(sql`${requiredEvidencePending} > 0`);
   const responsibleMembership = alias(
     userPartners,
     "report_lead_responsible_membership"
@@ -1718,6 +2164,10 @@ async function listLeadsReport(
         customData: leads.customData,
         attempts: sql<number>`(select count(*) from ${leadContactAttempts} where ${leadContactAttempts.partnerId} = ${leads.partnerId} and ${leadContactAttempts.leadId} = ${leads.id})`,
         effectiveContacts: sql<number>`(select count(*) from ${leadContacts} where ${leadContacts.partnerId} = ${leads.partnerId} and ${leadContacts.leadId} = ${leads.id} and ${leadContacts.recordKind} = 'effective_contact')`,
+        evidenceCount,
+        eligibleTreatments,
+        treatmentsWithEvidence,
+        requiredEvidencePending,
         conversionAt: sql<Date | null>`(select min(${leadConversions.occurredAt}) from ${leadConversions} where ${leadConversions.partnerId} = ${leads.partnerId} and ${leadConversions.leadId} = ${leads.id})`,
       })
       .from(leads)
@@ -1781,6 +2231,14 @@ async function listLeadsReport(
         nextFollowUpAt: valueOfDate(record.nextFollowUpAt),
         attempts: numberOf(record.attempts),
         effectiveContacts: numberOf(record.effectiveContacts),
+        hasEvidence: numberOf(record.evidenceCount) ? "Sim" : "Não",
+        evidenceCount: numberOf(record.evidenceCount),
+        eligibleTreatments: numberOf(record.eligibleTreatments),
+        treatmentsWithEvidence: numberOf(record.treatmentsWithEvidence),
+        evidenceCoverage: `${Math.round((safeRate(numberOf(record.treatmentsWithEvidence), numberOf(record.eligibleTreatments)) ?? 0) * 1000) / 10}%`,
+        requiredEvidencePending: numberOf(record.requiredEvidencePending)
+          ? "Sim"
+          : "Não",
         hasConversion: record.conversionAt ? "Sim" : "Não",
         conversionAt: valueOfDate(record.conversionAt),
         ...Object.fromEntries(
@@ -1830,6 +2288,8 @@ function operationReportColumns(
         { key: "governance", label: "Governança" },
         { key: "evidenceRequired", label: "Evidência requerida" },
         { key: "evidenceAvailable", label: "Evidência disponível" },
+        { key: "evidenceCount", label: "Quantidade de evidências" },
+        { key: "documentaryStatus", label: "Situação documental" },
         { key: "conversion", label: "Conversão associada" },
       ];
 }
@@ -1966,6 +2426,15 @@ async function listTreatmentReport(
     gte(leadContacts.occurredAt, period.start),
     lt(leadContacts.occurredAt, period.end),
   ];
+  const treatmentHasEvidence = sql`exists (select 1 from ${leadEvidences} where ${leadEvidences.partnerId} = ${leadContacts.partnerId} and ${leadEvidences.leadId} = ${leadContacts.leadId} and ${leadEvidences.timelineEventId} = ${leadContacts.timelineEventId} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available')`;
+  if (input.evidenceFilter === "with_evidence")
+    conditions.push(treatmentHasEvidence);
+  if (input.evidenceFilter === "without_evidence")
+    conditions.push(sql`not ${treatmentHasEvidence}`);
+  if (input.evidenceFilter === "required_pending")
+    conditions.push(
+      sql`exists (select 1 from ${leadTreatmentGovernance} where ${leadTreatmentGovernance.partnerId} = ${leadContacts.partnerId} and ${leadTreatmentGovernance.leadId} = ${leadContacts.leadId} and ${leadTreatmentGovernance.timelineEventId} = ${leadContacts.timelineEventId} and coalesce(json_extract(${leadTreatmentGovernance.appliedRuleJson}, '$.evidenceRequired'), false) and not ${treatmentHasEvidence})`
+    );
   const actor = alias(userPartners, "report_treatment_actor");
   const actorUser = alias(users, "report_treatment_user");
   const governance = alias(
@@ -1992,6 +2461,7 @@ async function listTreatmentReport(
         >`(select ${leadStatuses.label} from ${leadStatuses} where ${leadStatuses.partnerId} = ${leadContacts.partnerId} and ${leadStatuses.id} = cast(json_unquote(json_extract(${leadTimelineEvents.payloadJson}, '$.finalStatusId')) as unsigned) limit 1)`,
         followUp: sql<number>`case when exists (select 1 from ${followUps} where ${followUps.partnerId} = ${leadContacts.partnerId} and ${followUps.leadId} = ${leadContacts.leadId} and ${followUps.originTimelineEventId} = ${leadContacts.timelineEventId}) then 1 else 0 end`,
         hasEvidence: sql<number>`case when exists (select 1 from ${evidence} where ${evidence.partnerId} = ${leadContacts.partnerId} and ${evidence.leadId} = ${leadContacts.leadId} and ${evidence.timelineEventId} = ${leadContacts.timelineEventId} and ${evidence.deletedAt} is null and ${evidence.storageStatus} = 'available') then 1 else 0 end`,
+        evidenceCount: sql<number>`(select count(*) from ${evidence} where ${evidence.partnerId} = ${leadContacts.partnerId} and ${evidence.leadId} = ${leadContacts.leadId} and ${evidence.timelineEventId} = ${leadContacts.timelineEventId} and ${evidence.deletedAt} is null and ${evidence.storageStatus} = 'available')`,
         conversionAt: leadConversions.occurredAt,
       })
       .from(leadContacts)
@@ -2079,6 +2549,8 @@ async function listTreatmentReport(
         governance: record.complete ? "Completa" : state.governance,
         evidenceRequired: state.required ? "Sim" : "Não",
         evidenceAvailable: state.available ? "Sim" : "Não",
+        evidenceCount: numberOf(record.evidenceCount),
+        documentaryStatus: documentaryStatus(record.rule, record.evidenceCount),
         conversion: record.conversionAt ? "Sim" : "Não",
       };
     }),
@@ -2220,12 +2692,36 @@ async function listFollowUpReport(
 ) {
   const { db, scope, period, now } = analytics;
   const pagination = reportPagination(input, maximum);
+  const dateField =
+    input.followUpDateField === "createdAt"
+      ? followUps.createdAt
+      : followUps.dueAt;
+  const day = partnerDayBounds(period.timeZone, now);
   const conditions = [
     ...scopeLeadConditions(context, scope, input),
     eq(followUps.partnerId, context.partnerId),
-    gte(followUps.dueAt, period.start),
-    lt(followUps.dueAt, period.end),
+    gte(dateField, period.start),
+    lt(dateField, period.end),
   ];
+  if (input.followUpSituation === "overdue")
+    conditions.push(eq(followUps.status, "pending"), lt(followUps.dueAt, now));
+  if (input.followUpSituation === "today")
+    conditions.push(
+      eq(followUps.status, "pending"),
+      gte(followUps.dueAt, day.start),
+      lt(followUps.dueAt, day.end)
+    );
+  if (input.followUpSituation === "upcoming")
+    conditions.push(
+      eq(followUps.status, "pending"),
+      gte(followUps.dueAt, day.end)
+    );
+  if (input.followUpSituation === "pending")
+    conditions.push(eq(followUps.status, "pending"));
+  if (input.followUpSituation === "completed")
+    conditions.push(eq(followUps.status, "completed"));
+  if (input.followUpSituation === "cancelled")
+    conditions.push(eq(followUps.status, "cancelled"));
   const owner = alias(userPartners, "report_follow_up_owner");
   const ownerUser = alias(users, "report_follow_up_owner_user");
   const origin = alias(leadTimelineEvents, "report_follow_up_origin");
@@ -2241,8 +2737,10 @@ async function listFollowUpReport(
         status: followUps.status,
         completedAt: followUps.completedAt,
         cancelledAt: followUps.cancelledAt,
+        note: followUps.note,
         rescheduledFromId: followUps.rescheduledFromId,
         originType: origin.type,
+        lastInteractionAt: sql<Date | null>`(select max(${leadTimelineEvents.occurredAt}) from ${leadTimelineEvents} where ${leadTimelineEvents.partnerId} = ${followUps.partnerId} and ${leadTimelineEvents.leadId} = ${followUps.leadId} and ${leadTimelineEvents.type} in ('contact_attempted', 'effective_contact_recorded'))`,
       })
       .from(followUps)
       .innerJoin(
@@ -2307,6 +2805,8 @@ async function listFollowUpReport(
     { key: "completedAt", label: "Concluído em" },
     { key: "cancelledAt", label: "Cancelado em" },
     { key: "origin", label: "Origem" },
+    { key: "note", label: "Motivo/observação" },
+    { key: "lastInteractionAt", label: "Última interação" },
   ];
   const originLabel = (type: string | null) =>
     type === "contact_attempted"
@@ -2328,7 +2828,9 @@ async function listFollowUpReport(
         record.status === "pending" && record.dueAt < now
           ? "Vencido"
           : record.status === "pending"
-            ? "Pendente"
+            ? record.dueAt < day.end
+              ? "Hoje"
+              : "A vencer"
             : record.status === "completed"
               ? "Concluído"
               : "Cancelado",
@@ -2337,6 +2839,8 @@ async function listFollowUpReport(
       origin: record.rescheduledFromId
         ? `${originLabel(record.originType)} · reagendado`
         : originLabel(record.originType),
+      note: record.note ?? "",
+      lastInteractionAt: valueOfDate(record.lastInteractionAt),
     })),
     total: numberOf(totals[0]?.total),
     ...pagination,

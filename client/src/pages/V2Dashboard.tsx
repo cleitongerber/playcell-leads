@@ -3,10 +3,18 @@ import {
   useAnalyticsUrlFilters,
 } from "@/components/v2/AnalyticsFilters";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
-import { buildV2Path } from "@/lib/operationalNavigation";
+import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
 import {
   BellRing,
@@ -22,6 +30,32 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "wouter";
+import { useState } from "react";
+
+type HealthDetailKind =
+  | "unassigned"
+  | "assigned_without_work"
+  | "follow_ups_overdue"
+  | "governance_pending"
+  | "awaiting_response"
+  | "terminal_residual_follow_ups"
+  | "evidence_eligible"
+  | "evidence_with"
+  | "evidence_without"
+  | "evidence_required_pending";
+
+const healthDetailLabels: Record<HealthDetailKind, string> = {
+  unassigned: "Leads sem responsável",
+  assigned_without_work: "Leads atribuídos sem trabalho",
+  follow_ups_overdue: "Follow-ups vencidos",
+  governance_pending: "Pendências documentais",
+  awaiting_response: "Aguardando resposta",
+  terminal_residual_follow_ups: "Follow-ups residuais em Leads terminais",
+  evidence_eligible: "Tratativas elegíveis para evidência",
+  evidence_with: "Tratativas com evidência",
+  evidence_without: "Tratativas sem evidência",
+  evidence_required_pending: "Pendências obrigatórias de evidência",
+};
 
 function number(value: number | undefined | null) {
   return new Intl.NumberFormat("pt-BR").format(value ?? 0);
@@ -103,21 +137,34 @@ function MetricCard({
 
 export default function V2Dashboard() {
   const [filters, setFilters] = useAnalyticsUrlFilters();
+  const [healthDetail, setHealthDetail] = useState<HealthDetailKind | null>(
+    null
+  );
+  const [healthPage, setHealthPage] = useState(1);
+  const openHealthDetail = (kind: HealthDetailKind) => {
+    setHealthPage(1);
+    setHealthDetail(kind);
+  };
   const canQuery =
     filters.preset !== "custom" || Boolean(filters.fromDate && filters.toDate);
   const dashboard = v2trpc.analytics.dashboard.useQuery(filters, {
     enabled: canQuery,
   });
-  const leadPath = (
-    view: "available" | "mine" | "all",
-    extra: Record<string, string | number | undefined> = {}
-  ) =>
-    buildV2Path("/v2/leads", {
-      view,
-      campaignId: filters.campaignId,
-      pdvId: filters.pdvId,
-      ...extra,
-    });
+  const healthDetails = v2trpc.analytics.healthDetails.useQuery(
+    {
+      ...filters,
+      kind: healthDetail ?? "unassigned",
+      page: healthPage,
+      pageSize: 25,
+    },
+    { enabled: healthDetail !== null }
+  );
+  const healthTotalPages = healthDetails.data
+    ? Math.max(
+        1,
+        Math.ceil(healthDetails.data.total / healthDetails.data.pageSize)
+      )
+    : 1;
   const followUpPath = (view: "overdue" | "today") =>
     buildV2Path("/v2/follow-ups", {
       view,
@@ -236,54 +283,83 @@ export default function V2Dashboard() {
                 <CardTitle>Saúde da operação</CardTitle>
               </CardHeader>
               <CardContent className="v2-health-list space-y-3">
-                <Link
-                  href={leadPath("available")}
-                  className="v2-health-item block rounded-md border p-3 hover:bg-muted/40"
-                >
-                  <p className="text-sm">Sem responsável</p>
-                  <strong>{number(dashboard.data.health.unassigned)}</strong>
-                </Link>
-                <Link
-                  href={leadPath("all", {
-                    assignment: "assigned",
-                    firstContact: "missing",
-                    assignedMembershipId: filters.sellerMembershipId,
-                  })}
-                  className="v2-health-item block rounded-md border p-3 hover:bg-muted/40"
-                >
-                  <p className="text-sm">Atribuídos sem trabalho</p>
-                  <strong>
-                    {number(dashboard.data.health.assignedWithoutWork)}
-                  </strong>
-                </Link>
-                <Link
-                  href={followUpPath("overdue")}
-                  className="v2-health-item block rounded-md border p-3 hover:bg-muted/40"
-                >
-                  <p className="text-sm">Follow-ups vencidos</p>
-                  <strong>
-                    {number(dashboard.data.health.followUpsOverdue)}
-                  </strong>
-                </Link>
-                <div className="v2-health-item rounded-md border p-3">
-                  <p className="text-sm">Pendências documentais</p>
-                  <strong>
-                    {number(dashboard.data.health.governancePending)}
-                  </strong>
-                </div>
-                <div className="v2-health-item rounded-md border p-3">
-                  <p className="text-sm">Aguardando resposta</p>
-                  <strong>
-                    {number(dashboard.data.health.awaitingResponse)}
-                  </strong>
-                </div>
-                <div className="v2-health-item rounded-md border p-3">
-                  <p className="text-sm">
-                    Follow-ups residuais em Leads terminais
-                  </p>
-                  <strong>
-                    {number(dashboard.data.health.terminalResidualFollowUps)}
-                  </strong>
+                <HealthItem
+                  label="Sem responsável"
+                  value={dashboard.data.health.unassigned}
+                  onClick={() => openHealthDetail("unassigned")}
+                />
+                <HealthItem
+                  label="Atribuídos sem trabalho"
+                  value={dashboard.data.health.assignedWithoutWork}
+                  onClick={() => openHealthDetail("assigned_without_work")}
+                />
+                <HealthItem
+                  label="Follow-ups vencidos"
+                  value={dashboard.data.health.followUpsOverdue}
+                  onClick={() => openHealthDetail("follow_ups_overdue")}
+                />
+                <HealthItem
+                  label="Pendências documentais"
+                  value={dashboard.data.health.governancePending}
+                  onClick={() => openHealthDetail("governance_pending")}
+                />
+                <HealthItem
+                  label="Aguardando resposta"
+                  value={dashboard.data.health.awaitingResponse}
+                  onClick={() => openHealthDetail("awaiting_response")}
+                />
+                <HealthItem
+                  label="Follow-ups residuais em Leads terminais"
+                  value={dashboard.data.health.terminalResidualFollowUps}
+                  onClick={() =>
+                    openHealthDetail("terminal_residual_follow_ups")
+                  }
+                />
+                <div className="rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Cobertura de evidências
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Tratativas efetivas elegíveis com ao menos uma evidência
+                        disponível.
+                      </p>
+                    </div>
+                    <strong className="text-lg">
+                      {percent(dashboard.data.health.evidenceCoverage.coverage)}
+                    </strong>
+                  </div>
+                  <div className="v2-mobile-detail-grid mt-3 text-xs text-muted-foreground sm:grid-cols-2">
+                    <HealthMetricButton
+                      label="Elegíveis"
+                      value={dashboard.data.health.evidenceCoverage.eligible}
+                      onClick={() => openHealthDetail("evidence_eligible")}
+                    />
+                    <HealthMetricButton
+                      label="Com evidência"
+                      value={
+                        dashboard.data.health.evidenceCoverage.withEvidence
+                      }
+                      onClick={() => openHealthDetail("evidence_with")}
+                    />
+                    <HealthMetricButton
+                      label="Sem evidência"
+                      value={
+                        dashboard.data.health.evidenceCoverage.withoutEvidence
+                      }
+                      onClick={() => openHealthDetail("evidence_without")}
+                    />
+                    <HealthMetricButton
+                      label="Obrigatórias pendentes"
+                      value={
+                        dashboard.data.health.evidenceCoverage.requiredPending
+                      }
+                      onClick={() =>
+                        openHealthDetail("evidence_required_pending")
+                      }
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -333,9 +409,165 @@ export default function V2Dashboard() {
             {new Date(dashboard.data.period.end).toLocaleString("pt-BR")} ·{" "}
             {dashboard.data.period.timeZone}
           </p>
+          <Drawer
+            open={healthDetail !== null}
+            onOpenChange={open => !open && setHealthDetail(null)}
+          >
+            <DrawerContent className="max-h-[90dvh]">
+              <DrawerHeader>
+                <DrawerTitle>
+                  {healthDetail
+                    ? healthDetailLabels[healthDetail]
+                    : "Detalhamento"}
+                </DrawerTitle>
+                <DrawerDescription>
+                  Registros que compõem o indicador, no mesmo escopo e filtros
+                  do Dashboard.
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="min-h-0 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                {healthDetails.isLoading ? (
+                  <p className="p-4 text-sm text-muted-foreground">
+                    Carregando detalhamento…
+                  </p>
+                ) : healthDetails.isError ? (
+                  <p className="p-4 text-sm text-destructive">
+                    Não foi possível carregar o detalhamento.
+                  </p>
+                ) : healthDetails.data?.rows.length ? (
+                  <div className="space-y-2">
+                    {healthDetails.data.rows.map(row => (
+                      <article
+                        key={row.id}
+                        className="rounded-md border p-3 text-sm"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="font-medium">{row.lead}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {row.campaign} · {row.pdv} · {row.responsible}
+                            </p>
+                          </div>
+                          <Link
+                            href={buildV2Path(`/v2/leads/${row.leadId}`, {
+                              from: currentV2Path(),
+                            })}
+                          >
+                            <Button size="sm" variant="outline">
+                              Abrir Lead
+                            </Button>
+                          </Link>
+                        </div>
+                        {row.detail && (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {row.detail}
+                          </p>
+                        )}
+                        {row.occurredAt && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {new Date(row.occurredAt).toLocaleString("pt-BR")}
+                          </p>
+                        )}
+                        {row.documentaryStatus && (
+                          <Badge
+                            className="mt-2"
+                            variant={
+                              row.documentaryStatus === "Pendente"
+                                ? "destructive"
+                                : "outline"
+                            }
+                          >
+                            {row.documentaryStatus}
+                            {row.evidenceCount != null
+                              ? ` · ${row.evidenceCount} evidência(s)`
+                              : ""}
+                          </Badge>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="p-4 text-sm text-muted-foreground">
+                    Nenhum registro neste indicador.
+                  </p>
+                )}
+                {healthDetails.data && healthTotalPages > 1 && (
+                  <div className="flex items-center justify-between gap-3 py-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={healthPage <= 1}
+                      onClick={() =>
+                        setHealthPage(page => Math.max(1, page - 1))
+                      }
+                    >
+                      Anterior
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Página {healthPage} de {healthTotalPages}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={healthPage >= healthTotalPages}
+                      onClick={() =>
+                        setHealthPage(page =>
+                          Math.min(healthTotalPages, page + 1)
+                        )
+                      }
+                    >
+                      Próxima
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </DrawerContent>
+          </Drawer>
         </>
       ) : null}
     </main>
+  );
+}
+
+function HealthItem({
+  label,
+  value,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="v2-health-item block w-full rounded-md border p-3 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <p className="text-sm">{label}</p>
+      <strong>{number(value)}</strong>
+    </button>
+  );
+}
+
+function HealthMetricButton({
+  label,
+  value,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left hover:underline"
+    >
+      <span>{label}</span>
+      <strong className="block text-foreground">{number(value)}</strong>
+    </button>
   );
 }
 
@@ -378,7 +610,9 @@ function Overview({
                     <strong>
                       {campaign ? (
                         <Link
-                          href={`/v2/campaigns/${row.id}`}
+                          href={buildV2Path(`/v2/campaigns/${row.id}`, {
+                            from: currentV2Path(),
+                          })}
                           className="hover:underline"
                         >
                           {row.name}
@@ -445,7 +679,11 @@ function Overview({
                     <tr key={row.id} className="border-b last:border-0">
                       <td className="p-2 font-medium">
                         {campaign ? (
-                          <Link href={`/v2/campaigns/${row.id}`}>
+                          <Link
+                            href={buildV2Path(`/v2/campaigns/${row.id}`, {
+                              from: currentV2Path(),
+                            })}
+                          >
                             <span className="hover:underline">{row.name}</span>
                           </Link>
                         ) : (

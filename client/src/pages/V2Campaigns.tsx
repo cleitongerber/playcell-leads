@@ -23,6 +23,7 @@ import {
 import { CampaignLeadManagement } from "@/components/v2/CampaignLeadManagement";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
+import { safeV2ReturnPath } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -265,6 +266,12 @@ export function V2CampaignDetail() {
   const [, params] = useRoute("/v2/campaigns/:id");
   const [, setLocation] = useLocation();
   const id = Number(params?.id);
+  const returnTo = safeV2ReturnPath(
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("from"),
+    "/v2/campaigns"
+  );
   const detail = v2trpc.campaigns.get.useQuery(
     { id },
     { enabled: Number.isInteger(id) && id > 0 }
@@ -388,8 +395,8 @@ export function V2CampaignDetail() {
             {campaign.isFrozen && (
               <Badge variant="destructive">Congelada</Badge>
             )}
-            <Link href="/v2/campaigns">
-              <Button variant="outline">← Campanhas</Button>
+            <Link href={returnTo}>
+              <Button variant="outline">← Voltar</Button>
             </Link>
           </>
         }
