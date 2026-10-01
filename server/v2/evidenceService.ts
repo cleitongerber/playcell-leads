@@ -29,6 +29,7 @@ import {
 } from "./governancePolicy";
 import { resolveEffectiveGovernance } from "./governanceService";
 import { writeV2Audit } from "./partnerService";
+import { resolvePdvScope } from "./pdvScope";
 
 export type PreparedPrivateEvidence = {
   storageProvider: EvidenceStorageProvider;
@@ -75,20 +76,7 @@ export async function preparePrivateEvidence(
 }
 
 async function scopedPdvIds(db: V2Database, context: PartnerContext) {
-  if (context.role === "super_admin" || context.role === "partner_admin")
-    return null;
-  return (
-    await db
-      .select({ pdvId: userPdvAssignments.pdvId })
-      .from(userPdvAssignments)
-      .where(
-        and(
-          eq(userPdvAssignments.partnerId, context.partnerId),
-          eq(userPdvAssignments.membershipId, context.membershipId!),
-          eq(userPdvAssignments.isActive, true)
-        )
-      )
-  ).map(row => row.pdvId);
+  return resolvePdvScope(db, context);
 }
 
 async function loadAccessibleLead(

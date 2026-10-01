@@ -89,6 +89,27 @@ export const v2PartnerProcedure = v2ProtectedProcedure.use(
 
 export const v2SellerProcedure = v2PartnerProcedure;
 
+/**
+ * Used by every mutation that may change tenant data. Read-only management
+ * memberships still use v2PartnerProcedure for queries and exports.
+ */
+export const v2OperationalProcedure = v2PartnerProcedure.use(
+  async ({ ctx, next }) => {
+    try {
+      requirePartnerRole(ctx.partner, [
+        "super_admin",
+        "partner_admin",
+        "manager",
+        "seller",
+      ]);
+      return next({ ctx });
+    } catch (error) {
+      if (error instanceof PartnerAccessError) throw toTrpcError(error);
+      throw error;
+    }
+  }
+);
+
 /** Super Admin may list global resources before selecting an active partner. */
 export const v2PartnerOrSuperProcedure = v2ProtectedProcedure.use(
   async ({ ctx, next }) => {

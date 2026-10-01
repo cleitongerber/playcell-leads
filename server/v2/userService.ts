@@ -406,6 +406,7 @@ export async function updatePartnerMembership(
       context.partnerId,
       membershipId
     );
+    requirePartnerAdministrator(context, context.partnerId, membership.role);
     const user = (
       await transactionDb
         .select()
@@ -517,7 +518,12 @@ export async function listPartnerUsers(context: PartnerContext) {
       eq(userPdvAssignments.membershipId, userPartners.id)
     )
     .leftJoin(pdvs, eq(pdvs.id, userPdvAssignments.pdvId))
-    .where(eq(userPartners.partnerId, context.partnerId))
+    .where(
+      and(
+        eq(userPartners.partnerId, context.partnerId),
+        ...(context.role === "super_admin" ? [] : [ne(userPartners.role, "management")])
+      )
+    )
     .orderBy(asc(users.name));
 
   const grouped = new Map<

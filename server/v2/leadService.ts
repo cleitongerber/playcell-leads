@@ -36,6 +36,7 @@ import {
   seedPartnerLeadConfiguration,
 } from "./leadConfiguration";
 import { requirePdvAdministration } from "./operationalScope";
+import { resolvePdvScope } from "./pdvScope";
 import {
   campaignAllowsLeadOperations,
   sellerCanModifyLead,
@@ -51,19 +52,7 @@ function normalizePhone(phone: string | null | undefined) {
 }
 
 async function scopedPdvIds(db: V2Database, context: PartnerContext) {
-  if (context.role === "super_admin" || context.role === "partner_admin")
-    return null;
-  const assignments = await db
-    .select({ pdvId: userPdvAssignments.pdvId })
-    .from(userPdvAssignments)
-    .where(
-      and(
-        eq(userPdvAssignments.partnerId, context.partnerId),
-        eq(userPdvAssignments.membershipId, context.membershipId!),
-        eq(userPdvAssignments.isActive, true)
-      )
-    );
-  return assignments.map(row => row.pdvId);
+  return resolvePdvScope(db, context);
 }
 
 async function getLeadInPartner(

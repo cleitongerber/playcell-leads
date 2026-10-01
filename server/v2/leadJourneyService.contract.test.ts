@@ -135,8 +135,8 @@ describe("016.4 unified journey service contract", () => {
       "operationKind: leadTreatmentGovernance.operationKind"
     );
     expect(evidence).toContain("normalizeAttemptGovernanceRule");
-    expect(router).toContain("registerAttempt: v2PartnerProcedure");
-    expect(router).toContain("recordEffectiveContact: v2PartnerProcedure");
+    expect(router).toContain("registerAttempt: v2OperationalProcedure");
+    expect(router).toContain("recordEffectiveContact: v2OperationalProcedure");
     expect(router).not.toContain("changeStatus: v2PartnerProcedure");
     expect(router).not.toContain("contact: v2PartnerProcedure");
   });

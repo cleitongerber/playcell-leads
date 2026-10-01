@@ -69,6 +69,7 @@ import {
   preparePrivateEvidence,
   type PreparedPrivateEvidence,
 } from "./evidenceService";
+import { resolvePdvScope } from "./pdvScope";
 
 type LeadRow = typeof leads.$inferSelect;
 type LeadStatusRow = typeof leadStatuses.$inferSelect;
@@ -178,21 +179,7 @@ function normalizedReason(value: string | null | undefined) {
 }
 
 async function scopedPdvIds(db: V2Database, context: PartnerContext) {
-  if (context.role === "super_admin" || context.role === "partner_admin") {
-    return null;
-  }
-  if (!context.membershipId) return [];
-  const assignments = await db
-    .select({ pdvId: userPdvAssignments.pdvId })
-    .from(userPdvAssignments)
-    .where(
-      and(
-        eq(userPdvAssignments.partnerId, context.partnerId),
-        eq(userPdvAssignments.membershipId, context.membershipId),
-        eq(userPdvAssignments.isActive, true)
-      )
-    );
-  return assignments.map(row => row.pdvId);
+  return resolvePdvScope(db, context);
 }
 
 async function loadLead(

@@ -15,6 +15,7 @@ import {
   followUps,
   partnerGovernanceRules,
   partnerSettings,
+  userPartners,
   users,
 } from "../../drizzle-v2/schema";
 
@@ -298,5 +299,21 @@ describe("V2 migration tenant-key contract", () => {
         column => column.name === "mustChangePassword"
       )
     ).toBe(true);
+  });
+
+  it("adds Management with a semantic dynamic ALL versus explicit SPECIFIC PDV scope", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle-v2/0015_v2_management_viewer_scopes.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("'management'");
+    expect(migration).toContain("`pdvScopeMode` enum('all','specific')");
+    expect(migration).not.toContain("UPDATE `user_pdv_assignments`");
+    expect(migration).not.toContain("DELETE FROM");
+    expect(
+      getTableConfig(userPartners).columns.find(
+        column => column.name === "pdvScopeMode"
+      )?.enumValues
+    ).toEqual(["all", "specific"]);
   });
 });

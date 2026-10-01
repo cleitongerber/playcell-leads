@@ -8,6 +8,7 @@ export type PartnerContext = {
   partnerId: number;
   membershipId: number | null;
   role: PartnerRole;
+  pdvScopeMode: "all" | "specific";
   userId: number;
 };
 
@@ -29,7 +30,7 @@ export class PartnerAccessError extends Error {
 
 export type PartnerAccessRepository = {
   getPartner(partnerId: number): Promise<Pick<V2Partner, "id" | "isActive"> | undefined>;
-  getMembership(userId: number, partnerId: number): Promise<Pick<V2UserPartner, "id" | "role" | "isActive"> | undefined>;
+  getMembership(userId: number, partnerId: number): Promise<Pick<V2UserPartner, "id" | "role" | "isActive" | "pdvScopeMode"> | undefined>;
 };
 
 export function createPartnerAccessRepository(db: V2Database): PartnerAccessRepository {
@@ -46,7 +47,7 @@ export function createPartnerAccessRepository(db: V2Database): PartnerAccessRepo
     async getMembership(userId, partnerId) {
       return (
         await db
-          .select({ id: userPartners.id, role: userPartners.role, isActive: userPartners.isActive })
+          .select({ id: userPartners.id, role: userPartners.role, isActive: userPartners.isActive, pdvScopeMode: userPartners.pdvScopeMode })
           .from(userPartners)
           .where(and(eq(userPartners.userId, userId), eq(userPartners.partnerId, partnerId)))
           .limit(1)
@@ -69,7 +70,7 @@ export async function resolvePartnerContext(
   if (!partner.isActive) throw new PartnerAccessError("PARTNER_INACTIVE");
 
   if (user.systemRole === "super_admin") {
-    return { partnerId: partner.id, membershipId: null, role: "super_admin", userId: user.id };
+    return { partnerId: partner.id, membershipId: null, role: "super_admin", userId: user.id, pdvScopeMode: "all" };
   }
 
   const membership = await repository.getMembership(user.id, partner.id);
@@ -80,6 +81,7 @@ export async function resolvePartnerContext(
     partnerId: partner.id,
     membershipId: membership.id,
     role: membership.role,
+    pdvScopeMode: membership.pdvScopeMode,
     userId: user.id,
   };
 }

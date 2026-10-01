@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { PartnerAccessError, type PartnerContext } from "./access";
-import { canAccessOperationalPdv, requireMembershipPdvTenant, requirePdvAdministration } from "./operationalScope";
+import { canAccessOperationalPdv, requireMembershipPdvTenant, requireOperationalWrite, requirePdvAdministration } from "./operationalScope";
 
 const adminA: PartnerContext = { userId: 1, partnerId: 10, membershipId: 101, role: "partner_admin" };
 const managerA: PartnerContext = { userId: 2, partnerId: 10, membershipId: 102, role: "manager" };
 const sellerA: PartnerContext = { userId: 3, partnerId: 10, membershipId: 103, role: "seller" };
+const managementAll: PartnerContext = { userId: 4, partnerId: 10, membershipId: 104, role: "management", pdvScopeMode: "all" };
 
 describe("V2 operational PDV scope", () => {
   it("allows the same PDV code in different partners at the tenancy boundary", () => {
@@ -35,5 +36,10 @@ describe("V2 operational PDV scope", () => {
     expect(() => requirePdvAdministration(adminA)).not.toThrow();
     expect(() => requirePdvAdministration(managerA)).toThrow(PartnerAccessError);
     expect(() => requirePdvAdministration(sellerA)).toThrow(PartnerAccessError);
+  });
+
+  it("treats ALL as a dynamic read scope but never as an operational-write grant", () => {
+    expect(canAccessOperationalPdv(managementAll, { pdvPartnerId: 10, pdvIsActive: true, assignment: null })).toBe(true);
+    expect(() => requireOperationalWrite(managementAll)).toThrow(PartnerAccessError);
   });
 });

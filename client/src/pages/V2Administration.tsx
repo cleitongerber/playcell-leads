@@ -30,6 +30,7 @@ import {
 } from "@shared/whatsappContact";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ManagementUsersPanel } from "@/components/v2/ManagementUsersPanel";
 
 type Role = "partner_admin" | "manager" | "seller";
 const roleLabel: Record<Role, string> = {
@@ -285,6 +286,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           </CardContent>
         </Card>
       )}
+      {isSuperAdmin && <ManagementUsersPanel />}
       <Card>
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
           <div className="flex-1">
@@ -720,7 +722,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                   <div>
                     <p className="font-medium">{person.name}</p>
                     <p className="text-sm text-muted-foreground">
-                      {person.email} · {roleLabel[person.role]}
+                      {person.email} · {roleLabel[person.role as Role]}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       PDVs:{" "}
@@ -757,7 +759,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                           membershipId: person.membershipId,
                           name: person.name,
                           email: person.email,
-                          role: person.role,
+                          role: person.role as Role,
                           isActive: person.membershipIsActive,
                           pdvIds: person.pdvs
                             .filter(pdv => pdv.isActive)

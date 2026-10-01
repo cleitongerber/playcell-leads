@@ -28,24 +28,12 @@ import {
   campaignAllowsNewFollowUp,
   derivedFollowUpStatus,
 } from "./followUpPolicy";
+import { resolvePdvScope } from "./pdvScope";
 
 type FollowView = "overdue" | "today" | "upcoming" | "completed";
 
 async function scopedPdvs(db: V2Database, context: PartnerContext) {
-  if (context.role === "super_admin" || context.role === "partner_admin")
-    return null;
-  return (
-    await db
-      .select({ pdvId: userPdvAssignments.pdvId })
-      .from(userPdvAssignments)
-      .where(
-        and(
-          eq(userPdvAssignments.partnerId, context.partnerId),
-          eq(userPdvAssignments.membershipId, context.membershipId!),
-          eq(userPdvAssignments.isActive, true)
-        )
-      )
-  ).map(row => row.pdvId);
+  return resolvePdvScope(db, context);
 }
 
 /**

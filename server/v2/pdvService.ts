@@ -3,6 +3,7 @@ import { pdvs, userPdvAssignments } from "../../drizzle-v2/schema";
 import { assertPartnerOwnership, type PartnerContext } from "./access";
 import { getV2Db, type V2Database } from "./database";
 import { canAccessOperationalPdv, requirePdvAdministration } from "./operationalScope";
+import { resolvePdvScope } from "./pdvScope";
 import { writeV2Audit } from "./partnerService";
 
 function normalizePdvCode(code: string) {
@@ -64,7 +65,7 @@ async function getPartnerPdv(db: V2Database, context: PartnerContext, pdvId: num
 export async function getAccessiblePdv(context: PartnerContext, pdvId: number) {
   const db = await getV2Db();
   const pdv = await getPartnerPdv(db, context, pdvId);
-  if (context.role === "super_admin" || context.role === "partner_admin") return pdv;
+  if (context.role === "super_admin" || context.role === "partner_admin" || context.pdvScopeMode === "all") return pdv;
 
   const assignment = (
     await db
@@ -90,12 +91,14 @@ export async function getAccessiblePdv(context: PartnerContext, pdvId: number) {
 
 export async function listAccessiblePdvs(context: PartnerContext, includeInactive = false) {
   const db = await getV2Db();
-  if (context.role === "super_admin" || context.role === "partner_admin") {
+  if (context.role === "super_admin" || context.role === "partner_admin" || context.pdvScopeMode === "all") {
     const filters = [eq(pdvs.partnerId, context.partnerId)];
     if (!includeInactive) filters.push(eq(pdvs.isActive, true));
     return db.select().from(pdvs).where(and(...filters)).orderBy(asc(pdvs.name));
   }
 
+  const scope = await resolvePdvScope(db, context);
+  if (!scope?.length) return [];
   return db
     .select({
       id: pdvs.id,

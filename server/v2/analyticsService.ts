@@ -53,6 +53,7 @@ import {
   pdvIsInsideAnalyticsScope,
   sellerIsInsideAnalyticsScope,
 } from "./analyticsScopePolicy";
+import { resolvePdvScope } from "./pdvScope";
 
 const REPORT_PAGE_MAX = 100;
 const EXPORT_ROW_MAX = 25_000;
@@ -210,22 +211,9 @@ async function resolveAnalyticsScope(
   db: V2Database,
   context: PartnerContext
 ): Promise<AnalyticsScope> {
-  if (context.role === "super_admin" || context.role === "partner_admin") {
-    return { pdvIds: null, ownMembershipId: null };
-  }
-  if (!context.membershipId) throw new Error("Membership ativa é necessária");
-  const rows = await db
-    .select({ pdvId: userPdvAssignments.pdvId })
-    .from(userPdvAssignments)
-    .where(
-      and(
-        eq(userPdvAssignments.partnerId, context.partnerId),
-        eq(userPdvAssignments.membershipId, context.membershipId),
-        eq(userPdvAssignments.isActive, true)
-      )
-    );
+  const pdvIds = await resolvePdvScope(db, context);
   return {
-    pdvIds: rows.map(row => row.pdvId),
+    pdvIds,
     ownMembershipId: context.role === "seller" ? context.membershipId : null,
   };
 }

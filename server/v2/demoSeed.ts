@@ -408,6 +408,7 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     membershipId: null,
     role: "super_admin",
     userId: superAdmin.id,
+    pdvScopeMode: "all",
   };
   // Ensures a repeatable demo always has the structured catalog required by
   // the unified operational commands, including an older pre-016 partner.
@@ -475,12 +476,14 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     membershipId: sellerOne.membershipId,
     role: "seller",
     userId: sellerOne.userId,
+    pdvScopeMode: "specific",
   };
   const sellerTwoContext: PartnerContext = {
     partnerId,
     membershipId: sellerTwo.membershipId,
     role: "seller",
     userId: sellerTwo.userId,
+    pdvScopeMode: "specific",
   };
 
   const activeCampaignId = await ensureCampaign(db, superAdminContext, {

@@ -4,6 +4,14 @@ export function requirePdvAdministration(context: PartnerContext) {
   return requirePartnerRole(context, ["super_admin", "partner_admin"]);
 }
 
+/** Management is a query-only membership; all operational writes reject it. */
+export function requireOperationalWrite(context: PartnerContext) {
+  if (context.role === "management") {
+    throw new PartnerAccessError("ROLE_FORBIDDEN");
+  }
+  return context;
+}
+
 /** Validates the tenant invariant before an assignment is written. */
 export function requireMembershipPdvTenant(
   context: PartnerContext,
@@ -21,6 +29,6 @@ export function canAccessOperationalPdv(
 ) {
   assertPartnerOwnership(input.pdvPartnerId, context);
   if (!input.pdvIsActive) return false;
-  if (context.role === "super_admin" || context.role === "partner_admin") return true;
+  if (context.role === "super_admin" || context.role === "partner_admin" || context.pdvScopeMode === "all") return true;
   return input.assignment?.membershipId === context.membershipId && input.assignment.isActive === true;
 }

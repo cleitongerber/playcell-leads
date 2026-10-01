@@ -597,15 +597,16 @@ export function V2SeparatedLeadJourney() {
   const lead = detail.data?.lead;
   const action = nextAction.data as BackendNextLeadAction | undefined;
   const actionPresentation = action ? presentNextLeadAction(action) : null;
+  const isReadOnly = access.data?.role === "management";
   const isSeller = access.data?.role === "seller";
   const isOwner = lead?.assignedMembershipId === access.data?.membershipId;
   const hasOperationalMembership = Boolean(access.data?.membershipId);
   const canOperateOwnLead = Boolean(
-    hasOperationalMembership && (!isSeller || isOwner)
+    hasOperationalMembership && !isReadOnly && (!isSeller || isOwner)
   );
   const canManageFollowUps = canOperateOwnLead;
   const canAdministerStatus = Boolean(
-    access.data && access.data.role !== "seller"
+    access.data && access.data.role !== "seller" && !isReadOnly
   );
   const canManageEvidence =
     access.data?.role === "super_admin" ||

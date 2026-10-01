@@ -2,6 +2,7 @@ export type V2NavigationRole =
   | "super_admin"
   | "partner_admin"
   | "manager"
+  | "management"
   | "seller";
 
 export type V2NavigationItem = {
@@ -27,40 +28,40 @@ export const v2NavigationItems: readonly V2NavigationItem[] = [
     label: "Dashboard",
     path: "/v2/dashboard",
     mobilePrimary: true,
-    roles: ["super_admin", "partner_admin", "manager", "seller"],
+    roles: ["super_admin", "partner_admin", "manager", "management", "seller"],
   },
   {
     key: "leads",
     label: "Leads",
     path: "/v2/leads",
     mobilePrimary: true,
-    roles: ["super_admin", "partner_admin", "manager", "seller"],
+    roles: ["super_admin", "partner_admin", "manager", "management", "seller"],
   },
   {
     key: "followUps",
     label: "Follow-ups",
     path: "/v2/follow-ups",
     mobilePrimary: true,
-    roles: ["super_admin", "partner_admin", "manager", "seller"],
+    roles: ["super_admin", "partner_admin", "manager", "management", "seller"],
   },
   {
     key: "campaigns",
     label: "Campanhas",
     path: "/v2/campaigns",
     mobilePrimary: true,
-    roles: ["super_admin", "partner_admin", "manager", "seller"],
+    roles: ["super_admin", "partner_admin", "manager", "management", "seller"],
   },
   {
     key: "productivity",
     label: "Produtividade",
     path: "/v2/productivity",
-    roles: ["super_admin", "partner_admin", "manager", "seller"],
+    roles: ["super_admin", "partner_admin", "manager", "management", "seller"],
   },
   {
     key: "reports",
     label: "Relatórios",
     path: "/v2/reports",
-    roles: ["super_admin", "partner_admin", "manager", "seller"],
+    roles: ["super_admin", "partner_admin", "manager", "management", "seller"],
   },
   {
     key: "administration",

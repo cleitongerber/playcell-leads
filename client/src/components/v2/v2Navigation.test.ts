@@ -25,6 +25,17 @@ describe("V2 navigation", () => {
     );
   });
 
+  it("keeps Gestão in the analytical workspace without administration or configuration", () => {
+    expect(visibleV2Navigation("management").map(item => item.key)).toEqual([
+      "dashboard",
+      "leads",
+      "followUps",
+      "campaigns",
+      "productivity",
+      "reports",
+    ]);
+  });
+
   it("keeps nested routes attached to their primary destination", () => {
     expect(isV2NavigationActive("/v2/leads", "/v2/leads/42")).toBe(true);
     expect(isV2NavigationActive("/v2/campaigns", "/v2/campaigns/8/imports")).toBe(true);

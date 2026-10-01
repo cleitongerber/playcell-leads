@@ -30,6 +30,7 @@ const viewLabels: Record<FollowUpView, string> = {
 const membershipRoleLabels: Record<string, string> = {
   partner_admin: "Administrador",
   manager: "Gestor",
+  management: "Gestão",
   seller: "Vendedor",
 };
 
@@ -77,6 +78,7 @@ export default function V2FollowUps() {
     leadName: string;
   } | null>(null);
   const access = v2trpc.access.context.useQuery();
+  const isReadOnly = access.data?.role === "management";
   const canFilterTeam = Boolean(access.data && access.data.role !== "seller");
   const filterOptions = v2trpc.followUps.filters.useQuery(undefined, {
     enabled: canFilterTeam,
@@ -315,7 +317,7 @@ export default function V2FollowUps() {
                     </span>
                   </div>
                 </div>
-                {isPending && (
+                {isPending && !isReadOnly && (
                   <div className="mt-3 space-y-2">
                     <div className="v2-follow-up-actions">
                       <Button

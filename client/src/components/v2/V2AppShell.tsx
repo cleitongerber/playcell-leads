@@ -107,6 +107,7 @@ const roleLabel: Record<V2NavigationRole, string> = {
   super_admin: "Super Admin",
   partner_admin: "Administrador do parceiro",
   manager: "Gestor",
+  management: "Gestão",
   seller: "Vendedor",
 };
 

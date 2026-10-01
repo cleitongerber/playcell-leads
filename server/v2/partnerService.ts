@@ -37,8 +37,8 @@ export function requirePartnerAdministrator(
   if (context.role === "super_admin") return;
   if (context.role !== "partner_admin")
     throw new Error("Apenas Partner Admin pode administrar este parceiro");
-  if (targetRole === "partner_admin")
-    throw new Error("Somente Super Admin pode atribuir Partner Admin");
+  if (targetRole === "partner_admin" || targetRole === "management")
+    throw new Error("Somente Super Admin pode administrar este perfil");
 }
 
 export async function writeV2Audit(

@@ -22,6 +22,7 @@ import {
 import { getV2Db, type V2Database } from "./database";
 import { requirePdvAdministration } from "./operationalScope";
 import { writeV2Audit } from "./partnerService";
+import { resolvePdvScope } from "./pdvScope";
 
 export type CampaignInput = {
   code: string;
@@ -71,7 +72,7 @@ async function assertCampaignScope(
   campaignId: number
 ) {
   const campaign = await getCampaignInPartner(db, context, campaignId);
-  if (context.role === "super_admin" || context.role === "partner_admin")
+  if (context.role === "super_admin" || context.role === "partner_admin" || context.pdvScopeMode === "all")
     return campaign;
   const campaignScope = await db
     .select({ pdvId: campaignPdvs.pdvId })
@@ -85,22 +86,13 @@ async function assertCampaignScope(
         eq(pdvs.isActive, true)
       )
     );
-  const assignments = await db
-    .select({ pdvId: userPdvAssignments.pdvId })
-    .from(userPdvAssignments)
-    .where(
-      and(
-        eq(userPdvAssignments.partnerId, context.partnerId),
-        eq(userPdvAssignments.membershipId, context.membershipId!),
-        eq(userPdvAssignments.isActive, true)
-      )
-    );
+  const assignments = (await resolvePdvScope(db, context)) ?? [];
   if (
     !canViewCampaignByPdvScope(
       context,
       campaign.partnerId,
       campaignScope.map(item => item.pdvId),
-      assignments.map(item => item.pdvId)
+      assignments
     )
   )
     throw new Error("Campanha não encontrada");
@@ -496,7 +488,7 @@ export async function listCampaigns(
     createdAt: campaigns.createdAt,
     updatedAt: campaigns.updatedAt,
   };
-  if (context.role === "super_admin" || context.role === "partner_admin") {
+  if (context.role === "super_admin" || context.role === "partner_admin" || context.pdvScopeMode === "all") {
     const filters = [eq(campaigns.partnerId, context.partnerId)];
     if (!includeArchived) filters.push(ne(campaigns.status, "archived"));
     return db
@@ -554,20 +546,9 @@ export async function getCampaignDetail(
       )
     );
   let pdvScope = scopeRows;
-  if (context.role !== "super_admin" && context.role !== "partner_admin") {
-    const assignments = await db
-      .select({ pdvId: userPdvAssignments.pdvId })
-      .from(userPdvAssignments)
-      .where(
-        and(
-          eq(userPdvAssignments.partnerId, context.partnerId),
-          eq(userPdvAssignments.membershipId, context.membershipId!),
-          eq(userPdvAssignments.isActive, true)
-        )
-      );
-    const allowedPdvIds = new Set(
-      assignments.map(assignment => assignment.pdvId)
-    );
+  if (context.role !== "super_admin" && context.role !== "partner_admin" && context.pdvScopeMode !== "all") {
+    const assignments = (await resolvePdvScope(db, context)) ?? [];
+    const allowedPdvIds = new Set(assignments);
     pdvScope = scopeRows.filter(pdv => allowedPdvIds.has(pdv.id));
   }
   const metrics = !pdvScope.length

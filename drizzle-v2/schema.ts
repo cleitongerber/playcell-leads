@@ -14,7 +14,12 @@ import {
 import { DEFAULT_WHATSAPP_INITIAL_MESSAGE_TEMPLATE } from "../shared/whatsappContact";
 
 export const systemRole = ["none", "super_admin"] as const;
-export const membershipRole = ["partner_admin", "manager", "seller"] as const;
+export const membershipRole = ["partner_admin", "manager", "seller", "management"] as const;
+/**
+ * A membership can either inherit every current/future active PDV in its
+ * partner, or be restricted to the explicit, history-preserving assignments.
+ */
+export const pdvScopeMode = ["all", "specific"] as const;
 export const campaignStatus = [
   "draft",
   "active",
@@ -225,6 +230,9 @@ export const userPartners = mysqlTable(
     userId: int("userId").notNull(),
     partnerId: int("partnerId").notNull(),
     role: mysqlEnum("role", membershipRole).notNull(),
+    pdvScopeMode: mysqlEnum("pdvScopeMode", pdvScopeMode)
+      .notNull()
+      .default("specific"),
     isActive: boolean("isActive").notNull().default(true),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),

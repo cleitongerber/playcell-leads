@@ -19,13 +19,14 @@ const repository: PartnerAccessRepository = {
     return undefined;
   },
   async getMembership(userId, partnerId) {
-    const rows: Record<string, { id: number; role: "partner_admin" | "manager" | "seller"; isActive: boolean }> = {
-      "2:1": { id: 21, role: "partner_admin", isActive: true },
-      "3:1": { id: 31, role: "manager", isActive: true },
-      "4:1": { id: 41, role: "seller", isActive: true },
-      "5:1": { id: 51, role: "seller", isActive: true },
-      "5:2": { id: 52, role: "manager", isActive: true },
-      "7:1": { id: 71, role: "seller", isActive: false },
+    const rows: Record<string, { id: number; role: "partner_admin" | "manager" | "seller" | "management"; isActive: boolean; pdvScopeMode: "all" | "specific" }> = {
+      "2:1": { id: 21, role: "partner_admin", isActive: true, pdvScopeMode: "all" },
+      "3:1": { id: 31, role: "manager", isActive: true, pdvScopeMode: "specific" },
+      "4:1": { id: 41, role: "seller", isActive: true, pdvScopeMode: "specific" },
+      "5:1": { id: 51, role: "seller", isActive: true, pdvScopeMode: "specific" },
+      "5:2": { id: 52, role: "manager", isActive: true, pdvScopeMode: "specific" },
+      "7:1": { id: 71, role: "seller", isActive: false, pdvScopeMode: "specific" },
+      "8:1": { id: 81, role: "management", isActive: true, pdvScopeMode: "all" },
     };
     return rows[`${userId}:${partnerId}`];
   },
@@ -53,6 +54,7 @@ describe("V2 PartnerContext", () => {
       membershipId: null,
       role: "super_admin",
       userId: 1,
+      pdvScopeMode: "all",
     });
   });
 
@@ -60,6 +62,11 @@ describe("V2 PartnerContext", () => {
     await expect(resolvePartnerContext(users.adminA, 1, repository)).resolves.toMatchObject({ role: "partner_admin", membershipId: 21 });
     await expect(resolvePartnerContext(users.managerA, 1, repository)).resolves.toMatchObject({ role: "manager", membershipId: 31 });
     await expect(resolvePartnerContext(users.sellerA, 1, repository)).resolves.toMatchObject({ role: "seller", membershipId: 41 });
+  });
+
+  it("resolves Gestão only through an explicit partner membership and preserves its dynamic ALL scope", async () => {
+    await expect(resolvePartnerContext({ id: 8, isActive: true, systemRole: "none" }, 1, repository)).resolves.toMatchObject({ role: "management", membershipId: 81, pdvScopeMode: "all" });
+    await expectReason(resolvePartnerContext({ id: 8, isActive: true, systemRole: "none" }, 2, repository), "MEMBERSHIP_NOT_FOUND");
   });
 
   it("keeps roles independent for one user in two partners", async () => {

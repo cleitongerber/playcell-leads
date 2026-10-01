@@ -115,6 +115,13 @@ import {
   updatePartnerMembership,
 } from "./userService";
 import {
+  createManagementUser,
+  listManagementPartnerPdvs,
+  listManagementUsers,
+  resetManagementUserPassword,
+  updateManagementUser,
+} from "./managementService";
+import {
   exportAnalyticsReport,
   getDashboardAnalytics,
   getProductivityAnalytics,
@@ -127,6 +134,7 @@ import {
   v2PartnerAdminProcedure,
   v2PartnerOrSuperProcedure,
   v2PartnerProcedure,
+  v2OperationalProcedure,
   v2PasswordChangeProcedure,
   v2PublicProcedure,
   v2ProtectedProcedure,
@@ -310,6 +318,13 @@ const analyticsHealthDetailInput = analyticsFiltersInput.extend({
   ]),
   page: z.number().int().min(1).default(1),
   pageSize: z.number().int().min(1).max(100).default(25),
+});
+
+const managementScopeInput = z.object({
+  partnerId: z.number().int().positive(),
+  isActive: z.boolean().default(true),
+  pdvScopeMode: z.enum(["all", "specific"]),
+  pdvIds: z.array(z.number().int().positive()).max(500),
 });
 
 /**
@@ -511,6 +526,21 @@ export const v2FoundationRouter = v2Router({
         setGlobalUserActive(ctx.partner, input.userId, input.isActive)
       ),
   }),
+  managementUsers: v2Router({
+    list: v2SuperAdminProcedure.query(() => listManagementUsers()),
+    partnerPdvs: v2SuperAdminProcedure
+      .input(z.object({ partnerId: z.number().int().positive() }))
+      .query(({ input }) => listManagementPartnerPdvs(input.partnerId)),
+    create: v2SuperAdminProcedure
+      .input(z.object({ name: z.string().min(2).max(160), email: z.string().email().max(320), password: z.string().min(8).max(256), scopes: z.array(managementScopeInput).min(1).max(100) }))
+      .mutation(({ ctx, input }) => createManagementUser(ctx.user.id, input)),
+    update: v2SuperAdminProcedure
+      .input(z.object({ userId: z.number().int().positive(), name: z.string().min(1).max(160), email: z.string().email().max(320), isActive: z.boolean(), scopes: z.array(managementScopeInput).min(1).max(100) }))
+      .mutation(({ ctx, input }) => updateManagementUser(ctx.user.id, input)),
+    resetPassword: v2SuperAdminProcedure
+      .input(z.object({ userId: z.number().int().positive(), password: z.string().min(8).max(256) }))
+      .mutation(({ ctx, input }) => resetManagementUserPassword(ctx.user.id, input.userId, input.password)),
+  }),
   campaigns: v2Router({
     list: v2PartnerProcedure
       .input(z.object({ includeArchived: z.boolean().optional() }).optional())
@@ -643,7 +673,7 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .mutation(({ ctx, input }) => createLead(ctx.partner, input)),
-    assume: v2PartnerProcedure
+    assume: v2OperationalProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(({ ctx, input }) => assumeLead(ctx.partner, input.id)),
     transfer: v2ManagerProcedure
@@ -673,7 +703,7 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .mutation(({ ctx, input }) => distributeLeads(ctx.partner, input)),
-    note: v2PartnerProcedure
+    note: v2OperationalProcedure
       .input(
         z.object({
           id: z.number().int().positive(),
@@ -685,7 +715,7 @@ export const v2FoundationRouter = v2Router({
       ),
     // The separated attempt/contact commands are the single operational
     // journey. The backend remains the source of truth for every policy.
-    registerAttempt: v2PartnerProcedure
+    registerAttempt: v2OperationalProcedure
       .input(
         z.object({
           leadId: z.number().int().positive(),
@@ -707,7 +737,7 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .mutation(({ ctx, input }) => registerAttempt(ctx.partner, input)),
-    recordEffectiveContact: v2PartnerProcedure
+    recordEffectiveContact: v2OperationalProcedure
       .input(
         z.object({
           leadId: z.number().int().positive(),
@@ -722,7 +752,7 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .mutation(({ ctx, input }) => recordEffectiveContact(ctx.partner, input)),
-    changeAdministrativeStatus: v2PartnerProcedure
+    changeAdministrativeStatus: v2OperationalProcedure
       .input(
         z.object({
           leadId: z.number().int().positive(),
@@ -735,7 +765,7 @@ export const v2FoundationRouter = v2Router({
       .mutation(({ ctx, input }) =>
         changeAdministrativeStatus(ctx.partner, input)
       ),
-    reopen: v2PartnerProcedure
+    reopen: v2OperationalProcedure
       .input(
         z.object({
           leadId: z.number().int().positive(),
@@ -852,7 +882,7 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .query(({ ctx, input }) => listFollowUps(ctx.partner, input)),
-    create: v2PartnerProcedure
+    create: v2OperationalProcedure
       .input(
         z.object({
           leadId: z.number().int().positive(),
@@ -862,13 +892,13 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .mutation(({ ctx, input }) => createFollowUp(ctx.partner, input)),
-    complete: v2PartnerProcedure
+    complete: v2OperationalProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(({ ctx, input }) => completeFollowUp(ctx.partner, input.id)),
-    cancel: v2PartnerProcedure
+    cancel: v2OperationalProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(({ ctx, input }) => cancelFollowUp(ctx.partner, input.id)),
-    reschedule: v2PartnerProcedure
+    reschedule: v2OperationalProcedure
       .input(
         z.object({
           id: z.number().int().positive(),
@@ -1079,7 +1109,7 @@ export const v2FoundationRouter = v2Router({
       ),
   }),
   evidences: v2Router({
-    upload: v2PartnerProcedure
+    upload: v2OperationalProcedure
       .input(
         z.object({
           leadId: z.number().int().positive(),
