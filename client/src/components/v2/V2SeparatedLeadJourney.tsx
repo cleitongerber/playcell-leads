@@ -1,5 +1,8 @@
 import { FollowUpCancellationDialog } from "@/components/v2/FollowUpCancellationDialog";
-import { LeadEvidenceUploader } from "@/components/v2/LeadEvidenceUploader";
+import {
+  LeadEvidenceUploader,
+  type LeadEvidenceUploaderHandle,
+} from "@/components/v2/LeadEvidenceUploader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { useV2Session } from "@/components/v2/V2AppShell";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
@@ -279,6 +282,46 @@ function FollowUpFields({
   );
 }
 
+function EvidenceAttachmentAction({
+  leadId,
+  timelineEventId,
+  label,
+  variant,
+  className,
+  onUploaded,
+}: {
+  leadId: number;
+  timelineEventId: number;
+  label: string;
+  variant?: "default" | "ghost";
+  className?: string;
+  onUploaded: () => void;
+}) {
+  const uploaderRef = useRef<LeadEvidenceUploaderHandle>(null);
+
+  return (
+    <div className={className}>
+      <Button
+        type="button"
+        size="sm"
+        variant={variant}
+        onClick={() => uploaderRef.current?.openFilePicker()}
+      >
+        <FileUp className="mr-2 size-4" /> {label}
+      </Button>
+      <LeadEvidenceUploader
+        ref={uploaderRef}
+        leadId={leadId}
+        timelineEventId={timelineEventId}
+        showPickerButton={false}
+        onUploaded={onUploaded}
+        successMessage="Evidência anexada ao evento operacional."
+        failureMessage="Não foi possível enviar a evidência. A ação já foi registrada e continua pendente; tente novamente."
+      />
+    </div>
+  );
+}
+
 /**
  * Operational Lead workspace for the explicitly enabled separated journey.
  * It only arranges commands and backend-provided requirements; no commercial
@@ -329,9 +372,6 @@ export function V2SeparatedLeadJourney() {
   const [treatmentRequestKey, setTreatmentRequestKey] = useState<string | null>(
     null
   );
-  const [pendingEvidenceEventId, setPendingEvidenceEventId] = useState<
-    number | null
-  >(null);
   const [independentFollowUpOpen, setIndependentFollowUpOpen] = useState(false);
   const [independentFollowUp, setIndependentFollowUp] = useState({
     dueAt: "",
@@ -393,9 +433,6 @@ export function V2SeparatedLeadJourney() {
       const hasPendingEvidence = result.pendingRequirements.some(
         requirement => requirement.kind === "evidence"
       );
-      setPendingEvidenceEventId(
-        hasPendingEvidence ? result.timelineEvent.id : null
-      );
       setAttempt(emptyAttempt());
       setAttemptFollowUpOpen(false);
       setAttemptRequestKey(null);
@@ -418,9 +455,6 @@ export function V2SeparatedLeadJourney() {
     onSuccess: result => {
       const hasPendingEvidence = result.pendingRequirements.some(
         requirement => requirement.kind === "evidence"
-      );
-      setPendingEvidenceEventId(
-        hasPendingEvidence ? result.timelineEvent.id : null
       );
       setTreatment(emptyTreatment());
       setTreatmentFollowUpOpen(false);
@@ -600,11 +634,7 @@ export function V2SeparatedLeadJourney() {
       new Map((detail.data?.timeline ?? []).map(event => [event.id, event])),
     [detail.data?.timeline]
   );
-  const selectedEvidenceEventId =
-    pendingEvidenceEventId ?? evidencePending[0]?.timelineEventId ?? null;
-  const selectedEvidenceEvent = selectedEvidenceEventId
-    ? timelineById.get(selectedEvidenceEventId)
-    : null;
+  const selectedEvidenceEventId = evidencePending[0]?.timelineEventId ?? null;
   const timeline = useMemo(
     () => [...(detail.data?.timeline ?? [])].reverse(),
     [detail.data?.timeline]
@@ -892,14 +922,12 @@ export function V2SeparatedLeadJourney() {
               </div>
               {actionPresentation.cta === "evidence" &&
                 selectedEvidenceEventId && (
-                  <Button
-                    type="button"
-                    onClick={() =>
-                      setPendingEvidenceEventId(selectedEvidenceEventId)
-                    }
-                  >
-                    <FileUp className="mr-2 size-4" /> Adicionar evidência
-                  </Button>
+                  <EvidenceAttachmentAction
+                    leadId={id}
+                    timelineEventId={selectedEvidenceEventId}
+                    label="Adicionar evidência"
+                    onUploaded={refresh}
+                  />
                 )}
               {actionPresentation.cta === "treatment" &&
                 canStartCommercialWork && (
@@ -1172,18 +1200,13 @@ export function V2SeparatedLeadJourney() {
                           : "Esta ação ainda não atende todos os requisitos configurados."}
                       </p>
                       {needsEvidence && canOperateOwnLead && (
-                        <Button
-                          type="button"
-                          size="sm"
+                        <EvidenceAttachmentAction
+                          leadId={id}
+                          timelineEventId={governance.timelineEventId}
+                          label="Adicionar evidência"
                           className="mt-3"
-                          onClick={() =>
-                            setPendingEvidenceEventId(
-                              governance.timelineEventId
-                            )
-                          }
-                        >
-                          <FileUp className="mr-2 size-4" /> Adicionar evidência
-                        </Button>
+                          onUploaded={refresh}
+                        />
                       )}
                     </div>
                   );
@@ -1256,18 +1279,6 @@ export function V2SeparatedLeadJourney() {
                       </div>
                     )}
                   </div>
-                )}
-                {selectedEvidenceEvent && canOperateOwnLead && (
-                  <LeadEvidenceUploader
-                    leadId={id}
-                    timelineEventId={selectedEvidenceEvent.id}
-                    onUploaded={() => {
-                      setPendingEvidenceEventId(null);
-                      refresh();
-                    }}
-                    successMessage="Evidência anexada ao evento operacional."
-                    failureMessage="Não foi possível enviar a evidência. A ação já foi registrada e continua pendente; tente novamente."
-                  />
                 )}
               </CardContent>
             </Card>
@@ -1497,15 +1508,14 @@ export function V2SeparatedLeadJourney() {
                           </div>
                         ))}
                         {canOperateOwnLead && canAttach && (
-                          <Button
-                            type="button"
-                            size="sm"
+                          <EvidenceAttachmentAction
+                            leadId={id}
+                            timelineEventId={event.id}
+                            label="Anexar evidência"
                             variant="ghost"
                             className="mt-2"
-                            onClick={() => setPendingEvidenceEventId(event.id)}
-                          >
-                            <FileUp className="mr-2 size-4" /> Anexar evidência
-                          </Button>
+                            onUploaded={refresh}
+                          />
                         )}
                       </div>
                     );
