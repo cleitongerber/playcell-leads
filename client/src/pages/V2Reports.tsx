@@ -142,7 +142,9 @@ export default function V2Reports() {
               </SelectContent>
             </Select>
           </div>
-          {(type === "leads" || type === "treatments") && (
+          {(type === "leads" ||
+            type === "attempts" ||
+            type === "treatments") && (
             <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
               <label
                 className="text-sm font-medium"

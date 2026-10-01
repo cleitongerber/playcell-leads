@@ -73,6 +73,23 @@ describe("016.4 unified journey service contract", () => {
     expect(attempt).not.toContain("conditionalStatusUpdate");
   });
 
+  it("prevents a governed attempt from bypassing its required evidence", () => {
+    const attempt = commandSlice(
+      "export async function registerAttempt",
+      "export async function recordEffectiveContact"
+    );
+    expect(attempt).toContain("rule.evidenceRequired && !input.evidence");
+    expect(attempt).toContain("preparePrivateEvidence");
+    expect(attempt).toContain("leadEvidences");
+    expect(attempt).toContain('storageStatus: "available"');
+    expect(attempt).toContain("hasEvidence: Boolean(stagedEvidence.value)");
+    expect(attempt).toContain("evidenceAuditMetadata");
+    expect(attempt).toContain("stagedEvidence.value?.cleanup()");
+    expect(attempt).not.toContain("leadContacts).values");
+    expect(attempt).not.toContain("leadConversions).values");
+    expect(router).toContain("evidence: z");
+  });
+
   it("persists an effective contact, result snapshot, governance and conversion atomically", () => {
     const contact = commandSlice(
       "export async function recordEffectiveContact",

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -22,6 +23,7 @@ const mimeToExtensions: Record<string, readonly string[]> = {
 export type EvidenceStorage = {
   put(key: string, bytes: Buffer, mimeType: string): Promise<void>;
   getSignedUrl(key: string): Promise<string>;
+  remove?(key: string): Promise<void>;
 };
 
 export type EvidenceStorageProvider = "forge_s3" | "s3";
@@ -144,6 +146,11 @@ function createS3EvidenceStorage(
         client,
         new GetObjectCommand({ Bucket: config.bucket, Key: key }),
         { expiresIn: EVIDENCE_DOWNLOAD_TTL_SECONDS }
+      );
+    },
+    async remove(key) {
+      await client.send(
+        new DeleteObjectCommand({ Bucket: config.bucket, Key: key })
       );
     },
   };

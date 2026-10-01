@@ -42,7 +42,11 @@ type HealthDetailKind =
   | "evidence_eligible"
   | "evidence_with"
   | "evidence_without"
-  | "evidence_required_pending";
+  | "evidence_required_pending"
+  | "attempt_evidence_eligible"
+  | "attempt_evidence_with"
+  | "attempt_evidence_without"
+  | "attempt_evidence_required_pending";
 
 const healthDetailLabels: Record<HealthDetailKind, string> = {
   unassigned: "Leads sem responsável",
@@ -55,6 +59,11 @@ const healthDetailLabels: Record<HealthDetailKind, string> = {
   evidence_with: "Tratativas com evidência",
   evidence_without: "Tratativas sem evidência",
   evidence_required_pending: "Pendências obrigatórias de evidência",
+  attempt_evidence_eligible: "Tentativas elegíveis para evidência",
+  attempt_evidence_with: "Tentativas com evidência",
+  attempt_evidence_without: "Tentativas sem evidência",
+  attempt_evidence_required_pending:
+    "Pendências obrigatórias de evidência em tentativas",
 };
 
 function number(value: number | undefined | null) {
@@ -359,6 +368,67 @@ export default function V2Dashboard() {
                         openHealthDetail("evidence_required_pending")
                       }
                     />
+                  </div>
+                  <div className="mt-4 border-t border-brand-accent/20 pt-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">
+                          Tentativas de contato
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Tentativas são auditadas separadamente de tratativas
+                          efetivas.
+                        </p>
+                      </div>
+                      <strong className="text-lg">
+                        {percent(
+                          dashboard.data.health.evidenceCoverage.attemptCoverage
+                            .coverage
+                        )}
+                      </strong>
+                    </div>
+                    <div className="v2-mobile-detail-grid mt-3 text-xs text-muted-foreground sm:grid-cols-2">
+                      <HealthMetricButton
+                        label="Elegíveis"
+                        value={
+                          dashboard.data.health.evidenceCoverage.attemptCoverage
+                            .eligible
+                        }
+                        onClick={() =>
+                          openHealthDetail("attempt_evidence_eligible")
+                        }
+                      />
+                      <HealthMetricButton
+                        label="Com evidência"
+                        value={
+                          dashboard.data.health.evidenceCoverage.attemptCoverage
+                            .withEvidence
+                        }
+                        onClick={() =>
+                          openHealthDetail("attempt_evidence_with")
+                        }
+                      />
+                      <HealthMetricButton
+                        label="Sem evidência"
+                        value={
+                          dashboard.data.health.evidenceCoverage.attemptCoverage
+                            .withoutEvidence
+                        }
+                        onClick={() =>
+                          openHealthDetail("attempt_evidence_without")
+                        }
+                      />
+                      <HealthMetricButton
+                        label="Obrigatórias pendentes"
+                        value={
+                          dashboard.data.health.evidenceCoverage.attemptCoverage
+                            .requiredPending
+                        }
+                        onClick={() =>
+                          openHealthDetail("attempt_evidence_required_pending")
+                        }
+                      />
+                    </div>
                   </div>
                 </div>
               </CardContent>

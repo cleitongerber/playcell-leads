@@ -30,6 +30,50 @@ import {
 import { resolveEffectiveGovernance } from "./governanceService";
 import { writeV2Audit } from "./partnerService";
 
+export type PreparedPrivateEvidence = {
+  storageProvider: EvidenceStorageProvider;
+  storageKey: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksum: string;
+  cleanup: () => Promise<void>;
+};
+
+/**
+ * Places a validated object in private storage before its parent operational
+ * event is committed. Callers must either persist it in the same operation or
+ * invoke cleanup after a failed transaction.
+ */
+export async function preparePrivateEvidence(
+  partnerId: number,
+  input: { fileName: string; mimeType: string; base64: string },
+  rule: Pick<
+    GovernanceRule,
+    "allowedEvidenceMimeTypes" | "maxEvidenceSizeBytes"
+  >,
+  storage?: EvidenceStorage
+): Promise<PreparedPrivateEvidence> {
+  const storageProvider: EvidenceStorageProvider = storage
+    ? "forge_s3"
+    : resolveEvidenceStorageProvider();
+  const activeStorage = storage ?? getEvidenceStorage(storageProvider);
+  const upload = validateEvidenceUpload(input, rule);
+  const storageKey = createEvidenceStorageKey(partnerId);
+  await activeStorage.put(storageKey, upload.bytes, upload.mimeType);
+  return {
+    storageProvider,
+    storageKey,
+    fileName: upload.fileName,
+    mimeType: upload.mimeType,
+    sizeBytes: upload.sizeBytes,
+    checksum: upload.checksum,
+    cleanup: async () => {
+      await activeStorage.remove?.(storageKey);
+    },
+  };
+}
+
 async function scopedPdvIds(db: V2Database, context: PartnerContext) {
   if (context.role === "super_admin" || context.role === "partner_admin")
     return null;

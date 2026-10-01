@@ -14,7 +14,7 @@ export type LeadEvidenceUploaderHandle = {
   openFilePicker: () => void;
 };
 
-function readFileAsBase64(file: File) {
+export function readEvidenceFileAsBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("Não foi possível ler o arquivo"));
@@ -85,7 +85,7 @@ export const LeadEvidenceUploader = forwardRef<
         timelineEventId,
         fileName: file.name,
         mimeType: file.type,
-        base64: await readFileAsBase64(file),
+        base64: await readEvidenceFileAsBase64(file),
       });
     } catch (error) {
       toast.error(

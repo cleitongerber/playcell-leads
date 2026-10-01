@@ -1,6 +1,7 @@
 import { FollowUpCancellationDialog } from "@/components/v2/FollowUpCancellationDialog";
 import {
   LeadEvidenceUploader,
+  readEvidenceFileAsBase64,
   type LeadEvidenceUploaderHandle,
 } from "@/components/v2/LeadEvidenceUploader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
@@ -366,6 +367,7 @@ export function V2SeparatedLeadJourney() {
   const [treatment, setTreatment] = useState<TreatmentForm>(emptyTreatment());
   const [attemptFollowUpOpen, setAttemptFollowUpOpen] = useState(false);
   const [treatmentFollowUpOpen, setTreatmentFollowUpOpen] = useState(false);
+  const [attemptEvidence, setAttemptEvidence] = useState<File | null>(null);
   const [attemptRequestKey, setAttemptRequestKey] = useState<string | null>(
     null
   );
@@ -392,6 +394,7 @@ export function V2SeparatedLeadJourney() {
   const [reopenRequestKey, setReopenRequestKey] = useState<string | null>(null);
   const restoredExternalActionForLead = useRef<number | null>(null);
   const lastSuggestedResultId = useRef<string | null>(null);
+  const attemptEvidenceInputRef = useRef<HTMLInputElement>(null);
 
   const attemptRequirements = v2trpc.leads.operationRequirements.useQuery(
     {
@@ -434,6 +437,9 @@ export function V2SeparatedLeadJourney() {
         requirement => requirement.kind === "evidence"
       );
       setAttempt(emptyAttempt());
+      setAttemptEvidence(null);
+      if (attemptEvidenceInputRef.current)
+        attemptEvidenceInputRef.current.value = "";
       setAttemptFollowUpOpen(false);
       setAttemptRequestKey(null);
       setAttemptOpen(false);
@@ -738,7 +744,7 @@ export function V2SeparatedLeadJourney() {
     rememberExternal("phone");
     window.location.assign(url);
   };
-  const submitAttempt = (event: FormEvent) => {
+  const submitAttempt = async (event: FormEvent) => {
     event.preventDefault();
     const requirements = attemptRequirements.data as
       | FormRequirements
@@ -757,6 +763,12 @@ export function V2SeparatedLeadJourney() {
       );
       return;
     }
+    if (requirements.requirements.evidenceRequired && !attemptEvidence) {
+      toast.error(
+        "Adicione a evidência obrigatória para registrar esta tentativa."
+      );
+      return;
+    }
     const shouldSchedule =
       Boolean(requirements?.requirements.followUp.required) ||
       attemptFollowUpOpen;
@@ -766,20 +778,36 @@ export function V2SeparatedLeadJourney() {
     }
     const requestKey = attemptRequestKey ?? makeRequestKey("attempt");
     if (!attemptRequestKey) setAttemptRequestKey(requestKey);
-    registerAttempt.mutate({
-      leadId: id,
-      channel: attempt.channel,
-      resultId: Number(attempt.resultId),
-      summary: attempt.summary.trim() || null,
-      followUp:
-        shouldSchedule && attempt.followUpDueAt
-          ? {
-              dueAt: new Date(attempt.followUpDueAt),
-              note: attempt.followUpNote.trim() || null,
-            }
-          : null,
-      requestKey,
-    });
+    try {
+      const evidence = attemptEvidence
+        ? {
+            fileName: attemptEvidence.name,
+            mimeType: attemptEvidence.type,
+            base64: await readEvidenceFileAsBase64(attemptEvidence),
+          }
+        : null;
+      registerAttempt.mutate({
+        leadId: id,
+        channel: attempt.channel,
+        resultId: Number(attempt.resultId),
+        summary: attempt.summary.trim() || null,
+        followUp:
+          shouldSchedule && attempt.followUpDueAt
+            ? {
+                dueAt: new Date(attempt.followUpDueAt),
+                note: attempt.followUpNote.trim() || null,
+              }
+            : null,
+        evidence,
+        requestKey,
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível ler a evidência selecionada."
+      );
+    }
   };
   const submitTreatment = (event: FormEvent) => {
     event.preventDefault();
@@ -1606,7 +1634,12 @@ export function V2SeparatedLeadJourney() {
         open={attemptOpen}
         onOpenChange={open => {
           setAttemptOpen(open);
-          if (!open) setAttemptRequestKey(null);
+          if (!open) {
+            setAttemptRequestKey(null);
+            setAttemptEvidence(null);
+            if (attemptEvidenceInputRef.current)
+              attemptEvidenceInputRef.current.value = "";
+          }
         }}
       >
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
@@ -1665,13 +1698,64 @@ export function V2SeparatedLeadJourney() {
             {(attemptRequirements.data as FormRequirements | undefined)
               ?.requirements.evidenceRequired && (
               <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
-                <p className="font-medium">
-                  Esta tentativa exige uma evidência.
-                </p>
+                <input
+                  ref={attemptEvidenceInputRef}
+                  type="file"
+                  className="sr-only"
+                  aria-label="Selecionar evidência obrigatória"
+                  accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+                  onChange={event => {
+                    setAttemptEvidence(event.target.files?.[0] ?? null);
+                    setAttemptRequestKey(null);
+                  }}
+                />
+                <p className="font-medium">Evidência obrigatória *</p>
                 <p className="mt-1 text-muted-foreground">
-                  A tentativa será registrada primeiro. Depois você poderá
-                  anexar o arquivo ao evento correto.
+                  Anexe o arquivo antes de registrar a tentativa. Ele será
+                  vinculado somente ao evento desta tentativa.
                 </p>
+                {attemptEvidence ? (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <p
+                      className="min-w-0 flex-1 truncate text-sm"
+                      aria-live="polite"
+                    >
+                      Arquivo selecionado:{" "}
+                      <strong>{attemptEvidence.name}</strong>
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => attemptEvidenceInputRef.current?.click()}
+                    >
+                      Trocar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setAttemptEvidence(null);
+                        setAttemptRequestKey(null);
+                        if (attemptEvidenceInputRef.current)
+                          attemptEvidenceInputRef.current.value = "";
+                      }}
+                    >
+                      Remover
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    className="mt-3"
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => attemptEvidenceInputRef.current?.click()}
+                  >
+                    <FileUp className="mr-2 size-4" /> Anexar evidência
+                  </Button>
+                )}
               </div>
             )}
             {((attemptRequirements.data as FormRequirements | undefined)
@@ -1725,7 +1809,12 @@ export function V2SeparatedLeadJourney() {
                   registerAttempt.isPending ||
                   attemptRequirements.isLoading ||
                   attemptRequirements.isFetching ||
-                  !attemptRequirements.data
+                  !attemptRequirements.data ||
+                  (Boolean(
+                    (attemptRequirements.data as FormRequirements | undefined)
+                      ?.requirements.evidenceRequired
+                  ) &&
+                    !attemptEvidence)
                 }
               >
                 {registerAttempt.isPending

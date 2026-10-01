@@ -101,7 +101,11 @@ export type AnalyticsHealthDetailKind =
   | "evidence_eligible"
   | "evidence_with"
   | "evidence_without"
-  | "evidence_required_pending";
+  | "evidence_required_pending"
+  | "attempt_evidence_eligible"
+  | "attempt_evidence_with"
+  | "attempt_evidence_without"
+  | "attempt_evidence_required_pending";
 
 export type AnalyticsHealthDetailInput = AnalyticsFilters & {
   kind: AnalyticsHealthDetailKind;
@@ -767,12 +771,61 @@ async function queryEvidenceCoverage(
     .where(and(...conditions));
   const eligible = numberOf(rows[0]?.eligible);
   const withEvidence = numberOf(rows[0]?.withEvidence);
+  const attemptGovernance = alias(
+    leadTreatmentGovernance,
+    "analytics_attempt_evidence_governance"
+  );
+  const attemptEvidenceExists = sql<number>`exists (select 1 from ${leadEvidences} where ${leadEvidences.partnerId} = ${leadContactAttempts.partnerId} and ${leadEvidences.leadId} = ${leadContactAttempts.leadId} and ${leadEvidences.timelineEventId} = ${leadContactAttempts.timelineEventId} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available')`;
+  const attemptRequiredEvidence = sql<number>`coalesce(json_extract(${attemptGovernance.appliedRuleJson}, '$.evidenceRequired'), false)`;
+  const attemptConditions = withPeriod(
+    [
+      ...scopeLeadConditions(context, scope, filters),
+      eq(leadContactAttempts.partnerId, context.partnerId),
+    ],
+    leadContactAttempts.occurredAt,
+    period
+  );
+  const attemptRows = await db
+    .select({
+      eligible: count(),
+      withEvidence: sql<number>`coalesce(sum(case when ${attemptEvidenceExists} then 1 else 0 end), 0)`,
+      requiredPending: sql<number>`coalesce(sum(case when ${attemptRequiredEvidence} and not ${attemptEvidenceExists} then 1 else 0 end), 0)`,
+    })
+    .from(leadContactAttempts)
+    .innerJoin(
+      leads,
+      and(
+        eq(leads.id, leadContactAttempts.leadId),
+        eq(leads.partnerId, leadContactAttempts.partnerId)
+      )
+    )
+    .leftJoin(
+      attemptGovernance,
+      and(
+        eq(attemptGovernance.partnerId, leadContactAttempts.partnerId),
+        eq(attemptGovernance.leadId, leadContactAttempts.leadId),
+        eq(
+          attemptGovernance.timelineEventId,
+          leadContactAttempts.timelineEventId
+        )
+      )
+    )
+    .where(and(...attemptConditions));
+  const attemptEligible = numberOf(attemptRows[0]?.eligible);
+  const attemptWithEvidence = numberOf(attemptRows[0]?.withEvidence);
   return {
     eligible,
     withEvidence,
     withoutEvidence: Math.max(0, eligible - withEvidence),
     coverage: safeRate(withEvidence, eligible),
     requiredPending: numberOf(rows[0]?.requiredPending),
+    attemptCoverage: {
+      eligible: attemptEligible,
+      withEvidence: attemptWithEvidence,
+      withoutEvidence: Math.max(0, attemptEligible - attemptWithEvidence),
+      coverage: safeRate(attemptWithEvidence, attemptEligible),
+      requiredPending: numberOf(attemptRows[0]?.requiredPending),
+    },
   };
 }
 
@@ -1277,6 +1330,88 @@ export async function listAnalyticsHealthDetails(
             eq(governance.partnerId, leadContacts.partnerId),
             eq(governance.leadId, leadContacts.leadId),
             eq(governance.timelineEventId, leadContacts.timelineEventId)
+          )
+        )
+        .where(and(...conditions)),
+    ]);
+    return present(rows, numberOf(totals[0]?.total));
+  }
+
+  if (
+    input.kind === "attempt_evidence_eligible" ||
+    input.kind === "attempt_evidence_with" ||
+    input.kind === "attempt_evidence_without" ||
+    input.kind === "attempt_evidence_required_pending"
+  ) {
+    const governance = alias(
+      leadTreatmentGovernance,
+      "health_detail_attempt_governance"
+    );
+    const evidenceCount = sql<number>`(select count(*) from ${leadEvidences} where ${leadEvidences.partnerId} = ${leadContactAttempts.partnerId} and ${leadEvidences.leadId} = ${leadContactAttempts.leadId} and ${leadEvidences.timelineEventId} = ${leadContactAttempts.timelineEventId} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available')`;
+    const required = sql<number>`coalesce(json_extract(${governance.appliedRuleJson}, '$.evidenceRequired'), false)`;
+    const conditions: SQL[] = withPeriod(
+      [...leadConditions, eq(leadContactAttempts.partnerId, context.partnerId)],
+      leadContactAttempts.occurredAt,
+      period
+    );
+    if (input.kind === "attempt_evidence_with")
+      conditions.push(sql`${evidenceCount} > 0`);
+    if (input.kind === "attempt_evidence_without")
+      conditions.push(sql`${evidenceCount} = 0`);
+    if (input.kind === "attempt_evidence_required_pending")
+      conditions.push(sql`${required} and ${evidenceCount} = 0`);
+    const base = db
+      .select({
+        id: leadContactAttempts.id,
+        ...fields,
+        occurredAt: leadContactAttempts.occurredAt,
+        detail: leadContactAttempts.resultLabel,
+        evidenceCount,
+        documentaryStatus: sql<
+          "Atendida" | "Pendente" | "Não exigida"
+        >`case when not ${required} then 'Não exigida' when ${evidenceCount} > 0 then 'Atendida' else 'Pendente' end`,
+      })
+      .from(leadContactAttempts)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, leadContactAttempts.leadId),
+          eq(leads.partnerId, leadContactAttempts.partnerId)
+        )
+      )
+      .leftJoin(
+        governance,
+        and(
+          eq(governance.partnerId, leadContactAttempts.partnerId),
+          eq(governance.leadId, leadContactAttempts.leadId),
+          eq(governance.timelineEventId, leadContactAttempts.timelineEventId)
+        )
+      );
+    const [rows, totals] = await Promise.all([
+      joinLeadContext(base)
+        .where(and(...conditions))
+        .orderBy(
+          desc(leadContactAttempts.occurredAt),
+          desc(leadContactAttempts.id)
+        )
+        .limit(pagination.pageSize)
+        .offset(pagination.offset),
+      db
+        .select({ total: count() })
+        .from(leadContactAttempts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContactAttempts.leadId),
+            eq(leads.partnerId, leadContactAttempts.partnerId)
+          )
+        )
+        .leftJoin(
+          governance,
+          and(
+            eq(governance.partnerId, leadContactAttempts.partnerId),
+            eq(governance.leadId, leadContactAttempts.leadId),
+            eq(governance.timelineEventId, leadContactAttempts.timelineEventId)
           )
         )
         .where(and(...conditions)),
@@ -2315,6 +2450,14 @@ async function listAttemptReport(
     "report_attempt_governance"
   );
   const evidence = alias(leadEvidences, "report_attempt_evidence");
+  const evidenceCount = sql<number>`(select count(*) from ${evidence} where ${evidence.partnerId} = ${leadContactAttempts.partnerId} and ${evidence.leadId} = ${leadContactAttempts.leadId} and ${evidence.timelineEventId} = ${leadContactAttempts.timelineEventId} and ${evidence.deletedAt} is null and ${evidence.storageStatus} = 'available')`;
+  const requiredEvidence = sql<number>`coalesce(json_extract(${governance.appliedRuleJson}, '$.evidenceRequired'), false)`;
+  if (input.evidenceFilter === "with_evidence")
+    conditions.push(sql`${evidenceCount} > 0`);
+  if (input.evidenceFilter === "without_evidence")
+    conditions.push(sql`${evidenceCount} = 0`);
+  if (input.evidenceFilter === "required_pending")
+    conditions.push(sql`${requiredEvidence} and ${evidenceCount} = 0`);
   const [records, totals] = await Promise.all([
     db
       .select({
@@ -2330,7 +2473,7 @@ async function listAttemptReport(
         rule: governance.appliedRuleJson,
         complete: governance.isComplete,
         followUp: sql<number>`case when exists (select 1 from ${followUps} where ${followUps.partnerId} = ${leadContactAttempts.partnerId} and ${followUps.leadId} = ${leadContactAttempts.leadId} and ${followUps.originTimelineEventId} = ${leadContactAttempts.timelineEventId}) then 1 else 0 end`,
-        hasEvidence: sql<number>`case when exists (select 1 from ${evidence} where ${evidence.partnerId} = ${leadContactAttempts.partnerId} and ${evidence.leadId} = ${leadContactAttempts.leadId} and ${evidence.timelineEventId} = ${leadContactAttempts.timelineEventId} and ${evidence.deletedAt} is null and ${evidence.storageStatus} = 'available') then 1 else 0 end`,
+        evidenceCount,
       })
       .from(leadContactAttempts)
       .innerJoin(
@@ -2384,12 +2527,20 @@ async function listAttemptReport(
           eq(leads.partnerId, leadContactAttempts.partnerId)
         )
       )
+      .leftJoin(
+        governance,
+        and(
+          eq(governance.timelineEventId, leadContactAttempts.timelineEventId),
+          eq(governance.partnerId, leadContactAttempts.partnerId),
+          eq(governance.leadId, leadContactAttempts.leadId)
+        )
+      )
       .where(and(...conditions)),
   ]);
   return {
     columns: operationReportColumns("attempt"),
     rows: records.map(record => {
-      const state = evidenceState(record.rule, record.hasEvidence);
+      const state = evidenceState(record.rule, record.evidenceCount);
       return {
         lead: record.lead ?? "Lead sem nome",
         campaign: record.campaign,
@@ -2404,6 +2555,12 @@ async function listAttemptReport(
         governance: record.complete ? "Completa" : state.governance,
         evidenceRequired: state.required ? "Sim" : "Não",
         evidenceAvailable: state.available ? "Sim" : "Não",
+        evidenceCount: numberOf(record.evidenceCount),
+        documentaryStatus: state.required
+          ? state.available
+            ? "Atendida"
+            : "Pendente"
+          : "Não exigida",
       };
     }),
     total: numberOf(totals[0]?.total),

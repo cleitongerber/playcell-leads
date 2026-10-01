@@ -6,6 +6,7 @@ import {
   leadContactAttempts,
   leadContacts,
   leadConversions,
+  leadEvidences,
   leadInteractionResults,
   leadOperationCommands,
   leadStatuses,
@@ -63,6 +64,11 @@ import {
   listPartnerLeadStatuses,
 } from "./leadConfiguration";
 import { writeV2Audit } from "./partnerService";
+import {
+  evidenceAuditMetadata,
+  preparePrivateEvidence,
+  type PreparedPrivateEvidence,
+} from "./evidenceService";
 
 type LeadRow = typeof leads.$inferSelect;
 type LeadStatusRow = typeof leadStatuses.$inferSelect;
@@ -71,6 +77,12 @@ type InteractionResultRow = typeof leadInteractionResults.$inferSelect;
 type FollowUpInput = {
   dueAt: Date;
   note?: string | null;
+};
+
+type EvidenceInput = {
+  fileName: string;
+  mimeType: string;
+  base64: string;
 };
 
 type CommandOperation =
@@ -98,6 +110,7 @@ export type RegisterAttemptInput = {
   summary?: string | null;
   occurredAt?: Date;
   followUp?: FollowUpInput | null;
+  evidence?: EvidenceInput | null;
   requestKey: string;
 };
 
@@ -673,11 +686,12 @@ async function writeAttemptGovernance(
     source: "partner" | "campaign";
     rule: AttemptGovernanceRule;
     hasNote: boolean;
+    hasEvidence: boolean;
   }
 ) {
   const state = evaluateAttemptGovernance(input.rule, {
     hasNote: input.hasNote,
-    hasEvidence: false,
+    hasEvidence: input.hasEvidence,
   });
   await db.insert(leadTreatmentGovernance).values({
     partnerId: input.context.partnerId,
@@ -1154,142 +1168,208 @@ export async function registerAttempt(
 ) {
   const db = await getV2Db();
   const actorMembershipId = await assertOperationalMembership(context);
-  return db.transaction(async tx => {
-    const transactionDb = tx as unknown as V2Database;
-    const command = await startCommand(
-      transactionDb,
-      context,
-      "register_attempt",
-      input.requestKey
-    );
-    if (command.existing) {
-      return replayCompletedCommand(transactionDb, context, command.existing);
-    }
-
-    const lead = await loadLead(transactionDb, context, input.leadId);
-    await assertLeadScope(transactionDb, context, lead, "operational");
-    await assertCampaignOperational(transactionDb, context, lead);
-    await assertLeadOpenForCommercialOperation(transactionDb, context, lead);
-    const channel = normalizedChannel(input.channel);
-    const result = await getActiveResult(
-      transactionDb,
-      context,
-      input.resultId,
-      "attempt"
-    );
-    const effectiveGovernance = await resolveEffectiveAttemptGovernance(
-      transactionDb,
-      context.partnerId,
-      lead.campaignId
-    );
-    const rule = resolveGovernanceForAttempt(effectiveGovernance.rule, channel);
-    const summary = normalizedText(input.summary);
-    assertAttemptGovernance(rule, { channel, summary });
-    const occurredAt = input.occurredAt ?? new Date();
-    const governancePreview = evaluateAttemptGovernance(rule, {
-      hasNote: Boolean(summary),
-      hasEvidence: false,
-    });
-    assertFollowUpApplicability({
-      governanceRequiresFollowUp: false,
-      resultPolicy: result.followUpPolicy,
-      hasFollowUp: Boolean(input.followUp),
-    });
-    const followUp = input.followUp
-      ? await createProvisionalFollowUp(
-          transactionDb,
-          context,
-          lead,
-          input.followUp
-        )
-      : null;
-    const timelinePayload = {
-      channel,
-      resultCode: result.code,
-      resultLabel: result.label,
-      resultCategory: result.category,
-      followUpId: followUp?.id ?? null,
-      governance: {
-        isComplete: governancePreview.isComplete,
-        evidencePending: !governancePreview.evidenceSatisfied,
-      },
-    };
-    const timelineEventId = await writeTimeline(transactionDb, {
-      partnerId: context.partnerId,
-      leadId: lead.id,
-      actorMembershipId,
-      type: "contact_attempted",
-      occurredAt,
-      payload: timelinePayload,
-    });
-    if (followUp) {
-      await bindFollowUpToOrigin(
+  const stagedEvidence: { value: PreparedPrivateEvidence | null } = {
+    value: null,
+  };
+  try {
+    const response = await db.transaction(async tx => {
+      const transactionDb = tx as unknown as V2Database;
+      const command = await startCommand(
         transactionDb,
         context,
-        lead.id,
-        followUp.id,
-        timelineEventId
+        "register_attempt",
+        input.requestKey
       );
-      await recalculateNextFollowUp(transactionDb, context.partnerId, lead.id);
-    }
-    const attemptInserted = await tx.insert(leadContactAttempts).values({
-      partnerId: context.partnerId,
-      leadId: lead.id,
-      actorMembershipId,
-      timelineEventId,
-      channel,
-      resultId: result.id,
-      resultCode: result.code,
-      resultLabel: result.label,
-      resultCategory: result.category,
-      summary,
-      occurredAt,
-    });
-    const attemptId = insertedId(
-      attemptInserted,
-      "Não foi possível registrar a tentativa"
-    );
-    await updateAttemptActivity(transactionDb, context, lead, occurredAt);
-    const governanceState = await writeAttemptGovernance(transactionDb, {
-      context,
-      leadId: lead.id,
-      timelineEventId,
-      source: effectiveGovernance.source,
-      rule,
-      hasNote: Boolean(summary),
-    });
-    await completeCommand(
-      transactionDb,
-      context,
-      "register_attempt",
-      command.requestKey,
-      timelineEventId
-    );
-    const updatedLead = await loadLead(transactionDb, context, lead.id);
-    const nextAction = await deriveOperationalNextAction(
-      transactionDb,
-      context.partnerId,
-      lead.id
-    );
-    return operationResponse({
-      operation: "register_attempt",
-      lead: updatedLead,
-      timelineEvent: {
-        id: timelineEventId,
+      if (command.existing) {
+        return replayCompletedCommand(transactionDb, context, command.existing);
+      }
+
+      const lead = await loadLead(transactionDb, context, input.leadId);
+      await assertLeadScope(transactionDb, context, lead, "operational");
+      await assertCampaignOperational(transactionDb, context, lead);
+      await assertLeadOpenForCommercialOperation(transactionDb, context, lead);
+      const channel = normalizedChannel(input.channel);
+      const result = await getActiveResult(
+        transactionDb,
+        context,
+        input.resultId,
+        "attempt"
+      );
+      const effectiveGovernance = await resolveEffectiveAttemptGovernance(
+        transactionDb,
+        context.partnerId,
+        lead.campaignId
+      );
+      const rule = resolveGovernanceForAttempt(
+        effectiveGovernance.rule,
+        channel
+      );
+      const summary = normalizedText(input.summary);
+      assertAttemptGovernance(rule, { channel, summary });
+      if (rule.evidenceRequired && !input.evidence) {
+        throw new LeadJourneyOperationError(
+          "EVIDENCE_REQUIRED",
+          "Adicione a evidência obrigatória para registrar esta tentativa"
+        );
+      }
+      if (input.evidence) {
+        stagedEvidence.value = await preparePrivateEvidence(
+          context.partnerId,
+          input.evidence,
+          rule
+        );
+      }
+      const occurredAt = input.occurredAt ?? new Date();
+      const governancePreview = evaluateAttemptGovernance(rule, {
+        hasNote: Boolean(summary),
+        hasEvidence: Boolean(stagedEvidence.value),
+      });
+      assertFollowUpApplicability({
+        governanceRequiresFollowUp: false,
+        resultPolicy: result.followUpPolicy,
+        hasFollowUp: Boolean(input.followUp),
+      });
+      const followUp = input.followUp
+        ? await createProvisionalFollowUp(
+            transactionDb,
+            context,
+            lead,
+            input.followUp
+          )
+        : null;
+      const timelinePayload = {
+        channel,
+        resultCode: result.code,
+        resultLabel: result.label,
+        resultCategory: result.category,
+        followUpId: followUp?.id ?? null,
+        governance: {
+          isComplete: governancePreview.isComplete,
+          evidencePending: !governancePreview.evidenceSatisfied,
+        },
+      };
+      const timelineEventId = await writeTimeline(transactionDb, {
+        partnerId: context.partnerId,
+        leadId: lead.id,
+        actorMembershipId,
         type: "contact_attempted",
         occurredAt,
         payload: timelinePayload,
-      },
-      governance: {
+      });
+      if (followUp) {
+        await bindFollowUpToOrigin(
+          transactionDb,
+          context,
+          lead.id,
+          followUp.id,
+          timelineEventId
+        );
+        await recalculateNextFollowUp(
+          transactionDb,
+          context.partnerId,
+          lead.id
+        );
+      }
+      const attemptInserted = await tx.insert(leadContactAttempts).values({
+        partnerId: context.partnerId,
+        leadId: lead.id,
+        actorMembershipId,
         timelineEventId,
-        ...governanceState,
-        followUpSatisfied: true,
-      },
-      followUp,
-      conversion: null,
-      nextAction,
+        channel,
+        resultId: result.id,
+        resultCode: result.code,
+        resultLabel: result.label,
+        resultCategory: result.category,
+        summary,
+        occurredAt,
+      });
+      const attemptId = insertedId(
+        attemptInserted,
+        "Não foi possível registrar a tentativa"
+      );
+      await updateAttemptActivity(transactionDb, context, lead, occurredAt);
+      const governanceState = await writeAttemptGovernance(transactionDb, {
+        context,
+        leadId: lead.id,
+        timelineEventId,
+        source: effectiveGovernance.source,
+        rule,
+        hasNote: Boolean(summary),
+        hasEvidence: Boolean(stagedEvidence.value),
+      });
+      if (stagedEvidence.value) {
+        const preparedEvidence = stagedEvidence.value;
+        const evidenceInserted = await tx.insert(leadEvidences).values({
+          partnerId: context.partnerId,
+          leadId: lead.id,
+          timelineEventId,
+          uploadedByMembershipId: actorMembershipId,
+          storageProvider: preparedEvidence.storageProvider,
+          storageKey: preparedEvidence.storageKey,
+          storageStatus: "available",
+          fileName: preparedEvidence.fileName,
+          mimeType: preparedEvidence.mimeType,
+          sizeBytes: preparedEvidence.sizeBytes,
+          checksum: preparedEvidence.checksum,
+        });
+        const evidenceId = insertedId(
+          evidenceInserted,
+          "Não foi possível vincular a evidência à tentativa"
+        );
+        await writeV2Audit(transactionDb, {
+          partnerId: context.partnerId,
+          actorUserId: context.userId,
+          actorMembershipId,
+          action: "lead_evidence_uploaded",
+          entityType: "lead_evidence",
+          entityId: evidenceId,
+          metadata: evidenceAuditMetadata({
+            leadId: lead.id,
+            timelineEventId,
+            mimeType: preparedEvidence.mimeType,
+            sizeBytes: preparedEvidence.sizeBytes,
+            checksum: preparedEvidence.checksum,
+          }),
+        });
+      }
+      await completeCommand(
+        transactionDb,
+        context,
+        "register_attempt",
+        command.requestKey,
+        timelineEventId
+      );
+      const updatedLead = await loadLead(transactionDb, context, lead.id);
+      const nextAction = await deriveOperationalNextAction(
+        transactionDb,
+        context.partnerId,
+        lead.id
+      );
+      return operationResponse({
+        operation: "register_attempt",
+        lead: updatedLead,
+        timelineEvent: {
+          id: timelineEventId,
+          type: "contact_attempted",
+          occurredAt,
+          payload: timelinePayload,
+        },
+        governance: {
+          timelineEventId,
+          ...governanceState,
+          followUpSatisfied: true,
+        },
+        followUp,
+        conversion: null,
+        nextAction,
+      });
     });
-  });
+    stagedEvidence.value = null;
+    return response;
+  } catch (error) {
+    await stagedEvidence.value?.cleanup().catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function recordEffectiveContact(

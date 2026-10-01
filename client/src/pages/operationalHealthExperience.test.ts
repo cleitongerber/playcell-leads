@@ -13,10 +13,13 @@ describe("operational health experience contract", () => {
   it("uses one backend drill-down source for every health and evidence metric", () => {
     expect(dashboard).toContain("analytics.healthDetails.useQuery");
     expect(dashboard).toContain("evidence_required_pending");
+    expect(dashboard).toContain("attempt_evidence_required_pending");
     expect(dashboard).toContain("currentV2Path()");
     expect(analytics).toContain("listAnalyticsHealthDetails");
     expect(analytics).toContain("queryEvidenceCoverage");
     expect(analytics).toContain('recordKind, "effective_contact"');
+    expect(analytics).toContain("leadContactAttempts");
+    expect(analytics).toContain("attemptCoverage");
   });
 
   it("keeps reports and CSV inputs aligned for evidence and follow-up filters", () => {
@@ -26,5 +29,6 @@ describe("operational health experience contract", () => {
     expect(reports).toContain("Exportar CSV");
     expect(analytics).toContain("documentaryStatus");
     expect(analytics).toContain("lastInteractionAt");
+    expect(analytics).toContain("report_attempt_evidence");
   });
 });

@@ -303,6 +303,10 @@ const analyticsHealthDetailInput = analyticsFiltersInput.extend({
     "evidence_with",
     "evidence_without",
     "evidence_required_pending",
+    "attempt_evidence_eligible",
+    "attempt_evidence_with",
+    "attempt_evidence_without",
+    "attempt_evidence_required_pending",
   ]),
   page: z.number().int().min(1).default(1),
   pageSize: z.number().int().min(1).max(100).default(25),
@@ -690,6 +694,15 @@ export const v2FoundationRouter = v2Router({
           summary: z.string().max(5_000).nullable().optional(),
           occurredAt: z.coerce.date().optional(),
           followUp: operationalFollowUpInput.nullable().optional(),
+          evidence: z
+            .object({
+              fileName: z.string().min(1).max(255),
+              mimeType: z.string().min(1).max(128),
+              // 10 MiB is the absolute binary limit plus Base64 encoding.
+              base64: z.string().min(4).max(14_000_000),
+            })
+            .nullable()
+            .optional(),
           requestKey: z.string().min(8).max(96),
         })
       )

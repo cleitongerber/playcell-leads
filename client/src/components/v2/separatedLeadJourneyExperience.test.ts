@@ -40,7 +40,7 @@ describe("016.4 unified lead journey experience contract", () => {
     expect(workspace).toContain("Conseguiu falar com o cliente?");
     expect(workspace).toContain("Sim, registrar tratativa");
     expect(workspace).toContain("Não, registrar tentativa");
-    expect(workspace).toContain("A tentativa será registrada primeiro");
+    expect(workspace).toContain("Registre uma ação realizada sem afirmar");
   });
 
   it("keeps pending evidence and terminal residual follow-ups visible without creating a false next action", () => {
@@ -78,9 +78,35 @@ describe("016.4 unified lead journey experience contract", () => {
     expect(evidenceUploader).toContain("upload.mutateAsync");
     expect(evidenceUploader).toContain("leadId,");
     expect(evidenceUploader).toContain("timelineEventId,");
-    expect(evidenceUploader).toContain("base64: await readFileAsBase64(file)");
+    expect(evidenceUploader).toContain(
+      "base64: await readEvidenceFileAsBase64(file)"
+    );
     expect(evidenceUploader).toContain("toast.error(");
     expect(evidenceUploader).toContain("Enviar evidência");
+  });
+
+  it("requires a locally selected attempt evidence before the new operation is persisted", () => {
+    const attemptDialog = workspace.slice(
+      workspace.indexOf("open={attemptOpen}"),
+      workspace.indexOf("open={treatmentOpen}")
+    );
+    const attemptSubmit = workspace.slice(
+      workspace.indexOf("const submitAttempt"),
+      workspace.indexOf("const submitTreatment")
+    );
+    expect(attemptDialog).toContain("Evidência obrigatória *");
+    expect(attemptDialog).toContain("attemptEvidenceInputRef.current?.click()");
+    expect(attemptDialog).toContain("Arquivo selecionado:");
+    expect(attemptDialog).toContain("Remover");
+    expect(attemptDialog).toContain("!attemptEvidence");
+    expect(attemptSubmit).toContain(
+      "readEvidenceFileAsBase64(attemptEvidence)"
+    );
+    expect(attemptSubmit).toContain("evidence,");
+    expect(attemptSubmit).toContain(
+      "Adicione a evidência obrigatória para registrar esta tentativa"
+    );
+    expect(attemptDialog).not.toContain("evidences.upload.useMutation");
   });
 
   it("keeps the mobile workspace constrained, touch-friendly and progressively disclosed", () => {
