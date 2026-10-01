@@ -106,6 +106,13 @@
       "when": 1790769600000,
       "tag": "0014_v2_pilot_user_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1790866454000,
+      "tag": "0015_v2_management_viewer_scopes",
+      "breakpoints": true
     }
   ]
 }

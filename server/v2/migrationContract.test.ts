@@ -316,4 +316,25 @@ describe("V2 migration tenant-key contract", () => {
       )?.enumValues
     ).toEqual(["all", "specific"]);
   });
+
+  it("registers the Management scope migration in the official Drizzle ledger", () => {
+    const journal = JSON.parse(
+      readFileSync(
+        resolve(process.cwd(), "drizzle-v2/meta/_journal.json"),
+        "utf8"
+      )
+    ) as { entries: Array<{ idx: number; tag: string; when: number }> };
+    const entry = journal.entries.find(
+      item => item.tag === "0015_v2_management_viewer_scopes"
+    );
+    const prior = journal.entries.find(
+      item => item.tag === "0014_v2_pilot_user_readiness"
+    );
+
+    expect(entry).toMatchObject({
+      idx: 15,
+      tag: "0015_v2_management_viewer_scopes",
+    });
+    expect(entry?.when).toBeGreaterThan(prior?.when ?? 0);
+  });
 });
