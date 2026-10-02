@@ -122,6 +122,7 @@ describe("016.4 unified lead journey experience contract", () => {
     expect(workspace).toContain("allowedResults");
     expect(workspace).toContain("treatmentResultItems");
     expect(treatmentDialog).toContain("items={treatmentResultItems}");
+    expect(treatmentDialog).toContain("treatment.resultId &&");
     expect(treatmentDialog).toContain("Carregando resultados permitidos");
     expect(treatmentDialog).toContain(
       "Nenhum resultado está habilitado para este canal"

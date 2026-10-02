@@ -55,6 +55,10 @@ describe("016.4 unified journey service contract", () => {
     expect(requirements).toContain("allowedResultIds");
     expect(requirements).toContain("allowedResults");
     expect(requirements).toContain("filterAllowedContactOutcomes");
+    expect(requirements).toContain(
+      'input.operationKind !== "effective_contact" || Boolean(result)'
+    );
+    expect(requirements).toContain('? { required: false, allowed: false }');
     expect(requirements).toContain("finalStatusId");
     expect(requirements).toContain("canOverrideSuggestedStatus");
     expect(router).toContain("operationRequirements: v2PartnerProcedure");

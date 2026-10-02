@@ -492,16 +492,12 @@ export async function getLeadOperationRequirements(
           resultPolicy: result.followUpPolicy,
           finalStatusIsTerminal: finalStatus?.isTerminal ?? false,
         })
-      : {
-          required:
-            input.operationKind === "effective_contact"
-              ? governanceFollowUpRequired
-              : false,
-          allowed:
-            input.operationKind === "attempt"
-              ? result?.followUpPolicy !== "not_applicable"
-              : governanceFollowUpRequired,
-        };
+      : input.operationKind === "effective_contact"
+        ? { required: false, allowed: false }
+        : {
+            required: false,
+            allowed: result?.followUpPolicy !== "not_applicable",
+          };
   const canOverrideSuggestedStatus = Boolean(
     input.operationKind === "effective_contact" &&
       result?.statusPolicy === "suggest" &&
@@ -531,7 +527,13 @@ export async function getLeadOperationRequirements(
       })) ?? null,
     requirements: {
       summaryRequired: rule.noteRequired,
-      evidenceRequired: rule.evidenceRequired,
+      // A treatment result is the decision point for the operational form.
+      // Keep channel/campaign governance enforced by the command, but do not
+      // surface an obligation in the form before an outcome is selected.
+      evidenceRequired:
+        input.operationKind !== "effective_contact" || Boolean(result)
+          ? rule.evidenceRequired
+          : false,
       followUp: {
         required: effectiveContactFollowUp.required,
         allowed: effectiveContactFollowUp.allowed,

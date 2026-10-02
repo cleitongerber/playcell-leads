@@ -1951,7 +1951,12 @@ export function V2SeparatedLeadJourney() {
                     channel,
                     resultId: "",
                     finalStatusId: "",
+                    followUpDueAt: "",
+                    followUpNote: "",
                   }));
+                  setTreatmentEvidence(null);
+                  if (treatmentEvidenceInputRef.current)
+                    treatmentEvidenceInputRef.current.value = "";
                   setTreatmentFollowUpOpen(false);
                   setTreatmentRequestKey(null);
                   treatmentRequestKeyRef.current = null;
@@ -1979,7 +1984,12 @@ export function V2SeparatedLeadJourney() {
                     ...current,
                     resultId,
                     finalStatusId: "",
+                    followUpDueAt: "",
+                    followUpNote: "",
                   }));
+                  setTreatmentEvidence(null);
+                  if (treatmentEvidenceInputRef.current)
+                    treatmentEvidenceInputRef.current.value = "";
                   setTreatmentFollowUpOpen(false);
                   setTreatmentRequestKey(null);
                   treatmentRequestKeyRef.current = null;
@@ -2010,139 +2020,148 @@ export function V2SeparatedLeadJourney() {
                 placeholder="Registre o que foi tratado com o cliente"
               />
             </div>
-            {(treatmentRequirements.data as FormRequirements | undefined)
-              ?.status.suggested && (
-              <div className="rounded-md border border-brand-secondary/25 bg-brand-accent/5 p-3">
-                <Label htmlFor="treatment-status">
-                  Situação após esta tratativa
-                </Label>
-                {(treatmentRequirements.data as FormRequirements).status
-                  .policy === "require" ||
-                !(treatmentRequirements.data as FormRequirements).status
-                  .canOverrideSuggestedStatus ? (
-                  <p className="mt-2 text-sm font-medium">
-                    {
-                      (treatmentRequirements.data as FormRequirements).status
-                        .suggested?.label
-                    }
-                  </p>
-                ) : (
-                  <Select
-                    value={treatment.finalStatusId}
-                    onValueChange={finalStatusId => {
-                      setTreatment(current => ({ ...current, finalStatusId }));
+            {treatment.resultId &&
+              (treatmentRequirements.data as FormRequirements | undefined)
+                ?.status.suggested && (
+                <div className="rounded-md border border-brand-secondary/25 bg-brand-accent/5 p-3">
+                  <Label htmlFor="treatment-status">
+                    Situação após esta tratativa
+                  </Label>
+                  {(treatmentRequirements.data as FormRequirements).status
+                    .policy === "require" ||
+                  !(treatmentRequirements.data as FormRequirements).status
+                    .canOverrideSuggestedStatus ? (
+                    <p className="mt-2 text-sm font-medium">
+                      {
+                        (treatmentRequirements.data as FormRequirements).status
+                          .suggested?.label
+                      }
+                    </p>
+                  ) : (
+                    <Select
+                      value={treatment.finalStatusId}
+                      onValueChange={finalStatusId => {
+                        setTreatment(current => ({
+                          ...current,
+                          finalStatusId,
+                        }));
+                        setTreatmentRequestKey(null);
+                        treatmentRequestKeyRef.current = null;
+                      }}
+                    >
+                      <SelectTrigger id="treatment-status" className="mt-2">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(
+                          (treatmentRequirements.data as FormRequirements)
+                            .statuses ?? []
+                        ).map((status: { id: number; label: string }) => (
+                          <SelectItem key={status.id} value={String(status.id)}>
+                            {status.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {(treatmentRequirements.data as FormRequirements).result
+                    ?.conversionMode === "eligible" && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Ao salvar, a conversão comercial será registrada junto com
+                      esta tratativa.
+                    </p>
+                  )}
+                </div>
+              )}
+            {treatment.resultId &&
+              (treatmentRequirements.data as FormRequirements | undefined)
+                ?.requirements.evidenceRequired && (
+                <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+                  <input
+                    ref={treatmentEvidenceInputRef}
+                    type="file"
+                    className="sr-only"
+                    aria-label="Selecionar evidência obrigatória da tratativa"
+                    accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+                    onChange={event => {
+                      setTreatmentEvidence(event.target.files?.[0] ?? null);
                       setTreatmentRequestKey(null);
                       treatmentRequestKeyRef.current = null;
                     }}
-                  >
-                    <SelectTrigger id="treatment-status" className="mt-2">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(
-                        (treatmentRequirements.data as FormRequirements)
-                          .statuses ?? []
-                      ).map((status: { id: number; label: string }) => (
-                        <SelectItem key={status.id} value={String(status.id)}>
-                          {status.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                {(treatmentRequirements.data as FormRequirements).result
-                  ?.conversionMode === "eligible" && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Ao salvar, a conversão comercial será registrada junto com
-                    esta tratativa.
+                  />
+                  <p className="font-medium">Evidência obrigatória *</p>
+                  <p className="mt-1 text-muted-foreground">
+                    Anexe o arquivo antes de registrar a tratativa. Ele será
+                    vinculado somente ao evento desta tratativa.
                   </p>
-                )}
-              </div>
-            )}
-            {(treatmentRequirements.data as FormRequirements | undefined)
-              ?.requirements.evidenceRequired && (
-              <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
-                <input
-                  ref={treatmentEvidenceInputRef}
-                  type="file"
-                  className="sr-only"
-                  aria-label="Selecionar evidência obrigatória da tratativa"
-                  accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
-                  onChange={event => {
-                    setTreatmentEvidence(event.target.files?.[0] ?? null);
-                    setTreatmentRequestKey(null);
-                    treatmentRequestKeyRef.current = null;
-                  }}
-                />
-                <p className="font-medium">Evidência obrigatória *</p>
-                <p className="mt-1 text-muted-foreground">
-                  Anexe o arquivo antes de registrar a tratativa. Ele será
-                  vinculado somente ao evento desta tratativa.
-                </p>
-                {treatmentEvidence ? (
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <p
-                      className="min-w-0 flex-1 truncate text-sm"
-                      aria-live="polite"
-                    >
-                      Arquivo selecionado:{" "}
-                      <strong>{treatmentEvidence.name}</strong>
-                    </p>
+                  {treatmentEvidence ? (
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <p
+                        className="min-w-0 flex-1 truncate text-sm"
+                        aria-live="polite"
+                      >
+                        Arquivo selecionado:{" "}
+                        <strong>{treatmentEvidence.name}</strong>
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          treatmentEvidenceInputRef.current?.click()
+                        }
+                      >
+                        Trocar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setTreatmentEvidence(null);
+                          setTreatmentRequestKey(null);
+                          treatmentRequestKeyRef.current = null;
+                          if (treatmentEvidenceInputRef.current)
+                            treatmentEvidenceInputRef.current.value = "";
+                        }}
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  ) : (
                     <Button
+                      className="mt-3"
                       type="button"
                       size="sm"
                       variant="outline"
                       onClick={() => treatmentEvidenceInputRef.current?.click()}
                     >
-                      Trocar
+                      <FileUp className="mr-2 size-4" /> Anexar evidência
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setTreatmentEvidence(null);
-                        setTreatmentRequestKey(null);
-                        treatmentRequestKeyRef.current = null;
-                        if (treatmentEvidenceInputRef.current)
-                          treatmentEvidenceInputRef.current.value = "";
-                      }}
-                    >
-                      Remover
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    className="mt-3"
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => treatmentEvidenceInputRef.current?.click()}
-                  >
-                    <FileUp className="mr-2 size-4" /> Anexar evidência
-                  </Button>
-                )}
-              </div>
-            )}
-            {((treatmentRequirements.data as FormRequirements | undefined)
-              ?.requirements.followUp.required ||
-              treatmentFollowUpOpen) && (
-              <FollowUpFields
-                prefix="treatment-follow-up"
-                value={treatment}
-                required={Boolean(
-                  (treatmentRequirements.data as FormRequirements | undefined)
-                    ?.requirements.followUp.required
-                )}
-                onChange={patch => {
-                  setTreatment(current => ({ ...current, ...patch }));
-                  setTreatmentRequestKey(null);
-                  treatmentRequestKeyRef.current = null;
-                }}
-              />
-            )}
-            {(treatmentRequirements.data as FormRequirements | undefined)
-              ?.requirements.followUp.allowed &&
+                  )}
+                </div>
+              )}
+            {treatment.resultId &&
+              ((treatmentRequirements.data as FormRequirements | undefined)
+                ?.requirements.followUp.required ||
+                treatmentFollowUpOpen) && (
+                <FollowUpFields
+                  prefix="treatment-follow-up"
+                  value={treatment}
+                  required={Boolean(
+                    (treatmentRequirements.data as FormRequirements | undefined)
+                      ?.requirements.followUp.required
+                  )}
+                  onChange={patch => {
+                    setTreatment(current => ({ ...current, ...patch }));
+                    setTreatmentRequestKey(null);
+                    treatmentRequestKeyRef.current = null;
+                  }}
+                />
+              )}
+            {treatment.resultId &&
+              (treatmentRequirements.data as FormRequirements | undefined)
+                ?.requirements.followUp.allowed &&
               !(treatmentRequirements.data as FormRequirements | undefined)
                 ?.requirements.followUp.required &&
               !treatmentFollowUpOpen && (
