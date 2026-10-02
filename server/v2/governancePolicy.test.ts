@@ -6,6 +6,7 @@ import {
   defaultGovernanceRule,
   evaluateAttemptGovernance,
   evaluateTreatmentGovernance,
+  filterAllowedContactOutcomes,
   isContactOutcomeAllowed,
   isAttemptEvidenceRequiredForChannel,
   isEvidenceRequiredForChannel,
@@ -80,6 +81,20 @@ describe("V2 governance policy", () => {
         followUpDueAt: undefined,
       })
     ).toThrow("follow-up");
+  });
+
+  it("filters the treatment catalogue by stable outcome code and leaves an unrestricted rule intact", () => {
+    const catalogue = [
+      { id: 1, code: "contacted", label: "Cliente respondeu" },
+      { id: 2, code: "sale_completed", label: "Venda realizada" },
+    ];
+
+    expect(filterAllowedContactOutcomes(strictRule, catalogue)).toEqual([
+      catalogue[0],
+    ]);
+    expect(
+      filterAllowedContactOutcomes(defaultGovernanceRule, catalogue)
+    ).toEqual(catalogue);
   });
 
   it("uses a campaign override only when one exists", () => {

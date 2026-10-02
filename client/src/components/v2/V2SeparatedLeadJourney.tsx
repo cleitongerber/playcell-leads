@@ -86,6 +86,7 @@ type FormRequirements = {
   blockedReason: string | null;
   allowedChannels: string[] | null;
   allowedResultIds: number[] | null;
+  allowedResults: Array<{ id: number; label: string }> | null;
   requirements: {
     summaryRequired: boolean;
     evidenceRequired: boolean;
@@ -218,17 +219,21 @@ function ResultField({
   id,
   value,
   items,
+  disabled = false,
+  message,
   onChange,
 }: {
   id: string;
   value: string;
   items: Array<{ id: number; label: string }>;
+  disabled?: boolean;
+  message?: string | null;
   onChange: (value: string) => void;
 }) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>Resultado</Label>
-      <Select value={value} onValueChange={onChange}>
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
         <SelectTrigger id={id}>
           <SelectValue placeholder="Selecione o resultado" />
         </SelectTrigger>
@@ -240,6 +245,7 @@ function ResultField({
           ))}
         </SelectContent>
       </Select>
+      {message && <p className="text-xs text-muted-foreground">{message}</p>}
     </div>
   );
 }
@@ -355,10 +361,6 @@ export function V2SeparatedLeadJourney() {
     { interactionKind: "attempt" },
     { enabled: Number.isInteger(id) && id > 0 }
   );
-  const treatmentResults = v2trpc.interactionResults.available.useQuery(
-    { interactionKind: "effective_contact" },
-    { enabled: Number.isInteger(id) && id > 0 }
-  );
 
   const [attemptOpen, setAttemptOpen] = useState(false);
   const [treatmentOpen, setTreatmentOpen] = useState(false);
@@ -425,12 +427,8 @@ export function V2SeparatedLeadJourney() {
     const requirements = treatmentRequirements.data as
       | FormRequirements
       | undefined;
-    const allowedResultIds = requirements?.allowedResultIds;
-    if (!allowedResultIds) return [];
-    return (treatmentResults.data ?? []).filter(result =>
-      allowedResultIds.includes(result.id)
-    );
-  }, [treatmentRequirements.data, treatmentResults.data]);
+    return requirements?.allowedResults ?? [];
+  }, [treatmentRequirements.data]);
 
   useEffect(() => {
     const requirements = treatmentRequirements.data as
@@ -1963,6 +1961,18 @@ export function V2SeparatedLeadJourney() {
                 id="treatment-result"
                 value={treatment.resultId}
                 items={treatmentResultItems}
+                disabled={
+                  treatmentRequirements.isLoading ||
+                  !treatmentRequirements.data ||
+                  treatmentResultItems.length === 0
+                }
+                message={
+                  treatmentRequirements.isLoading || !treatmentRequirements.data
+                    ? "Carregando resultados permitidos…"
+                    : treatmentResultItems.length === 0
+                      ? "Nenhum resultado está habilitado para este canal. Revise a governança da campanha."
+                      : null
+                }
                 onChange={resultId => {
                   lastSuggestedResultId.current = null;
                   setTreatment(current => ({

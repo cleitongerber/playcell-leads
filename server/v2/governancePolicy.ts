@@ -99,6 +99,19 @@ export function isContactOutcomeAllowed(
   return !outcomes || outcomes.has(outcome.trim().toLowerCase());
 }
 
+/**
+ * Keeps catalogue presentation and command validation on the same stable
+ * outcome-code semantics. Labels are intentionally never used as policy keys.
+ */
+export function filterAllowedContactOutcomes<T extends { code: string }>(
+  rule: Pick<GovernanceRule, "allowedOutcomes">,
+  candidates: readonly T[]
+) {
+  return candidates.filter(candidate =>
+    isContactOutcomeAllowed(rule, candidate.code)
+  );
+}
+
 export function isEvidenceRequiredForChannel(
   rule: GovernanceRule,
   channel: string

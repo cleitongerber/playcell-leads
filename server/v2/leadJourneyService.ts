@@ -27,7 +27,7 @@ import {
   assertContactGovernance,
   evaluateAttemptGovernance,
   evaluateTreatmentGovernance,
-  isContactOutcomeAllowed,
+  filterAllowedContactOutcomes,
   resolveGovernanceForAttempt,
   resolveGovernanceForContact,
   type AttemptGovernanceRule,
@@ -437,20 +437,19 @@ export async function getLeadOperationRequirements(
     ? await getActiveResult(db, context, input.resultId, input.operationKind)
     : null;
 
-  const allowedResultIds =
+  const allowedResults =
     input.operationKind === "effective_contact"
-      ? (
+      ? filterAllowedContactOutcomes(
+          rule as GovernanceRule,
           await listPartnerInteractionResults(
             db,
             context.partnerId,
             "effective_contact"
           )
         )
-          .filter(candidate =>
-            isContactOutcomeAllowed(rule as GovernanceRule, candidate.code)
-          )
-          .map(candidate => candidate.id)
       : null;
+  const allowedResultIds =
+    allowedResults?.map(candidate => candidate.id) ?? null;
 
   let suggestedStatus: LeadStatusRow | null = null;
   if (
@@ -525,6 +524,11 @@ export async function getLeadOperationRequirements(
             : null,
     allowedChannels: rule.allowedChannels,
     allowedResultIds,
+    allowedResults:
+      allowedResults?.map(candidate => ({
+        id: candidate.id,
+        label: candidate.label,
+      })) ?? null,
     requirements: {
       summaryRequired: rule.noteRequired,
       evidenceRequired: rule.evidenceRequired,
