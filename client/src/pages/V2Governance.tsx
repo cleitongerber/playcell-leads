@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   blankGovernanceRule,
   GovernanceRuleEditor,
+  hasInvalidGovernanceRuleSelection,
   governanceFormToInput,
   governanceRuleToForm,
   type GovernanceRuleFormValue,
@@ -20,6 +21,14 @@ export default function V2Governance() {
       access.data?.role === "super_admin" ||
       access.data?.role === "partner_admin",
   });
+  const treatmentResults = v2trpc.interactionResults.list.useQuery(
+    { interactionKind: "effective_contact" },
+    {
+      enabled:
+        access.data?.role === "super_admin" ||
+        access.data?.role === "partner_admin",
+    }
+  );
   const [form, setForm] =
     useState<GovernanceRuleFormValue>(blankGovernanceRule);
   useEffect(() => {
@@ -37,7 +46,16 @@ export default function V2Governance() {
     access.data?.role === "partner_admin";
   return (
     <main className="v2-page space-y-6">
-      <V2PageHeader eyebrow="Administração" title="Governança operacional" description="Defina os requisitos padrão de qualidade das tratativas deste parceiro. Uma campanha pode usar este padrão ou declarar seu próprio override." actions={<Link href="/v2/admin"><Button variant="outline">← Administração</Button></Link>} />
+      <V2PageHeader
+        eyebrow="Administração"
+        title="Governança operacional"
+        description="Defina os requisitos padrão de qualidade das tratativas deste parceiro. Uma campanha pode usar este padrão ou declarar seu próprio override."
+        actions={
+          <Link href="/v2/admin">
+            <Button variant="outline">← Administração</Button>
+          </Link>
+        }
+      />
       <Card>
         <CardHeader>
           <CardTitle>Regra padrão do parceiro</CardTitle>
@@ -49,13 +67,25 @@ export default function V2Governance() {
             </p>
           ) : (
             <>
-              <GovernanceRuleEditor value={form} onChange={setForm} />
+              <GovernanceRuleEditor
+                value={form}
+                outcomes={treatmentResults.data ?? []}
+                onChange={setForm}
+                disabled={treatmentResults.isLoading}
+              />
               <p className="text-xs text-muted-foreground">
                 Print de WhatsApp é tratado como evidência anexada; o sistema
                 não o interpreta como comprovação automática de uma conversa.
               </p>
               <Button
-                disabled={save.isPending}
+                disabled={
+                  save.isPending ||
+                  treatmentResults.isLoading ||
+                  hasInvalidGovernanceRuleSelection(
+                    form,
+                    treatmentResults.data ?? []
+                  )
+                }
                 onClick={() => save.mutate(governanceFormToInput(form))}
               >
                 Salvar regra padrão

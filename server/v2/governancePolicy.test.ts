@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   assertAttemptGovernance,
+  assertAllowedOutcomeCodes,
+  assertSupportedGovernanceChannels,
   defaultAttemptGovernanceRule,
   assertContactGovernance,
   defaultGovernanceRule,
@@ -95,6 +97,40 @@ describe("V2 governance policy", () => {
     expect(
       filterAllowedContactOutcomes(defaultGovernanceRule, catalogue)
     ).toEqual(catalogue);
+  });
+
+  it("accepts only active structured outcome codes in a restricted governance rule", () => {
+    const rule = {
+      ...defaultGovernanceRule,
+      allowedOutcomes: ["sale_completed"],
+    };
+    expect(() =>
+      assertAllowedOutcomeCodes(rule, ["interested", "sale_completed"])
+    ).not.toThrow();
+    expect(() =>
+      assertAllowedOutcomeCodes(
+        { ...rule, allowedOutcomes: ["Venda realizada"] },
+        ["sale_completed"]
+      )
+    ).toThrow("Resultado permitido não reconhecido");
+    expect(() => assertAllowedOutcomeCodes(rule, ["interested"])).toThrow(
+      "Resultado permitido não reconhecido"
+    );
+  });
+
+  it("accepts only the channels supported by the operational journey", () => {
+    expect(() =>
+      assertSupportedGovernanceChannels({
+        allowedChannels: ["whatsapp", "ligação"],
+        evidenceRequiredChannels: ["whatsapp"],
+      })
+    ).not.toThrow();
+    expect(() =>
+      assertSupportedGovernanceChannels({
+        allowedChannels: ["telefone"],
+        evidenceRequiredChannels: null,
+      })
+    ).toThrow("Canal de governança não reconhecido");
   });
 
   it("uses a campaign override only when one exists", () => {

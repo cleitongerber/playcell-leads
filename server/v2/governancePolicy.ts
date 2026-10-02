@@ -1,3 +1,5 @@
+import { governanceChannelCodes } from "../../shared/governanceChannels";
+
 export const SUPPORTED_EVIDENCE_MIME_TYPES = [
   "image/png",
   "image/jpeg",
@@ -70,7 +72,6 @@ export function selectEffectiveGovernance(
     ? { source: "campaign" as const, rule: campaignOverride }
     : { source: "partner" as const, rule: partnerRule };
 }
-
 export function selectEffectiveAttemptGovernance(
   partnerRule: AttemptGovernanceRule,
   campaignOverride: AttemptGovernanceRule | null
@@ -83,6 +84,44 @@ export function selectEffectiveAttemptGovernance(
 function normalizedSet(values: string[] | null | undefined) {
   if (!values?.length) return null;
   return new Set(values.map(value => value.trim().toLowerCase()));
+}
+
+/**
+ * Governance is configured from a fixed operational channel catalogue. This
+ * protects the policy from accepting labels, aliases and free text which the
+ * lead journey cannot resolve consistently.
+ */
+export function assertSupportedGovernanceChannels(rule: {
+  allowedChannels: string[] | null;
+  evidenceRequiredChannels: string[] | null;
+}) {
+  const supported = new Set<string>(governanceChannelCodes);
+  const invalid = [
+    ...(rule.allowedChannels ?? []),
+    ...(rule.evidenceRequiredChannels ?? []),
+  ].filter(channel => !supported.has(channel));
+  if (invalid.length) {
+    throw new Error(
+      `Canal de governança não reconhecido: ${Array.from(new Set(invalid)).join(", ")}`
+    );
+  }
+}
+
+/** Validates a restricted treatment outcome policy against its active catalogue. */
+export function assertAllowedOutcomeCodes(
+  rule: Pick<GovernanceRule, "allowedOutcomes">,
+  activeOutcomeCodes: readonly string[]
+) {
+  if (!rule.allowedOutcomes?.length) return;
+  const active = new Set(
+    activeOutcomeCodes.map(code => code.trim().toLowerCase())
+  );
+  const invalid = rule.allowedOutcomes.filter(code => !active.has(code));
+  if (invalid.length) {
+    throw new Error(
+      `Resultado permitido não reconhecido ou inativo: ${Array.from(new Set(invalid)).join(", ")}`
+    );
+  }
 }
 
 /**
@@ -144,7 +183,6 @@ export function resolveGovernanceForContact(
     evidenceRequiredChannels: null,
   };
 }
-
 /** Stores the channel-specific decision in the immutable attempt snapshot. */
 export function resolveGovernanceForAttempt(
   rule: AttemptGovernanceRule,

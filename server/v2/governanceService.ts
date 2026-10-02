@@ -8,6 +8,8 @@ import {
 import type { PartnerContext } from "./access";
 import { getV2Db, type V2Database } from "./database";
 import {
+  assertAllowedOutcomeCodes,
+  assertSupportedGovernanceChannels,
   defaultGovernanceRule,
   defaultAttemptGovernanceRule,
   normalizeAttemptGovernanceRule,
@@ -17,11 +19,30 @@ import {
   type AttemptGovernanceRule,
   type GovernanceRule,
 } from "./governancePolicy";
+import { listPartnerInteractionResults } from "./leadConfiguration";
 import { requirePdvAdministration } from "./operationalScope";
 import { writeV2Audit } from "./partnerService";
 
 type RuleRow = typeof partnerGovernanceRules.$inferSelect;
 type OverrideRow = typeof campaignGovernanceOverrides.$inferSelect;
+
+async function assertGovernanceRuleConfiguration(
+  db: V2Database,
+  partnerId: number,
+  rule: GovernanceRule
+) {
+  assertSupportedGovernanceChannels(rule);
+  if (!rule.allowedOutcomes?.length) return;
+  const activeResults = await listPartnerInteractionResults(
+    db,
+    partnerId,
+    "effective_contact"
+  );
+  assertAllowedOutcomeCodes(
+    rule,
+    activeResults.map(result => result.code)
+  );
+}
 
 function toStringList(value: unknown) {
   return Array.isArray(value) && value.every(item => typeof item === "string")
@@ -179,6 +200,11 @@ export async function updatePartnerGovernance(
   const rule = normalizeRule(input);
   await db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
+    await assertGovernanceRuleConfiguration(
+      transactionDb,
+      context.partnerId,
+      rule
+    );
     await tx
       .insert(partnerGovernanceRules)
       .values({ partnerId: context.partnerId, ...rule })
@@ -209,6 +235,7 @@ export async function updatePartnerAttemptGovernance(
   requirePdvAdministration(context);
   const db = await getV2Db();
   const rule = normalizeAttemptGovernanceRule(input);
+  assertSupportedGovernanceChannels(rule);
   await db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
     await tx
@@ -323,6 +350,11 @@ export async function setCampaignGovernance(
       return;
     }
     const rule = normalizeRule(input.rule);
+    await assertGovernanceRuleConfiguration(
+      transactionDb,
+      context.partnerId,
+      rule
+    );
     await tx
       .insert(campaignGovernanceOverrides)
       .values({
@@ -392,6 +424,7 @@ export async function setCampaignAttemptGovernance(
     }
 
     const rule = normalizeAttemptGovernanceRule(input.rule);
+    assertSupportedGovernanceChannels(rule);
     await tx
       .insert(campaignGovernanceOverrides)
       .values({

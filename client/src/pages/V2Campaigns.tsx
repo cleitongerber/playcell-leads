@@ -16,6 +16,7 @@ import {
 import {
   blankGovernanceRule,
   GovernanceRuleEditor,
+  hasInvalidGovernanceRuleSelection,
   governanceFormToInput,
   governanceRuleToForm,
   type GovernanceRuleFormValue,
@@ -327,6 +328,10 @@ export function V2CampaignDetail() {
   const campaignGovernance = v2trpc.governance.campaign.useQuery(
     { campaignId: id },
     { enabled: canManage && Number.isInteger(id) && id > 0 }
+  );
+  const treatmentResults = v2trpc.interactionResults.list.useQuery(
+    { interactionKind: "effective_contact" },
+    { enabled: canManage }
   );
   useEffect(() => {
     if (!campaignGovernance.data) return;
@@ -645,14 +650,14 @@ export function V2CampaignDetail() {
                 variant={governanceMode === "inherit" ? "default" : "outline"}
                 onClick={() => setGovernanceMode("inherit")}
               >
-                Usar padrão do parceiro
+                Usar regra padrão do parceiro
               </Button>
               <Button
                 size="sm"
                 variant={governanceMode === "override" ? "default" : "outline"}
                 onClick={() => setGovernanceMode("override")}
               >
-                Criar override
+                Usar regra específica desta campanha
               </Button>
             </div>
             {governanceMode === "inherit" ? (
@@ -663,11 +668,21 @@ export function V2CampaignDetail() {
             ) : (
               <GovernanceRuleEditor
                 value={governanceForm}
+                outcomes={treatmentResults.data ?? []}
                 onChange={setGovernanceForm}
+                disabled={treatmentResults.isLoading}
               />
             )}
             <Button
-              disabled={setCampaignGovernance.isPending}
+              disabled={
+                setCampaignGovernance.isPending ||
+                treatmentResults.isLoading ||
+                (governanceMode === "override" &&
+                  hasInvalidGovernanceRuleSelection(
+                    governanceForm,
+                    treatmentResults.data ?? []
+                  ))
+              }
               onClick={() =>
                 setCampaignGovernance.mutate({
                   campaignId: id,
