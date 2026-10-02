@@ -87,6 +87,38 @@ describe("V2 timeline presentation", () => {
     });
   });
 
+  it("explains why completed and cancelled follow-ups left the pending queue", () => {
+    expect(
+      presentTimelineEvent("follow_up_completed", {
+        followUpId: 12,
+        completionKind: "attempt",
+        completionTimelineEventId: 44,
+        dueAt: "2026-10-02T15:00:00.000Z",
+      })
+    ).toEqual({
+      title: "Follow-up concluído",
+      description:
+        "Tentativa de contato registrada. Agendamento original: 02/10/2026, 12:00.",
+    });
+    expect(
+      presentTimelineEvent("follow_up_completed", {
+        completionKind: "without_contact",
+        reason: "Tarefa duplicada.",
+      })
+    ).toEqual({
+      title: "Follow-up concluído",
+      description: "Concluído sem contato. Tarefa duplicada.",
+    });
+    expect(
+      presentTimelineEvent("follow_up_cancelled", {
+        reason: "Lead redistribuído.",
+      })
+    ).toEqual({
+      title: "Follow-up cancelado",
+      description: "Lead redistribuído.",
+    });
+  });
+
   it("keeps an unknown future event safe and readable", () => {
     expect(presentTimelineEvent("future_event", { internalId: 9 })).toEqual({
       title: "Evento registrado",

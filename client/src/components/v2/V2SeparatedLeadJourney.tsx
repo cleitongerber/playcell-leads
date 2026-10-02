@@ -1,5 +1,9 @@
 import { FollowUpCancellationDialog } from "@/components/v2/FollowUpCancellationDialog";
 import {
+  FollowUpCompletionDialog,
+  type FollowUpCompletionChoice,
+} from "@/components/v2/FollowUpCompletionDialog";
+import {
   LeadEvidenceUploader,
   readEvidenceFileAsBase64,
   type LeadEvidenceUploaderHandle,
@@ -384,6 +388,12 @@ export function V2SeparatedLeadJourney() {
     note: "",
   });
   const [followUpToCancel, setFollowUpToCancel] = useState<number | null>(null);
+  const [followUpToComplete, setFollowUpToComplete] = useState<number | null>(
+    null
+  );
+  const [completionFollowUpId, setCompletionFollowUpId] = useState<
+    number | null
+  >(null);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [adminStatusOpen, setAdminStatusOpen] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
@@ -401,6 +411,7 @@ export function V2SeparatedLeadJourney() {
   const attemptEvidenceInputRef = useRef<HTMLInputElement>(null);
   const treatmentEvidenceInputRef = useRef<HTMLInputElement>(null);
   const treatmentRequestKeyRef = useRef<string | null>(null);
+  const completionLinkHandled = useRef<string | null>(null);
 
   const attemptRequirements = v2trpc.leads.operationRequirements.useQuery(
     {
@@ -493,9 +504,13 @@ export function V2SeparatedLeadJourney() {
       setAttemptFollowUpOpen(false);
       setAttemptRequestKey(null);
       setAttemptOpen(false);
+      const completedFollowUpId = completionFollowUpId;
+      setCompletionFollowUpId(null);
       clearExternalPrompt(id);
       refresh();
-      if (hasPendingEvidence) {
+      if (completedFollowUpId) {
+        toast.success("Tentativa registrada e follow-up concluído.");
+      } else if (hasPendingEvidence) {
         toast.warning(
           "Tentativa registrada. A evidência continua pendente para este evento."
         );
@@ -520,9 +535,17 @@ export function V2SeparatedLeadJourney() {
       setTreatmentRequestKey(null);
       treatmentRequestKeyRef.current = null;
       setTreatmentOpen(false);
+      const completedFollowUpId = completionFollowUpId;
+      setCompletionFollowUpId(null);
       clearExternalPrompt(id);
       refresh();
-      if (result.conversion) {
+      if (completedFollowUpId) {
+        toast.success(
+          result.conversion
+            ? "Tratativa registrada, venda convertida e follow-up concluído."
+            : "Tratativa registrada e follow-up concluído."
+        );
+      } else if (result.conversion) {
         toast.success("Lead convertido. A venda foi registrada na tratativa.");
       } else if (hasPendingEvidence) {
         toast.warning(
@@ -554,6 +577,7 @@ export function V2SeparatedLeadJourney() {
   });
   const completeFollowUp = v2trpc.followUps.complete.useMutation({
     onSuccess: () => {
+      setFollowUpToComplete(null);
       refresh();
       toast.success("Follow-up concluído.");
     },
@@ -567,6 +591,22 @@ export function V2SeparatedLeadJourney() {
     },
     onError: error => toast.error(error.message),
   });
+  const startFollowUpCompletion = (
+    choice: Exclude<FollowUpCompletionChoice, "without_contact">
+  ) => {
+    if (!followUpToComplete) return;
+    setCompletionFollowUpId(followUpToComplete);
+    setFollowUpToComplete(null);
+    if (choice === "attempt") {
+      setAttempt(emptyAttempt());
+      setAttemptFollowUpOpen(false);
+      setAttemptOpen(true);
+      return;
+    }
+    setTreatment(emptyTreatment());
+    setTreatmentFollowUpOpen(false);
+    setTreatmentOpen(true);
+  };
   const downloadEvidence = v2trpc.evidences.download.useMutation({
     onSuccess: ({ url }) => window.open(url, "_blank", "noopener,noreferrer"),
     onError: error => toast.error(error.message),
@@ -695,6 +735,28 @@ export function V2SeparatedLeadJourney() {
       new Map((detail.data?.timeline ?? []).map(event => [event.id, event])),
     [detail.data?.timeline]
   );
+  const followUpConclusionById = useMemo(() => {
+    const conclusions = new Map<
+      number,
+      {
+        type: Parameters<typeof presentTimelineEvent>[0];
+        payloadJson: unknown;
+      }
+    >();
+    for (const event of detail.data?.timeline ?? []) {
+      if (
+        event.type !== "follow_up_completed" &&
+        event.type !== "follow_up_cancelled"
+      )
+        continue;
+      const followUpId = Number(
+        (event.payloadJson as Record<string, unknown> | null)?.followUpId
+      );
+      if (Number.isInteger(followUpId) && followUpId > 0)
+        conclusions.set(followUpId, event);
+    }
+    return conclusions;
+  }, [detail.data?.timeline]);
   const selectedEvidenceEventId = evidencePending[0]?.timelineEventId ?? null;
   const timeline = useMemo(
     () => [...(detail.data?.timeline ?? [])].reverse(),
@@ -715,6 +777,45 @@ export function V2SeparatedLeadJourney() {
   const followUpNeedsAttention =
     action?.kind === "complete_overdue_follow_up" ||
     action?.kind === "complete_today_follow_up";
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !canManageFollowUps) return;
+    const parameters = new URLSearchParams(window.location.search);
+    const followUpId = Number(parameters.get("completeFollowUpId"));
+    const completionAction = parameters.get("completionAction");
+    const intent = `${followUpId}:${completionAction ?? ""}`;
+    if (
+      !Number.isInteger(followUpId) ||
+      followUpId <= 0 ||
+      (completionAction !== "attempt" && completionAction !== "treatment") ||
+      completionLinkHandled.current === intent
+    ) {
+      return;
+    }
+    completionLinkHandled.current = intent;
+    if (!pendingFollowUps.some(followUp => followUp.id === followUpId)) {
+      toast.error("Este follow-up não está mais disponível para conclusão.");
+      return;
+    }
+    setCompletionFollowUpId(followUpId);
+    if (completionAction === "attempt") {
+      setAttempt(emptyAttempt());
+      setAttemptFollowUpOpen(false);
+      setAttemptOpen(true);
+    } else {
+      lastSuggestedResultId.current = null;
+      setTreatment(emptyTreatment());
+      setTreatmentFollowUpOpen(false);
+      setTreatmentOpen(true);
+    }
+    parameters.delete("completeFollowUpId");
+    parameters.delete("completionAction");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${parameters.size ? `?${parameters}` : ""}`
+    );
+  }, [canManageFollowUps, pendingFollowUps]);
 
   if (detail.isLoading || nextAction.isLoading) {
     return (
@@ -858,6 +959,7 @@ export function V2SeparatedLeadJourney() {
               }
             : null,
         evidence,
+        completeFollowUpId: completionFollowUpId,
         requestKey,
       });
     } catch (error) {
@@ -934,6 +1036,7 @@ export function V2SeparatedLeadJourney() {
             : null,
         evidence,
         expectedStatusId: lead.statusId,
+        completeFollowUpId: completionFollowUpId,
         requestKey,
       });
     } catch (error) {
@@ -1375,7 +1478,7 @@ export function V2SeparatedLeadJourney() {
                                 size="sm"
                                 disabled={completeFollowUp.isPending}
                                 onClick={() =>
-                                  completeFollowUp.mutate({ id: followUp.id })
+                                  setFollowUpToComplete(followUp.id)
                                 }
                               >
                                 Concluir
@@ -1470,57 +1573,69 @@ export function V2SeparatedLeadJourney() {
                   <ChevronDown className="size-4 text-muted-foreground" />
                 </summary>
                 <div className="mt-3 space-y-2 border-t border-border pt-3">
-                  {(detail.data?.followUps ?? []).map(item => (
-                    <div
-                      key={item.id}
-                      className="flex flex-col gap-2 rounded-md bg-muted/25 p-3 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant={
-                              item.status === "pending"
-                                ? "outline"
-                                : "secondary"
-                            }
-                          >
-                            {followUpStatusLabel(item.status)}
-                          </Badge>
-                          <span className="text-sm">
-                            {formatDateTime(item.dueAt)}
-                          </span>
+                  {(detail.data?.followUps ?? []).map(item => {
+                    const conclusion = followUpConclusionById.get(item.id);
+                    const conclusionPresentation = conclusion
+                      ? presentTimelineEvent(
+                          conclusion.type,
+                          conclusion.payloadJson
+                        )
+                      : null;
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex flex-col gap-2 rounded-md bg-muted/25 p-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                              variant={
+                                item.status === "pending"
+                                  ? "outline"
+                                  : "secondary"
+                              }
+                            >
+                              {followUpStatusLabel(item.status)}
+                            </Badge>
+                            <span className="text-sm">
+                              {formatDateTime(item.dueAt)}
+                            </span>
+                          </div>
+                          {item.note && (
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {item.note}
+                            </p>
+                          )}
+                          {conclusionPresentation?.description && (
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {conclusionPresentation.description}
+                            </p>
+                          )}
                         </div>
-                        {item.note && (
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {item.note}
-                          </p>
+                        {canManageFollowUps && item.status === "pending" && (
+                          <div className="v2-follow-up-actions">
+                            <Button
+                              size="sm"
+                              disabled={completeFollowUp.isPending}
+                              onClick={() => setFollowUpToComplete(item.id)}
+                            >
+                              {completeFollowUp.isPending
+                                ? "Concluindo…"
+                                : "Concluir"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={cancelFollowUp.isPending}
+                              onClick={() => setFollowUpToCancel(item.id)}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
                         )}
                       </div>
-                      {canManageFollowUps && item.status === "pending" && (
-                        <div className="v2-follow-up-actions">
-                          <Button
-                            size="sm"
-                            disabled={completeFollowUp.isPending}
-                            onClick={() =>
-                              completeFollowUp.mutate({ id: item.id })
-                            }
-                          >
-                            {completeFollowUp.isPending
-                              ? "Concluindo…"
-                              : "Concluir"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={cancelFollowUp.isPending}
-                            onClick={() => setFollowUpToCancel(item.id)}
-                          >
-                            Cancelar
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                   {!detail.data?.followUps.length && (
                     <p className="text-sm text-muted-foreground">
                       Nenhum follow-up registrado.
@@ -1723,6 +1838,7 @@ export function V2SeparatedLeadJourney() {
         onOpenChange={open => {
           setAttemptOpen(open);
           if (!open) {
+            setCompletionFollowUpId(null);
             setAttemptRequestKey(null);
             setAttemptEvidence(null);
             if (attemptEvidenceInputRef.current)
@@ -1887,7 +2003,10 @@ export function V2SeparatedLeadJourney() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setAttemptOpen(false)}
+                onClick={() => {
+                  setCompletionFollowUpId(null);
+                  setAttemptOpen(false);
+                }}
               >
                 Cancelar
               </Button>
@@ -1919,6 +2038,7 @@ export function V2SeparatedLeadJourney() {
         onOpenChange={open => {
           setTreatmentOpen(open);
           if (!open) {
+            setCompletionFollowUpId(null);
             setTreatmentRequestKey(null);
             treatmentRequestKeyRef.current = null;
             setTreatmentEvidence(null);
@@ -2187,7 +2307,10 @@ export function V2SeparatedLeadJourney() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setTreatmentOpen(false)}
+                onClick={() => {
+                  setCompletionFollowUpId(null);
+                  setTreatmentOpen(false);
+                }}
               >
                 Cancelar
               </Button>
@@ -2459,9 +2582,20 @@ export function V2SeparatedLeadJourney() {
         onOpenChange={open => !open && setFollowUpToCancel(null)}
         leadName={lead.name || "este Lead"}
         pending={cancelFollowUp.isPending}
-        onConfirm={() => {
+        onConfirm={reason => {
           if (followUpToCancel !== null)
-            cancelFollowUp.mutate({ id: followUpToCancel });
+            cancelFollowUp.mutate({ id: followUpToCancel, reason });
+        }}
+      />
+      <FollowUpCompletionDialog
+        open={followUpToComplete !== null}
+        onOpenChange={open => !open && setFollowUpToComplete(null)}
+        leadName={lead.name || "este Lead"}
+        pending={completeFollowUp.isPending}
+        onChooseOperationalAction={startFollowUpCompletion}
+        onCompleteWithoutContact={reason => {
+          if (followUpToComplete !== null)
+            completeFollowUp.mutate({ id: followUpToComplete, reason });
         }}
       />
     </main>

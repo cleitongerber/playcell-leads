@@ -71,6 +71,7 @@ import {
   type PreparedPrivateEvidence,
 } from "./evidenceService";
 import { resolvePdvScope } from "./pdvScope";
+import { completeFollowUpFromOperationalFact } from "./followUpService";
 
 type LeadRow = typeof leads.$inferSelect;
 type LeadStatusRow = typeof leadStatuses.$inferSelect;
@@ -113,6 +114,8 @@ export type RegisterAttemptInput = {
   occurredAt?: Date;
   followUp?: FollowUpInput | null;
   evidence?: EvidenceInput | null;
+  /** Pending follow-up conclusively handled by this attempt, if any. */
+  completeFollowUpId?: number | null;
   requestKey: string;
 };
 
@@ -126,6 +129,8 @@ export type RecordEffectiveContactInput = {
   occurredAt?: Date;
   expectedStatusId?: number | null;
   evidence?: EvidenceInput | null;
+  /** Pending follow-up conclusively handled by this treatment, if any. */
+  completeFollowUpId?: number | null;
   requestKey: string;
 };
 
@@ -1358,6 +1363,13 @@ export async function registerAttempt(
           }),
         });
       }
+      if (input.completeFollowUpId) {
+        await completeFollowUpFromOperationalFact(transactionDb, context, {
+          id: input.completeFollowUpId,
+          completionKind: "attempt",
+          completionTimelineEventId: timelineEventId,
+        });
+      }
       await completeCommand(
         transactionDb,
         context,
@@ -1699,6 +1711,13 @@ export async function recordEffectiveContact(
               )
               .limit(1)
           )[0] ?? null;
+      }
+      if (input.completeFollowUpId) {
+        await completeFollowUpFromOperationalFact(transactionDb, context, {
+          id: input.completeFollowUpId,
+          completionKind: "treatment",
+          completionTimelineEventId: timelineEventId,
+        });
       }
       await completeCommand(
         transactionDb,

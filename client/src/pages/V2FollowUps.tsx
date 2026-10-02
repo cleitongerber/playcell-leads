@@ -13,10 +13,14 @@ import { followUpStatusLabel } from "@/lib/followUpPresentation";
 import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
 import { FollowUpCancellationDialog } from "@/components/v2/FollowUpCancellationDialog";
+import {
+  FollowUpCompletionDialog,
+  type FollowUpCompletionChoice,
+} from "@/components/v2/FollowUpCompletionDialog";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 type FollowUpView = "overdue" | "today" | "upcoming" | "completed";
 
@@ -77,6 +81,12 @@ export default function V2FollowUps() {
     id: number;
     leadName: string;
   } | null>(null);
+  const [completeTarget, setCompleteTarget] = useState<{
+    id: number;
+    leadId: number;
+    leadName: string;
+  } | null>(null);
+  const [, setLocation] = useLocation();
   const access = v2trpc.access.context.useQuery();
   const isReadOnly = access.data?.role === "management";
   const canFilterTeam = Boolean(access.data && access.data.role !== "seller");
@@ -115,7 +125,7 @@ export default function V2FollowUps() {
   };
   const complete = v2trpc.followUps.complete.useMutation({
     onSuccess: () => {
-      setCancelTarget(null);
+      setCompleteTarget(null);
       refresh();
       toast.success("Follow-up concluído.");
     },
@@ -128,6 +138,18 @@ export default function V2FollowUps() {
     },
     onError: error => toast.error(error.message),
   });
+  const continueCompletionOnLead = (
+    choice: Exclude<FollowUpCompletionChoice, "without_contact">
+  ) => {
+    if (!completeTarget) return;
+    setLocation(
+      buildV2Path(`/v2/leads/${completeTarget.leadId}`, {
+        from: currentV2Path(),
+        completeFollowUpId: completeTarget.id,
+        completionAction: choice,
+      })
+    );
+  };
   const rescheduleFollowUp = v2trpc.followUps.reschedule.useMutation({
     onSuccess: () => {
       setReschedule({});
@@ -323,7 +345,13 @@ export default function V2FollowUps() {
                       <Button
                         size="sm"
                         disabled={complete.isPending}
-                        onClick={() => complete.mutate({ id: item.id })}
+                        onClick={() =>
+                          setCompleteTarget({
+                            id: item.id,
+                            leadId: item.leadId,
+                            leadName: item.leadName || "este Lead",
+                          })
+                        }
                       >
                         {complete.isPending ? "Concluindo…" : "Concluir"}
                       </Button>
@@ -430,8 +458,19 @@ export default function V2FollowUps() {
         onOpenChange={open => !open && setCancelTarget(null)}
         leadName={cancelTarget?.leadName ?? "este Lead"}
         pending={cancel.isPending}
-        onConfirm={() => {
-          if (cancelTarget) cancel.mutate({ id: cancelTarget.id });
+        onConfirm={reason => {
+          if (cancelTarget) cancel.mutate({ id: cancelTarget.id, reason });
+        }}
+      />
+      <FollowUpCompletionDialog
+        open={completeTarget !== null}
+        onOpenChange={open => !open && setCompleteTarget(null)}
+        leadName={completeTarget?.leadName ?? "este Lead"}
+        pending={complete.isPending}
+        onChooseOperationalAction={continueCompletionOnLead}
+        onCompleteWithoutContact={reason => {
+          if (completeTarget)
+            complete.mutate({ id: completeTarget.id, reason });
         }}
       />
     </main>

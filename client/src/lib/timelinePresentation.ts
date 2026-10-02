@@ -209,16 +209,35 @@ export function presentTimelineEvent(
             .filter(Boolean)
             .join(note && dueAt ? " — " : "") || undefined,
       };
-    case "follow_up_completed":
+    case "follow_up_completed": {
+      const completionKind = textOf(data.completionKind);
+      const reason = textOf(data.reason);
+      const context =
+        completionKind === "attempt"
+          ? "Tentativa de contato registrada."
+          : completionKind === "treatment"
+            ? "Tratativa registrada."
+            : completionKind === "without_contact"
+              ? "Concluído sem contato."
+              : null;
       return {
         title: "Follow-up concluído",
-        description: dueAt ? `Agendamento original: ${dueAt}.` : undefined,
+        description:
+          [context, reason, dueAt && `Agendamento original: ${dueAt}.`]
+            .filter(Boolean)
+            .join(" ") || undefined,
       };
-    case "follow_up_cancelled":
+    }
+    case "follow_up_cancelled": {
+      const reason = textOf(data.reason);
       return {
         title: "Follow-up cancelado",
-        description: dueAt ? `Agendamento original: ${dueAt}.` : undefined,
+        description:
+          [reason, dueAt && `Agendamento original: ${dueAt}.`]
+            .filter(Boolean)
+            .join(" ") || undefined,
       };
+    }
     case "follow_up_rescheduled": {
       const previousDueAt = formatDateTime(data.previousDueAt);
       const reason = textOf(data.reason);

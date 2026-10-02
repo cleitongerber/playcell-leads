@@ -755,6 +755,7 @@ export const v2FoundationRouter = v2Router({
             })
             .nullable()
             .optional(),
+          completeFollowUpId: z.number().int().positive().nullable().optional(),
           requestKey: z.string().min(8).max(96),
         })
       )
@@ -778,6 +779,7 @@ export const v2FoundationRouter = v2Router({
             .optional(),
           occurredAt: z.coerce.date().optional(),
           expectedStatusId: z.number().int().positive().nullable().optional(),
+          completeFollowUpId: z.number().int().positive().nullable().optional(),
           requestKey: z.string().min(8).max(96),
         })
       )
@@ -924,11 +926,25 @@ export const v2FoundationRouter = v2Router({
       )
       .mutation(({ ctx, input }) => createFollowUp(ctx.partner, input)),
     complete: v2OperationalProcedure
-      .input(z.object({ id: z.number().int().positive() }))
-      .mutation(({ ctx, input }) => completeFollowUp(ctx.partner, input.id)),
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          reason: z.string().trim().min(1).max(5_000),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        completeFollowUp(ctx.partner, input.id, input)
+      ),
     cancel: v2OperationalProcedure
-      .input(z.object({ id: z.number().int().positive() }))
-      .mutation(({ ctx, input }) => cancelFollowUp(ctx.partner, input.id)),
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          reason: z.string().trim().min(1).max(5_000),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        cancelFollowUp(ctx.partner, input.id, input)
+      ),
     reschedule: v2OperationalProcedure
       .input(
         z.object({

@@ -775,7 +775,9 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
       dueAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
       note: "DEMO — tarefa concluída",
     });
-    await completeFollowUp(sellerTwoContext, completedFollowUpId);
+    await completeFollowUp(sellerTwoContext, completedFollowUpId, {
+      reason: "DEMO — retorno concluído após conferência operacional.",
+    });
   }
 
   const templateVersionId = await ensureImportTemplate(

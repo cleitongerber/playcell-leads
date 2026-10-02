@@ -368,10 +368,62 @@ async function conditionalTransition(
   return { followUp, lead, idempotent: false };
 }
 
-export async function completeFollowUp(context: PartnerContext, id: number) {
+function requiredReason(value: string | null | undefined, message: string) {
+  const reason = value?.trim() ?? "";
+  if (!reason) throw new Error(message);
+  return reason;
+}
+
+/**
+ * Completes a pending follow-up only after the related commercial event was
+ * recorded. The caller owns the surrounding transaction, so a failed action,
+ * governance check or evidence upload rolls this state transition back too.
+ */
+export async function completeFollowUpFromOperationalFact(
+  db: V2Database,
+  context: PartnerContext,
+  input: {
+    id: number;
+    completionKind: "attempt" | "treatment";
+    completionTimelineEventId: number;
+  }
+) {
+  const result = await conditionalTransition(
+    db,
+    context,
+    input.id,
+    "completed"
+  );
+  if (!result.idempotent) {
+    await recalculateNextFollowUp(db, context.partnerId, result.lead.id);
+    await writeFollowTimeline(db, {
+      partnerId: context.partnerId,
+      leadId: result.lead.id,
+      actorMembershipId: context.membershipId,
+      type: "follow_up_completed",
+      payload: {
+        followUpId: input.id,
+        dueAt: result.followUp.dueAt.toISOString(),
+        completionKind: input.completionKind,
+        completionTimelineEventId: input.completionTimelineEventId,
+      },
+    });
+  }
+  return { idempotent: result.idempotent };
+}
+
+export async function completeFollowUp(
+  context: PartnerContext,
+  id: number,
+  input: { reason: string }
+) {
   const db = await getV2Db();
   return db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
+    const reason = requiredReason(
+      input.reason,
+      "Motivo da conclusão obrigatório"
+    );
     const result = await conditionalTransition(
       transactionDb,
       context,
@@ -389,17 +441,30 @@ export async function completeFollowUp(context: PartnerContext, id: number) {
         leadId: result.lead.id,
         actorMembershipId: context.membershipId,
         type: "follow_up_completed",
-        payload: { followUpId: id, dueAt: result.followUp.dueAt.toISOString() },
+        payload: {
+          followUpId: id,
+          dueAt: result.followUp.dueAt.toISOString(),
+          completionKind: "without_contact",
+          reason,
+        },
       });
     }
     return { idempotent: result.idempotent };
   });
 }
 
-export async function cancelFollowUp(context: PartnerContext, id: number) {
+export async function cancelFollowUp(
+  context: PartnerContext,
+  id: number,
+  input: { reason: string }
+) {
   const db = await getV2Db();
   return db.transaction(async tx => {
     const transactionDb = tx as unknown as V2Database;
+    const reason = requiredReason(
+      input.reason,
+      "Motivo do cancelamento obrigatório"
+    );
     const result = await conditionalTransition(
       transactionDb,
       context,
@@ -417,7 +482,11 @@ export async function cancelFollowUp(context: PartnerContext, id: number) {
         leadId: result.lead.id,
         actorMembershipId: context.membershipId,
         type: "follow_up_cancelled",
-        payload: { followUpId: id, dueAt: result.followUp.dueAt.toISOString() },
+        payload: {
+          followUpId: id,
+          dueAt: result.followUp.dueAt.toISOString(),
+          reason,
+        },
       });
     }
     return { idempotent: result.idempotent };
