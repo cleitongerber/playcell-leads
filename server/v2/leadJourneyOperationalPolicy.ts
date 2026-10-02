@@ -89,6 +89,27 @@ export function isFollowUpRequired(input: {
 }
 
 /**
+ * A terminal final status closes the commercial journey. Even a broad
+ * governance rule must not generate a residual commercial follow-up after a
+ * valid terminal treatment; the terminal state is known only after the result
+ * policy resolves the final status.
+ */
+export function resolveEffectiveContactFollowUp(input: {
+  governanceRequiresFollowUp: boolean;
+  resultPolicy: LeadInteractionFollowUpPolicy;
+  finalStatusIsTerminal: boolean;
+}) {
+  if (input.finalStatusIsTerminal) {
+    return { required: false, allowed: false };
+  }
+  const required = isFollowUpRequired(input);
+  return {
+    required,
+    allowed: required || input.resultPolicy !== "not_applicable",
+  };
+}
+
+/**
  * `not_applicable` prevents an arbitrary new task for that result unless a
  * stricter governance rule independently requires the task. This preserves
  * partner governance as the upper bound rather than letting catalog setup
@@ -98,7 +119,14 @@ export function assertFollowUpApplicability(input: {
   governanceRequiresFollowUp: boolean;
   resultPolicy: LeadInteractionFollowUpPolicy;
   hasFollowUp: boolean;
+  finalStatusIsTerminal?: boolean;
 }) {
+  if (input.hasFollowUp && input.finalStatusIsTerminal) {
+    throw new LeadJourneyOperationError(
+      "INVALID_RESULT_CONFIGURATION",
+      "Uma situação terminal não permite agendar um novo follow-up"
+    );
+  }
   if (
     input.hasFollowUp &&
     input.resultPolicy === "not_applicable" &&

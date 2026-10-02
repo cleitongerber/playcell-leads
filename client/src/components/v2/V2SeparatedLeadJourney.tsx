@@ -85,6 +85,7 @@ type FormRequirements = {
   canOperate: boolean;
   blockedReason: string | null;
   allowedChannels: string[] | null;
+  allowedResultIds: number[] | null;
   requirements: {
     summaryRequired: boolean;
     evidenceRequired: boolean;
@@ -368,6 +369,7 @@ export function V2SeparatedLeadJourney() {
   const [attemptFollowUpOpen, setAttemptFollowUpOpen] = useState(false);
   const [treatmentFollowUpOpen, setTreatmentFollowUpOpen] = useState(false);
   const [attemptEvidence, setAttemptEvidence] = useState<File | null>(null);
+  const [treatmentEvidence, setTreatmentEvidence] = useState<File | null>(null);
   const [attemptRequestKey, setAttemptRequestKey] = useState<string | null>(
     null
   );
@@ -395,6 +397,8 @@ export function V2SeparatedLeadJourney() {
   const restoredExternalActionForLead = useRef<number | null>(null);
   const lastSuggestedResultId = useRef<string | null>(null);
   const attemptEvidenceInputRef = useRef<HTMLInputElement>(null);
+  const treatmentEvidenceInputRef = useRef<HTMLInputElement>(null);
+  const treatmentRequestKeyRef = useRef<string | null>(null);
 
   const attemptRequirements = v2trpc.leads.operationRequirements.useQuery(
     {
@@ -411,9 +415,57 @@ export function V2SeparatedLeadJourney() {
       operationKind: "effective_contact",
       channel: treatment.channel || undefined,
       resultId: treatment.resultId ? Number(treatment.resultId) : undefined,
+      finalStatusId: treatment.finalStatusId
+        ? Number(treatment.finalStatusId)
+        : undefined,
     },
     { enabled: Number.isInteger(id) && id > 0 && treatmentOpen }
   );
+  const treatmentResultItems = useMemo(() => {
+    const requirements = treatmentRequirements.data as
+      | FormRequirements
+      | undefined;
+    const allowedResultIds = requirements?.allowedResultIds;
+    if (!allowedResultIds) return [];
+    return (treatmentResults.data ?? []).filter(result =>
+      allowedResultIds.includes(result.id)
+    );
+  }, [treatmentRequirements.data, treatmentResults.data]);
+
+  useEffect(() => {
+    const requirements = treatmentRequirements.data as
+      | FormRequirements
+      | undefined;
+    if (
+      !treatment.resultId ||
+      !requirements?.allowedResultIds ||
+      requirements.allowedResultIds.includes(Number(treatment.resultId))
+    ) {
+      return;
+    }
+    lastSuggestedResultId.current = null;
+    setTreatment(current =>
+      current.resultId === treatment.resultId
+        ? { ...current, resultId: "", finalStatusId: "" }
+        : current
+    );
+    setTreatmentFollowUpOpen(false);
+    setTreatmentRequestKey(null);
+    treatmentRequestKeyRef.current = null;
+  }, [treatment.resultId, treatmentRequirements.data]);
+
+  useEffect(() => {
+    const requirements = treatmentRequirements.data as
+      | FormRequirements
+      | undefined;
+    if (requirements?.requirements.followUp.allowed !== false) return;
+    setTreatmentFollowUpOpen(false);
+    setTreatment(current =>
+      current.followUpDueAt || current.followUpNote
+        ? { ...current, followUpDueAt: "", followUpNote: "" }
+        : current
+    );
+  }, [treatmentRequirements.data]);
 
   const refresh = () => {
     utils.leads.get.invalidate({ id });
@@ -463,8 +515,12 @@ export function V2SeparatedLeadJourney() {
         requirement => requirement.kind === "evidence"
       );
       setTreatment(emptyTreatment());
+      setTreatmentEvidence(null);
+      if (treatmentEvidenceInputRef.current)
+        treatmentEvidenceInputRef.current.value = "";
       setTreatmentFollowUpOpen(false);
       setTreatmentRequestKey(null);
+      treatmentRequestKeyRef.current = null;
       setTreatmentOpen(false);
       clearExternalPrompt(id);
       refresh();
@@ -472,7 +528,7 @@ export function V2SeparatedLeadJourney() {
         toast.success("Lead convertido. A venda foi registrada na tratativa.");
       } else if (hasPendingEvidence) {
         toast.warning(
-          "Tratativa registrada. Falta adicionar a evidência solicitada."
+          "Tratativa registrada. Uma pendência documental existente continua disponível para regularização."
         );
       } else {
         toast.success(
@@ -692,8 +748,12 @@ export function V2SeparatedLeadJourney() {
   const openTreatment = (channel: string) => {
     lastSuggestedResultId.current = null;
     setTreatment(emptyTreatment(channel));
+    setTreatmentEvidence(null);
+    if (treatmentEvidenceInputRef.current)
+      treatmentEvidenceInputRef.current.value = "";
     setTreatmentFollowUpOpen(false);
     setTreatmentRequestKey(null);
+    treatmentRequestKeyRef.current = null;
     setTreatmentOpen(true);
   };
   const clearExternal = () => {
@@ -810,7 +870,7 @@ export function V2SeparatedLeadJourney() {
       );
     }
   };
-  const submitTreatment = (event: FormEvent) => {
+  const submitTreatment = async (event: FormEvent) => {
     event.preventDefault();
     const requirements = treatmentRequirements.data as
       | FormRequirements
@@ -829,33 +889,62 @@ export function V2SeparatedLeadJourney() {
       );
       return;
     }
+    if (requirements.requirements.evidenceRequired && !treatmentEvidence) {
+      toast.error(
+        "Adicione a evidência obrigatória para registrar esta tratativa."
+      );
+      return;
+    }
     const shouldSchedule =
       Boolean(requirements?.requirements.followUp.required) ||
-      treatmentFollowUpOpen;
+      (Boolean(requirements?.requirements.followUp.allowed) &&
+        treatmentFollowUpOpen);
     if (shouldSchedule && !treatment.followUpDueAt) {
       toast.error("Informe quando devemos retornar ao cliente.");
       return;
     }
-    const requestKey = treatmentRequestKey ?? makeRequestKey("treatment");
-    if (!treatmentRequestKey) setTreatmentRequestKey(requestKey);
-    recordTreatment.mutate({
-      leadId: id,
-      channel: treatment.channel,
-      resultId: Number(treatment.resultId),
-      summary: treatment.summary.trim() || null,
-      finalStatusId: treatment.finalStatusId
-        ? Number(treatment.finalStatusId)
-        : null,
-      followUp:
-        shouldSchedule && treatment.followUpDueAt
-          ? {
-              dueAt: new Date(treatment.followUpDueAt),
-              note: treatment.followUpNote.trim() || null,
-            }
+    const requestKey =
+      treatmentRequestKeyRef.current ??
+      treatmentRequestKey ??
+      makeRequestKey("treatment");
+    if (!treatmentRequestKeyRef.current) {
+      treatmentRequestKeyRef.current = requestKey;
+      setTreatmentRequestKey(requestKey);
+    }
+    try {
+      const evidence = treatmentEvidence
+        ? {
+            fileName: treatmentEvidence.name,
+            mimeType: treatmentEvidence.type,
+            base64: await readEvidenceFileAsBase64(treatmentEvidence),
+          }
+        : null;
+      recordTreatment.mutate({
+        leadId: id,
+        channel: treatment.channel,
+        resultId: Number(treatment.resultId),
+        summary: treatment.summary.trim() || null,
+        finalStatusId: treatment.finalStatusId
+          ? Number(treatment.finalStatusId)
           : null,
-      expectedStatusId: lead.statusId,
-      requestKey,
-    });
+        followUp:
+          shouldSchedule && treatment.followUpDueAt
+            ? {
+                dueAt: new Date(treatment.followUpDueAt),
+                note: treatment.followUpNote.trim() || null,
+              }
+            : null,
+        evidence,
+        expectedStatusId: lead.statusId,
+        requestKey,
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível ler a evidência selecionada."
+      );
+    }
   };
 
   return (
@@ -1831,7 +1920,13 @@ export function V2SeparatedLeadJourney() {
         open={treatmentOpen}
         onOpenChange={open => {
           setTreatmentOpen(open);
-          if (!open) setTreatmentRequestKey(null);
+          if (!open) {
+            setTreatmentRequestKey(null);
+            treatmentRequestKeyRef.current = null;
+            setTreatmentEvidence(null);
+            if (treatmentEvidenceInputRef.current)
+              treatmentEvidenceInputRef.current.value = "";
+          }
         }}
       >
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
@@ -1852,14 +1947,22 @@ export function V2SeparatedLeadJourney() {
                     ?.allowedChannels
                 }
                 onChange={channel => {
-                  setTreatment(current => ({ ...current, channel }));
+                  lastSuggestedResultId.current = null;
+                  setTreatment(current => ({
+                    ...current,
+                    channel,
+                    resultId: "",
+                    finalStatusId: "",
+                  }));
+                  setTreatmentFollowUpOpen(false);
                   setTreatmentRequestKey(null);
+                  treatmentRequestKeyRef.current = null;
                 }}
               />
               <ResultField
                 id="treatment-result"
                 value={treatment.resultId}
-                items={treatmentResults.data ?? []}
+                items={treatmentResultItems}
                 onChange={resultId => {
                   lastSuggestedResultId.current = null;
                   setTreatment(current => ({
@@ -1867,7 +1970,9 @@ export function V2SeparatedLeadJourney() {
                     resultId,
                     finalStatusId: "",
                   }));
+                  setTreatmentFollowUpOpen(false);
                   setTreatmentRequestKey(null);
+                  treatmentRequestKeyRef.current = null;
                 }}
               />
             </div>
@@ -1890,6 +1995,7 @@ export function V2SeparatedLeadJourney() {
                     summary: event.target.value,
                   }));
                   setTreatmentRequestKey(null);
+                  treatmentRequestKeyRef.current = null;
                 }}
                 placeholder="Registre o que foi tratado com o cliente"
               />
@@ -1916,6 +2022,7 @@ export function V2SeparatedLeadJourney() {
                     onValueChange={finalStatusId => {
                       setTreatment(current => ({ ...current, finalStatusId }));
                       setTreatmentRequestKey(null);
+                      treatmentRequestKeyRef.current = null;
                     }}
                   >
                     <SelectTrigger id="treatment-status" className="mt-2">
@@ -1945,13 +2052,66 @@ export function V2SeparatedLeadJourney() {
             {(treatmentRequirements.data as FormRequirements | undefined)
               ?.requirements.evidenceRequired && (
               <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
-                <p className="font-medium">
-                  Esta tratativa exige uma evidência.
-                </p>
+                <input
+                  ref={treatmentEvidenceInputRef}
+                  type="file"
+                  className="sr-only"
+                  aria-label="Selecionar evidência obrigatória da tratativa"
+                  accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+                  onChange={event => {
+                    setTreatmentEvidence(event.target.files?.[0] ?? null);
+                    setTreatmentRequestKey(null);
+                    treatmentRequestKeyRef.current = null;
+                  }}
+                />
+                <p className="font-medium">Evidência obrigatória *</p>
                 <p className="mt-1 text-muted-foreground">
-                  Você poderá anexá-la depois de salvar; a tratativa permanecerá
-                  pendente até o envio.
+                  Anexe o arquivo antes de registrar a tratativa. Ele será
+                  vinculado somente ao evento desta tratativa.
                 </p>
+                {treatmentEvidence ? (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <p
+                      className="min-w-0 flex-1 truncate text-sm"
+                      aria-live="polite"
+                    >
+                      Arquivo selecionado:{" "}
+                      <strong>{treatmentEvidence.name}</strong>
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => treatmentEvidenceInputRef.current?.click()}
+                    >
+                      Trocar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setTreatmentEvidence(null);
+                        setTreatmentRequestKey(null);
+                        treatmentRequestKeyRef.current = null;
+                        if (treatmentEvidenceInputRef.current)
+                          treatmentEvidenceInputRef.current.value = "";
+                      }}
+                    >
+                      Remover
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    className="mt-3"
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => treatmentEvidenceInputRef.current?.click()}
+                  >
+                    <FileUp className="mr-2 size-4" /> Anexar evidência
+                  </Button>
+                )}
               </div>
             )}
             {((treatmentRequirements.data as FormRequirements | undefined)
@@ -1967,6 +2127,7 @@ export function V2SeparatedLeadJourney() {
                 onChange={patch => {
                   setTreatment(current => ({ ...current, ...patch }));
                   setTreatmentRequestKey(null);
+                  treatmentRequestKeyRef.current = null;
                 }}
               />
             )}
@@ -2007,7 +2168,12 @@ export function V2SeparatedLeadJourney() {
                   recordTreatment.isPending ||
                   treatmentRequirements.isLoading ||
                   treatmentRequirements.isFetching ||
-                  !treatmentRequirements.data
+                  !treatmentRequirements.data ||
+                  (Boolean(
+                    (treatmentRequirements.data as FormRequirements | undefined)
+                      ?.requirements.evidenceRequired
+                  ) &&
+                    !treatmentEvidence)
                 }
               >
                 {recordTreatment.isPending ? "Salvando…" : "Salvar tratativa"}

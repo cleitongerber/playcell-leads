@@ -52,6 +52,9 @@ describe("016.4 unified journey service contract", () => {
     expect(resultChoices).toContain("listPartnerInteractionResults");
     expect(requirements).toContain("resolveEffectiveAttemptGovernance");
     expect(requirements).toContain("resolveEffectiveGovernance");
+    expect(requirements).toContain("allowedResultIds");
+    expect(requirements).toContain("isContactOutcomeAllowed");
+    expect(requirements).toContain("finalStatusId");
     expect(requirements).toContain("canOverrideSuggestedStatus");
     expect(router).toContain("operationRequirements: v2PartnerProcedure");
     expect(router).toContain("available: v2PartnerProcedure");
@@ -101,6 +104,13 @@ describe("016.4 unified journey service contract", () => {
     expect(contact).toContain("assertLeadOpenForCommercialOperation");
     expect(service).toContain("firstEffectiveContactAt");
     expect(contact).toContain("writeEffectiveContactGovernance");
+    expect(contact).toContain("rule.evidenceRequired && !input.evidence");
+    expect(contact).toContain("preparePrivateEvidence");
+    expect(contact).toContain("leadEvidences");
+    expect(contact).toContain("hasEvidence: Boolean(stagedEvidence.value)");
+    expect(contact).toContain("stagedEvidence.value?.cleanup()");
+    expect(contact).toContain("resolveEffectiveContactFollowUp");
+    expect(contact).toContain("finalStatusIsTerminal");
     expect(contact).toContain("assertConversionSource");
     expect(contact).toContain('type: "conversion_recorded"');
     expect(contact).not.toContain("firstContactAt");

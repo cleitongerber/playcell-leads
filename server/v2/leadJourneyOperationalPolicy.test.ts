@@ -7,6 +7,7 @@ import {
   assertLeadAcceptsCommercialOperation,
   assertConversionStatus,
   isFollowUpRequired,
+  resolveEffectiveContactFollowUp,
   requiresAdministrativeStatusReason,
   resolveEffectiveContactFinalStatus,
 } from "./leadJourneyOperationalPolicy";
@@ -56,6 +57,31 @@ describe("separated journey operational policy", () => {
         resultPolicy: "required",
       })
     ).toBe(true);
+  });
+
+  it("does not create a residual follow-up after a terminal treatment", () => {
+    expect(
+      resolveEffectiveContactFollowUp({
+        governanceRequiresFollowUp: true,
+        resultPolicy: "required",
+        finalStatusIsTerminal: true,
+      })
+    ).toEqual({ required: false, allowed: false });
+    expect(
+      resolveEffectiveContactFollowUp({
+        governanceRequiresFollowUp: true,
+        resultPolicy: "optional",
+        finalStatusIsTerminal: false,
+      })
+    ).toEqual({ required: true, allowed: true });
+    expect(() =>
+      assertFollowUpApplicability({
+        governanceRequiresFollowUp: true,
+        resultPolicy: "required",
+        finalStatusIsTerminal: true,
+        hasFollowUp: true,
+      })
+    ).toThrow("situação terminal");
   });
 
   it("keeps administrative status and conversion semantics explicit", () => {

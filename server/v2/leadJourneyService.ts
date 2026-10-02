@@ -27,6 +27,7 @@ import {
   assertContactGovernance,
   evaluateAttemptGovernance,
   evaluateTreatmentGovernance,
+  isContactOutcomeAllowed,
   resolveGovernanceForAttempt,
   resolveGovernanceForContact,
   type AttemptGovernanceRule,
@@ -51,7 +52,7 @@ import {
   assertFollowUpApplicability,
   assertLeadAcceptsCommercialOperation,
   assertReopenRole,
-  isFollowUpRequired,
+  resolveEffectiveContactFollowUp,
   requiresAdministrativeStatusReason,
   resolveEffectiveContactFinalStatus,
 } from "./leadJourneyOperationalPolicy";
@@ -124,6 +125,7 @@ export type RecordEffectiveContactInput = {
   followUp?: FollowUpInput | null;
   occurredAt?: Date;
   expectedStatusId?: number | null;
+  evidence?: EvidenceInput | null;
   requestKey: string;
 };
 
@@ -148,6 +150,7 @@ export type LeadOperationRequirementsInput = {
   operationKind: "attempt" | "effective_contact";
   channel?: string;
   resultId?: number;
+  finalStatusId?: number;
 };
 
 function insertedId(result: unknown, message: string) {
@@ -434,6 +437,21 @@ export async function getLeadOperationRequirements(
     ? await getActiveResult(db, context, input.resultId, input.operationKind)
     : null;
 
+  const allowedResultIds =
+    input.operationKind === "effective_contact"
+      ? (
+          await listPartnerInteractionResults(
+            db,
+            context.partnerId,
+            "effective_contact"
+          )
+        )
+          .filter(candidate =>
+            isContactOutcomeAllowed(rule as GovernanceRule, candidate.code)
+          )
+          .map(candidate => candidate.id)
+      : null;
+
   let suggestedStatus: LeadStatusRow | null = null;
   if (
     input.operationKind === "effective_contact" &&
@@ -457,21 +475,34 @@ export async function getLeadOperationRequirements(
     );
   }
 
-  const followUpRequired =
+  const requestedFinalStatusId =
     input.operationKind === "effective_contact" && result
-      ? isFollowUpRequired({
+      ? resolveEffectiveContactFinalStatus({
+          role: context.role,
+          policy: result,
+          requestedStatusId: input.finalStatusId,
+        })
+      : null;
+  const finalStatus = requestedFinalStatusId
+    ? await getActiveStatus(db, context.partnerId, requestedFinalStatusId)
+    : null;
+  const effectiveContactFollowUp =
+    input.operationKind === "effective_contact" && result
+      ? resolveEffectiveContactFollowUp({
           governanceRequiresFollowUp: governanceFollowUpRequired,
           resultPolicy: result.followUpPolicy,
+          finalStatusIsTerminal: finalStatus?.isTerminal ?? false,
         })
-      : input.operationKind === "effective_contact"
-        ? governanceFollowUpRequired
-        : false;
-  const followUpAllowed =
-    input.operationKind === "attempt"
-      ? result?.followUpPolicy !== "not_applicable"
-      : Boolean(
-          followUpRequired || result?.followUpPolicy !== "not_applicable"
-        );
+      : {
+          required:
+            input.operationKind === "effective_contact"
+              ? governanceFollowUpRequired
+              : false,
+          allowed:
+            input.operationKind === "attempt"
+              ? result?.followUpPolicy !== "not_applicable"
+              : governanceFollowUpRequired,
+        };
   const canOverrideSuggestedStatus = Boolean(
     input.operationKind === "effective_contact" &&
       result?.statusPolicy === "suggest" &&
@@ -493,12 +524,13 @@ export async function getLeadOperationRequirements(
             ? "Reabra o lead antes de registrar uma nova ação comercial"
             : null,
     allowedChannels: rule.allowedChannels,
+    allowedResultIds,
     requirements: {
       summaryRequired: rule.noteRequired,
       evidenceRequired: rule.evidenceRequired,
       followUp: {
-        required: followUpRequired,
-        allowed: followUpAllowed,
+        required: effectiveContactFollowUp.required,
+        allowed: effectiveContactFollowUp.allowed,
       },
     },
     result: result
@@ -706,12 +738,13 @@ async function writeEffectiveContactGovernance(
     rule: GovernanceRule;
     hasNote: boolean;
     hasFollowUp: boolean;
+    hasEvidence: boolean;
   }
 ) {
   const state = evaluateTreatmentGovernance(input.rule, {
     hasNote: input.hasNote,
     hasFollowUp: input.hasFollowUp,
-    hasEvidence: false,
+    hasEvidence: input.hasEvidence,
   });
   await db.insert(leadTreatmentGovernance).values({
     partnerId: input.context.partnerId,
@@ -1365,268 +1398,336 @@ export async function recordEffectiveContact(
 ) {
   const db = await getV2Db();
   const actorMembershipId = await assertOperationalMembership(context);
-  return db.transaction(async tx => {
-    const transactionDb = tx as unknown as V2Database;
-    const command = await startCommand(
-      transactionDb,
-      context,
-      "record_effective_contact",
-      input.requestKey
-    );
-    if (command.existing) {
-      return replayCompletedCommand(transactionDb, context, command.existing);
-    }
-
-    const lead = await loadLead(transactionDb, context, input.leadId);
-    await assertLeadScope(transactionDb, context, lead, "operational");
-    await assertCampaignOperational(transactionDb, context, lead);
-    await assertLeadOpenForCommercialOperation(transactionDb, context, lead);
-    const channel = normalizedChannel(input.channel);
-    const result = await getActiveResult(
-      transactionDb,
-      context,
-      input.resultId,
-      "effective_contact"
-    );
-    const effectiveGovernance = await resolveEffectiveGovernance(
-      transactionDb,
-      context.partnerId,
-      lead.campaignId
-    );
-    const baseRule = resolveGovernanceForContact(
-      effectiveGovernance.rule,
-      channel
-    );
-    const followUpRequired = isFollowUpRequired({
-      governanceRequiresFollowUp: baseRule.followUpRequired,
-      resultPolicy: result.followUpPolicy,
-    });
-    const rule: GovernanceRule = { ...baseRule, followUpRequired };
-    const summary = normalizedText(input.summary);
-    const occurredAt = input.occurredAt ?? new Date();
-    if (input.followUp && input.followUp.dueAt.getTime() <= Date.now()) {
-      throw new Error(
-        "O próximo follow-up deve ser agendado para uma data futura"
-      );
-    }
-    assertContactGovernance(rule, {
-      channel,
-      outcome: result.code,
-      summary,
-      followUpDueAt: input.followUp?.dueAt ?? null,
-    });
-    const finalStatusId = resolveEffectiveContactFinalStatus({
-      role: context.role,
-      policy: result,
-      requestedStatusId: input.finalStatusId,
-    });
-    const finalStatus = finalStatusId
-      ? await getActiveStatus(transactionDb, context.partnerId, finalStatusId)
-      : null;
-    const conversionEligible = assertConversionStatus({
-      conversionMode: result.conversionMode,
-      statusIsTerminal: finalStatus?.isTerminal ?? false,
-      statusCategory: finalStatus?.category ?? "open",
-    });
-    assertFollowUpApplicability({
-      governanceRequiresFollowUp: baseRule.followUpRequired,
-      resultPolicy: result.followUpPolicy,
-      hasFollowUp: Boolean(input.followUp),
-    });
-    const followUp = input.followUp
-      ? await createProvisionalFollowUp(
-          transactionDb,
-          context,
-          lead,
-          input.followUp
-        )
-      : null;
-    const governancePreview = evaluateTreatmentGovernance(rule, {
-      hasNote: Boolean(summary),
-      hasFollowUp: Boolean(followUp),
-      hasEvidence: false,
-    });
-    const timelinePayload = {
-      channel,
-      resultCode: result.code,
-      resultLabel: result.label,
-      resultCategory: result.category,
-      previousStatusId: lead.statusId,
-      finalStatusId: finalStatus?.id ?? null,
-      followUpId: followUp?.id ?? null,
-      governance: {
-        isComplete: governancePreview.isComplete,
-        evidencePending: !governancePreview.evidenceSatisfied,
-      },
-    };
-    const timelineEventId = await writeTimeline(transactionDb, {
-      partnerId: context.partnerId,
-      leadId: lead.id,
-      actorMembershipId,
-      type: "effective_contact_recorded",
-      occurredAt,
-      payload: timelinePayload,
-    });
-    if (followUp) {
-      await bindFollowUpToOrigin(
+  const stagedEvidence: { value: PreparedPrivateEvidence | null } = {
+    value: null,
+  };
+  try {
+    const response = await db.transaction(async tx => {
+      const transactionDb = tx as unknown as V2Database;
+      const command = await startCommand(
         transactionDb,
         context,
-        lead.id,
-        followUp.id,
-        timelineEventId
+        "record_effective_contact",
+        input.requestKey
       );
-      await recalculateNextFollowUp(transactionDb, context.partnerId, lead.id);
-    }
-    const contactInserted = await tx.insert(leadContacts).values({
-      partnerId: context.partnerId,
-      leadId: lead.id,
-      actorMembershipId,
-      recordKind: "effective_contact",
-      timelineEventId,
-      channel,
-      // `outcome` remains a display-compatible copy. New domain behavior uses
-      // resultId/resultCode and never derives policy from this text.
-      outcome: result.label,
-      resultId: result.id,
-      resultCode: result.code,
-      resultLabel: result.label,
-      resultCategory: result.category,
-      summary,
-      occurredAt,
-    });
-    const contactId = insertedId(
-      contactInserted,
-      "Não foi possível registrar o contato efetivo"
-    );
+      if (command.existing) {
+        return replayCompletedCommand(transactionDb, context, command.existing);
+      }
 
-    if (finalStatus) {
-      await conditionalStatusUpdate(transactionDb, {
+      const lead = await loadLead(transactionDb, context, input.leadId);
+      await assertLeadScope(transactionDb, context, lead, "operational");
+      await assertCampaignOperational(transactionDb, context, lead);
+      await assertLeadOpenForCommercialOperation(transactionDb, context, lead);
+      const channel = normalizedChannel(input.channel);
+      const result = await getActiveResult(
+        transactionDb,
         context,
-        lead,
-        expectedStatusId: input.expectedStatusId,
-        statusId: finalStatus.id,
-        occurredAt,
-        firstEffectiveContact: true,
+        input.resultId,
+        "effective_contact"
+      );
+      const effectiveGovernance = await resolveEffectiveGovernance(
+        transactionDb,
+        context.partnerId,
+        lead.campaignId
+      );
+      const baseRule = resolveGovernanceForContact(
+        effectiveGovernance.rule,
+        channel
+      );
+      const summary = normalizedText(input.summary);
+      const finalStatusId = resolveEffectiveContactFinalStatus({
+        role: context.role,
+        policy: result,
+        requestedStatusId: input.finalStatusId,
       });
-    } else {
-      await updateEffectiveContactActivity(
-        transactionDb,
-        context,
-        lead,
-        occurredAt
-      );
-    }
-    const governanceState = await writeEffectiveContactGovernance(
-      transactionDb,
-      {
-        context,
-        leadId: lead.id,
-        timelineEventId,
-        source: effectiveGovernance.source,
-        rule,
+      const finalStatus = finalStatusId
+        ? await getActiveStatus(transactionDb, context.partnerId, finalStatusId)
+        : null;
+      const followUpRequirement = resolveEffectiveContactFollowUp({
+        governanceRequiresFollowUp: baseRule.followUpRequired,
+        resultPolicy: result.followUpPolicy,
+        finalStatusIsTerminal: finalStatus?.isTerminal ?? false,
+      });
+      const rule: GovernanceRule = {
+        ...baseRule,
+        followUpRequired: followUpRequirement.required,
+      };
+      const occurredAt = input.occurredAt ?? new Date();
+      if (input.followUp && input.followUp.dueAt.getTime() <= Date.now()) {
+        throw new Error(
+          "O próximo follow-up deve ser agendado para uma data futura"
+        );
+      }
+      assertContactGovernance(rule, {
+        channel,
+        outcome: result.code,
+        summary,
+        followUpDueAt: input.followUp?.dueAt ?? null,
+      });
+      if (rule.evidenceRequired && !input.evidence) {
+        throw new LeadJourneyOperationError(
+          "EVIDENCE_REQUIRED",
+          "Adicione a evidência obrigatória para registrar esta tratativa"
+        );
+      }
+      if (input.evidence) {
+        stagedEvidence.value = await preparePrivateEvidence(
+          context.partnerId,
+          input.evidence,
+          rule
+        );
+      }
+      const conversionEligible = assertConversionStatus({
+        conversionMode: result.conversionMode,
+        statusIsTerminal: finalStatus?.isTerminal ?? false,
+        statusCategory: finalStatus?.category ?? "open",
+      });
+      assertFollowUpApplicability({
+        governanceRequiresFollowUp: baseRule.followUpRequired,
+        resultPolicy: result.followUpPolicy,
+        hasFollowUp: Boolean(input.followUp),
+        finalStatusIsTerminal: finalStatus?.isTerminal ?? false,
+      });
+      const followUp = input.followUp
+        ? await createProvisionalFollowUp(
+            transactionDb,
+            context,
+            lead,
+            input.followUp
+          )
+        : null;
+      const governancePreview = evaluateTreatmentGovernance(rule, {
         hasNote: Boolean(summary),
         hasFollowUp: Boolean(followUp),
-      }
-    );
-
-    let conversion: typeof leadConversions.$inferSelect | null = null;
-    if (conversionEligible && finalStatus) {
-      assertConversionSource({
-        contactRecordKind: "effective_contact",
-        resultInteractionKind: result.interactionKind,
-        resultConversionMode: result.conversionMode,
-        statusIsTerminal: finalStatus.isTerminal,
-        statusCategory: finalStatus.category,
+        hasEvidence: Boolean(stagedEvidence.value),
       });
-      // `lead_conversions` requires an immutable timeline target, while the
-      // conversion event should also name the generated conversion id. Within
-      // this single transaction we use the effective-contact event as a
-      // temporary valid FK target, then bind the new conversion event before
-      // commit. No inconsistent relationship is ever observable externally.
-      const conversionInserted = await tx.insert(leadConversions).values({
-        partnerId: context.partnerId,
-        leadId: lead.id,
-        effectiveContactId: contactId,
-        timelineEventId,
-        resultId: result.id,
-        statusId: finalStatus.id,
-        actorMembershipId,
-        occurredAt,
-      });
-      const conversionId = insertedId(
-        conversionInserted,
-        "Não foi possível registrar a conversão"
-      );
-      const conversionTimelineEventId = await writeTimeline(transactionDb, {
-        partnerId: context.partnerId,
-        leadId: lead.id,
-        actorMembershipId,
-        type: "conversion_recorded",
-        occurredAt,
-        payload: {
-          conversionId,
-          effectiveContactTimelineEventId: timelineEventId,
-          resultCode: result.code,
-          resultLabel: result.label,
-          resultCategory: result.category,
-          statusId: finalStatus.id,
+      const timelinePayload = {
+        channel,
+        resultCode: result.code,
+        resultLabel: result.label,
+        resultCategory: result.category,
+        previousStatusId: lead.statusId,
+        finalStatusId: finalStatus?.id ?? null,
+        followUpId: followUp?.id ?? null,
+        governance: {
+          isComplete: governancePreview.isComplete,
+          evidencePending: !governancePreview.evidenceSatisfied,
         },
-      });
-      const rebound = await transactionDb
-        .update(leadConversions)
-        .set({ timelineEventId: conversionTimelineEventId })
-        .where(
-          and(
-            eq(leadConversions.partnerId, context.partnerId),
-            eq(leadConversions.id, conversionId),
-            eq(leadConversions.timelineEventId, timelineEventId)
-          )
-        );
-      if (affectedRows(rebound) !== 1) {
-        throw new Error("Não foi possível vincular o evento de conversão");
-      }
-      conversion =
-        (
-          await transactionDb
-            .select()
-            .from(leadConversions)
-            .where(
-              and(
-                eq(leadConversions.partnerId, context.partnerId),
-                eq(leadConversions.id, conversionId)
-              )
-            )
-            .limit(1)
-        )[0] ?? null;
-    }
-    await completeCommand(
-      transactionDb,
-      context,
-      "record_effective_contact",
-      command.requestKey,
-      timelineEventId
-    );
-    const updatedLead = await loadLead(transactionDb, context, lead.id);
-    const nextAction = await deriveOperationalNextAction(
-      transactionDb,
-      context.partnerId,
-      lead.id
-    );
-    return operationResponse({
-      operation: "record_effective_contact",
-      lead: updatedLead,
-      timelineEvent: {
-        id: timelineEventId,
+      };
+      const timelineEventId = await writeTimeline(transactionDb, {
+        partnerId: context.partnerId,
+        leadId: lead.id,
+        actorMembershipId,
         type: "effective_contact_recorded",
         occurredAt,
         payload: timelinePayload,
-      },
-      governance: { timelineEventId, ...governanceState },
-      followUp,
-      conversion,
-      nextAction,
+      });
+      if (followUp) {
+        await bindFollowUpToOrigin(
+          transactionDb,
+          context,
+          lead.id,
+          followUp.id,
+          timelineEventId
+        );
+        await recalculateNextFollowUp(
+          transactionDb,
+          context.partnerId,
+          lead.id
+        );
+      }
+      const contactInserted = await tx.insert(leadContacts).values({
+        partnerId: context.partnerId,
+        leadId: lead.id,
+        actorMembershipId,
+        recordKind: "effective_contact",
+        timelineEventId,
+        channel,
+        // `outcome` remains a display-compatible copy. New domain behavior uses
+        // resultId/resultCode and never derives policy from this text.
+        outcome: result.label,
+        resultId: result.id,
+        resultCode: result.code,
+        resultLabel: result.label,
+        resultCategory: result.category,
+        summary,
+        occurredAt,
+      });
+      const contactId = insertedId(
+        contactInserted,
+        "Não foi possível registrar o contato efetivo"
+      );
+
+      if (finalStatus) {
+        await conditionalStatusUpdate(transactionDb, {
+          context,
+          lead,
+          expectedStatusId: input.expectedStatusId,
+          statusId: finalStatus.id,
+          occurredAt,
+          firstEffectiveContact: true,
+        });
+      } else {
+        await updateEffectiveContactActivity(
+          transactionDb,
+          context,
+          lead,
+          occurredAt
+        );
+      }
+      const governanceState = await writeEffectiveContactGovernance(
+        transactionDb,
+        {
+          context,
+          leadId: lead.id,
+          timelineEventId,
+          source: effectiveGovernance.source,
+          rule,
+          hasNote: Boolean(summary),
+          hasFollowUp: Boolean(followUp),
+          hasEvidence: Boolean(stagedEvidence.value),
+        }
+      );
+      if (stagedEvidence.value) {
+        const preparedEvidence = stagedEvidence.value;
+        const evidenceInserted = await tx.insert(leadEvidences).values({
+          partnerId: context.partnerId,
+          leadId: lead.id,
+          timelineEventId,
+          uploadedByMembershipId: actorMembershipId,
+          storageProvider: preparedEvidence.storageProvider,
+          storageKey: preparedEvidence.storageKey,
+          storageStatus: "available",
+          fileName: preparedEvidence.fileName,
+          mimeType: preparedEvidence.mimeType,
+          sizeBytes: preparedEvidence.sizeBytes,
+          checksum: preparedEvidence.checksum,
+        });
+        const evidenceId = insertedId(
+          evidenceInserted,
+          "Não foi possível vincular a evidência à tratativa"
+        );
+        await writeV2Audit(transactionDb, {
+          partnerId: context.partnerId,
+          actorUserId: context.userId,
+          actorMembershipId,
+          action: "lead_evidence_uploaded",
+          entityType: "lead_evidence",
+          entityId: evidenceId,
+          metadata: evidenceAuditMetadata({
+            leadId: lead.id,
+            timelineEventId,
+            mimeType: preparedEvidence.mimeType,
+            sizeBytes: preparedEvidence.sizeBytes,
+            checksum: preparedEvidence.checksum,
+          }),
+        });
+      }
+
+      let conversion: typeof leadConversions.$inferSelect | null = null;
+      if (conversionEligible && finalStatus) {
+        assertConversionSource({
+          contactRecordKind: "effective_contact",
+          resultInteractionKind: result.interactionKind,
+          resultConversionMode: result.conversionMode,
+          statusIsTerminal: finalStatus.isTerminal,
+          statusCategory: finalStatus.category,
+        });
+        // `lead_conversions` requires an immutable timeline target, while the
+        // conversion event should also name the generated conversion id. Within
+        // this single transaction we use the effective-contact event as a
+        // temporary valid FK target, then bind the new conversion event before
+        // commit. No inconsistent relationship is ever observable externally.
+        const conversionInserted = await tx.insert(leadConversions).values({
+          partnerId: context.partnerId,
+          leadId: lead.id,
+          effectiveContactId: contactId,
+          timelineEventId,
+          resultId: result.id,
+          statusId: finalStatus.id,
+          actorMembershipId,
+          occurredAt,
+        });
+        const conversionId = insertedId(
+          conversionInserted,
+          "Não foi possível registrar a conversão"
+        );
+        const conversionTimelineEventId = await writeTimeline(transactionDb, {
+          partnerId: context.partnerId,
+          leadId: lead.id,
+          actorMembershipId,
+          type: "conversion_recorded",
+          occurredAt,
+          payload: {
+            conversionId,
+            effectiveContactTimelineEventId: timelineEventId,
+            resultCode: result.code,
+            resultLabel: result.label,
+            resultCategory: result.category,
+            statusId: finalStatus.id,
+          },
+        });
+        const rebound = await transactionDb
+          .update(leadConversions)
+          .set({ timelineEventId: conversionTimelineEventId })
+          .where(
+            and(
+              eq(leadConversions.partnerId, context.partnerId),
+              eq(leadConversions.id, conversionId),
+              eq(leadConversions.timelineEventId, timelineEventId)
+            )
+          );
+        if (affectedRows(rebound) !== 1) {
+          throw new Error("Não foi possível vincular o evento de conversão");
+        }
+        conversion =
+          (
+            await transactionDb
+              .select()
+              .from(leadConversions)
+              .where(
+                and(
+                  eq(leadConversions.partnerId, context.partnerId),
+                  eq(leadConversions.id, conversionId)
+                )
+              )
+              .limit(1)
+          )[0] ?? null;
+      }
+      await completeCommand(
+        transactionDb,
+        context,
+        "record_effective_contact",
+        command.requestKey,
+        timelineEventId
+      );
+      const updatedLead = await loadLead(transactionDb, context, lead.id);
+      const nextAction = await deriveOperationalNextAction(
+        transactionDb,
+        context.partnerId,
+        lead.id
+      );
+      return operationResponse({
+        operation: "record_effective_contact",
+        lead: updatedLead,
+        timelineEvent: {
+          id: timelineEventId,
+          type: "effective_contact_recorded",
+          occurredAt,
+          payload: timelinePayload,
+        },
+        governance: { timelineEventId, ...governanceState },
+        followUp,
+        conversion,
+        nextAction,
+      });
     });
-  });
+    stagedEvidence.value = null;
+    return response;
+  } catch (error) {
+    await stagedEvidence.value?.cleanup().catch(() => undefined);
+    throw error;
+  }
 }
 
 async function assertAdministrativeLead(

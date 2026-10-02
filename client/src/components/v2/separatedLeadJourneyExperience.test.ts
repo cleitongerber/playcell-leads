@@ -109,6 +109,33 @@ describe("016.4 unified lead journey experience contract", () => {
     expect(attemptDialog).not.toContain("evidences.upload.useMutation");
   });
 
+  it("filters treatment results by the effective rule and prevents required evidence before saving", () => {
+    const treatmentDialog = workspace.slice(
+      workspace.indexOf("open={treatmentOpen}"),
+      workspace.indexOf("open={independentFollowUpOpen}")
+    );
+    const treatmentSubmit = workspace.slice(
+      workspace.indexOf("const submitTreatment"),
+      workspace.indexOf("return (\n    <main")
+    );
+    expect(workspace).toContain("allowedResultIds");
+    expect(workspace).toContain("treatmentResultItems");
+    expect(treatmentDialog).toContain("items={treatmentResultItems}");
+    expect(treatmentDialog).toContain("Evidência obrigatória *");
+    expect(treatmentDialog).toContain(
+      "treatmentEvidenceInputRef.current?.click()"
+    );
+    expect(treatmentDialog).toContain("Arquivo selecionado:");
+    expect(treatmentDialog).toContain("!treatmentEvidence");
+    expect(treatmentSubmit).toContain(
+      "Adicione a evidência obrigatória para registrar esta tratativa"
+    );
+    expect(treatmentSubmit).toContain(
+      "readEvidenceFileAsBase64(treatmentEvidence)"
+    );
+    expect(treatmentSubmit).toContain("evidence,");
+  });
+
   it("keeps the mobile workspace constrained, touch-friendly and progressively disclosed", () => {
     expect(workspace).toContain("grid min-w-0 gap-5 xl:grid-cols");
     expect(workspace).toContain("max-h-[calc(100dvh-2rem)] overflow-y-auto");

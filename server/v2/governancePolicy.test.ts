@@ -6,6 +6,7 @@ import {
   defaultGovernanceRule,
   evaluateAttemptGovernance,
   evaluateTreatmentGovernance,
+  isContactOutcomeAllowed,
   isAttemptEvidenceRequiredForChannel,
   isEvidenceRequiredForChannel,
   resolveGovernanceForAttempt,
@@ -45,6 +46,8 @@ describe("V2 governance policy", () => {
   });
 
   it("enforces only the configured note, follow-up, channel and outcome requirements", () => {
+    expect(isContactOutcomeAllowed(strictRule, "contacted")).toBe(true);
+    expect(isContactOutcomeAllowed(strictRule, "sale_completed")).toBe(false);
     expect(() =>
       assertContactGovernance(strictRule, {
         channel: "telefone",

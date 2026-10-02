@@ -85,6 +85,20 @@ function normalizedSet(values: string[] | null | undefined) {
   return new Set(values.map(value => value.trim().toLowerCase()));
 }
 
+/**
+ * Result catalogues are tenant-wide, while governance may further narrow the
+ * outcomes that can be used for a campaign. Keep this predicate shared by the
+ * form contract and the write command so an unavailable outcome is never
+ * presented as an operable choice.
+ */
+export function isContactOutcomeAllowed(
+  rule: Pick<GovernanceRule, "allowedOutcomes">,
+  outcome: string
+) {
+  const outcomes = normalizedSet(rule.allowedOutcomes);
+  return !outcomes || outcomes.has(outcome.trim().toLowerCase());
+}
+
 export function isEvidenceRequiredForChannel(
   rule: GovernanceRule,
   channel: string
@@ -140,11 +154,10 @@ export function assertContactGovernance(
   }
 ) {
   const channels = normalizedSet(rule.allowedChannels);
-  const outcomes = normalizedSet(rule.allowedOutcomes);
   if (channels && !channels.has(input.channel.trim().toLowerCase())) {
     throw new Error("Canal não permitido pela regra de governança");
   }
-  if (outcomes && !outcomes.has(input.outcome.trim().toLowerCase())) {
+  if (!isContactOutcomeAllowed(rule, input.outcome)) {
     throw new Error("Resultado não permitido pela regra de governança");
   }
   if (rule.noteRequired && !input.summary?.trim()) {

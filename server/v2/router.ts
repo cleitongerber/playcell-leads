@@ -532,14 +532,36 @@ export const v2FoundationRouter = v2Router({
       .input(z.object({ partnerId: z.number().int().positive() }))
       .query(({ input }) => listManagementPartnerPdvs(input.partnerId)),
     create: v2SuperAdminProcedure
-      .input(z.object({ name: z.string().min(2).max(160), email: z.string().email().max(320), password: z.string().min(8).max(256), scopes: z.array(managementScopeInput).min(1).max(100) }))
+      .input(
+        z.object({
+          name: z.string().min(2).max(160),
+          email: z.string().email().max(320),
+          password: z.string().min(8).max(256),
+          scopes: z.array(managementScopeInput).min(1).max(100),
+        })
+      )
       .mutation(({ ctx, input }) => createManagementUser(ctx.user.id, input)),
     update: v2SuperAdminProcedure
-      .input(z.object({ userId: z.number().int().positive(), name: z.string().min(1).max(160), email: z.string().email().max(320), isActive: z.boolean(), scopes: z.array(managementScopeInput).min(1).max(100) }))
+      .input(
+        z.object({
+          userId: z.number().int().positive(),
+          name: z.string().min(1).max(160),
+          email: z.string().email().max(320),
+          isActive: z.boolean(),
+          scopes: z.array(managementScopeInput).min(1).max(100),
+        })
+      )
       .mutation(({ ctx, input }) => updateManagementUser(ctx.user.id, input)),
     resetPassword: v2SuperAdminProcedure
-      .input(z.object({ userId: z.number().int().positive(), password: z.string().min(8).max(256) }))
-      .mutation(({ ctx, input }) => resetManagementUserPassword(ctx.user.id, input.userId, input.password)),
+      .input(
+        z.object({
+          userId: z.number().int().positive(),
+          password: z.string().min(8).max(256),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        resetManagementUserPassword(ctx.user.id, input.userId, input.password)
+      ),
   }),
   campaigns: v2Router({
     list: v2PartnerProcedure
@@ -746,6 +768,14 @@ export const v2FoundationRouter = v2Router({
           summary: z.string().max(5_000).nullable().optional(),
           finalStatusId: z.number().int().positive().nullable().optional(),
           followUp: operationalFollowUpInput.nullable().optional(),
+          evidence: z
+            .object({
+              fileName: z.string().min(1).max(255),
+              mimeType: z.string().min(1).max(128),
+              base64: z.string().min(4).max(14_000_000),
+            })
+            .nullable()
+            .optional(),
           occurredAt: z.coerce.date().optional(),
           expectedStatusId: z.number().int().positive().nullable().optional(),
           requestKey: z.string().min(8).max(96),
@@ -786,6 +816,7 @@ export const v2FoundationRouter = v2Router({
           operationKind: z.enum(["attempt", "effective_contact"]),
           channel: z.string().min(1).max(48).optional(),
           resultId: z.number().int().positive().optional(),
+          finalStatusId: z.number().int().positive().optional(),
         })
       )
       .query(({ ctx, input }) =>
