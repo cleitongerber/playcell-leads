@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   blankGovernanceRule,
   GovernanceRuleEditor,
-  hasInvalidGovernanceRuleSelection,
+  governanceRuleIssueAnchor,
+  governanceRuleValidationIssues,
   governanceFormToInput,
   governanceRuleToForm,
   type GovernanceRuleFormValue,
@@ -44,6 +45,10 @@ export default function V2Governance() {
   const canManage =
     access.data?.role === "super_admin" ||
     access.data?.role === "partner_admin";
+  const validationIssues = governanceRuleValidationIssues(
+    form,
+    treatmentResults.data ?? []
+  );
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
@@ -77,14 +82,35 @@ export default function V2Governance() {
                 Print de WhatsApp é tratado como evidência anexada; o sistema
                 não o interpreta como comprovação automática de uma conversa.
               </p>
+              {validationIssues.length > 0 && (
+                <div
+                  role="alert"
+                  className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground"
+                >
+                  <p className="font-medium">
+                    Revise {validationIssues.length} configuraç
+                    {validationIssues.length === 1 ? "ão" : "ões"} antes de
+                    salvar.
+                  </p>
+                  <ul className="list-disc space-y-1 pl-5">
+                    {validationIssues.map(issue => (
+                      <li key={issue.field}>
+                        <a
+                          className="underline"
+                          href={`#${governanceRuleIssueAnchor(issue.field)}`}
+                        >
+                          {issue.message}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <Button
                 disabled={
                   save.isPending ||
                   treatmentResults.isLoading ||
-                  hasInvalidGovernanceRuleSelection(
-                    form,
-                    treatmentResults.data ?? []
-                  )
+                  validationIssues.length > 0
                 }
                 onClick={() => save.mutate(governanceFormToInput(form))}
               >

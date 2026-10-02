@@ -5,6 +5,29 @@ import { governanceChannels } from "@shared/governanceChannels";
 
 export type GovernanceOutcomeOption = { code: string; label: string };
 
+export type GovernanceRuleValidationIssue = {
+  field:
+    | "allowedChannels"
+    | "evidenceRequiredChannels"
+    | "allowedOutcomes"
+    | "maxEvidenceSizeMb"
+    | "retentionDays";
+  message: string;
+};
+
+export function governanceRuleIssueAnchor(
+  field: GovernanceRuleValidationIssue["field"]
+) {
+  const anchors: Record<GovernanceRuleValidationIssue["field"], string> = {
+    allowedChannels: "governance-allowed-channels",
+    evidenceRequiredChannels: "governance-evidence",
+    allowedOutcomes: "governance-allowed-outcomes",
+    maxEvidenceSizeMb: "governance-max-evidence-size",
+    retentionDays: "governance-retention-days",
+  };
+  return anchors[field];
+}
+
 export type GovernanceRuleFormValue = {
   evidenceRequired: boolean;
   evidenceRequiredChannels: string[];
@@ -51,7 +74,12 @@ type ApiRule = {
 export function governanceRuleToForm(rule: ApiRule): GovernanceRuleFormValue {
   return {
     evidenceRequired: rule.evidenceRequired,
-    evidenceRequiredChannels: rule.evidenceRequiredChannels ?? [],
+    // A global requirement supersedes the per-channel list. The latter is
+    // therefore not part of the editable policy and must not keep an old,
+    // otherwise invisible channel value blocking a reviewed rule.
+    evidenceRequiredChannels: rule.evidenceRequired
+      ? []
+      : (rule.evidenceRequiredChannels ?? []),
     noteRequired: rule.noteRequired,
     followUpRequired: rule.followUpRequired,
     allowedChannels: rule.allowedChannels,
@@ -69,6 +97,23 @@ function unique(values: string[]) {
 function nullableList(values: string[]) {
   const normalized = unique(values);
   return normalized.length ? normalized : null;
+}
+
+export function reviewedGovernanceChannelCodes(values: string[] | null) {
+  if (!values) return null;
+  const known = new Set<string>(
+    governanceChannels.map(channel => channel.code)
+  );
+  return values.filter(channel => known.has(channel));
+}
+
+export function reviewedGovernanceOutcomeCodes(
+  values: string[] | null,
+  outcomes: readonly GovernanceOutcomeOption[]
+) {
+  if (!values) return null;
+  const known = new Set(outcomes.map(outcome => outcome.code));
+  return values.filter(code => known.has(code));
 }
 
 export function governanceFormToInput(value: GovernanceRuleFormValue) {
@@ -121,16 +166,103 @@ export function unrecognizedGovernanceChannelCodes(
   ].filter(channel => !known.has(channel));
 }
 
+export function unrecognizedAllowedChannelCodes(
+  value: GovernanceRuleFormValue
+) {
+  const known = new Set<string>(
+    governanceChannels.map(channel => channel.code)
+  );
+  return (value.allowedChannels ?? []).filter(channel => !known.has(channel));
+}
+
+export function unrecognizedEvidenceRequiredChannelCodes(
+  value: GovernanceRuleFormValue
+) {
+  const known = new Set<string>(
+    governanceChannels.map(channel => channel.code)
+  );
+  return value.evidenceRequiredChannels.filter(channel => !known.has(channel));
+}
+
+export function governanceRuleValidationIssues(
+  value: GovernanceRuleFormValue,
+  outcomes: readonly GovernanceOutcomeOption[]
+): GovernanceRuleValidationIssue[] {
+  const issues: GovernanceRuleValidationIssue[] = [];
+  const unknownAllowedChannels = unrecognizedAllowedChannelCodes(value);
+  const unknownEvidenceChannels =
+    unrecognizedEvidenceRequiredChannelCodes(value);
+  const unknownOutcomes = unrecognizedGovernanceOutcomeCodes(value, outcomes);
+  const maxEvidenceSizeMb = Number(value.maxEvidenceSizeMb);
+  const retentionDays = value.retentionDays
+    ? Number(value.retentionDays)
+    : null;
+
+  if (value.allowedChannels?.length === 0) {
+    issues.push({
+      field: "allowedChannels",
+      message:
+        "Selecione ao menos um canal permitido ou escolha todos os canais.",
+    });
+  } else if (unknownAllowedChannels.length) {
+    issues.push({
+      field: "allowedChannels",
+      message: `Esta configuração contém canais antigos ou não reconhecidos: ${Array.from(new Set(unknownAllowedChannels)).join(", ")}. Revise a seleção antes de salvar.`,
+    });
+  }
+
+  if (unknownEvidenceChannels.length) {
+    issues.push({
+      field: "evidenceRequiredChannels",
+      message: `Esta configuração de evidência contém canais antigos ou não reconhecidos: ${Array.from(new Set(unknownEvidenceChannels)).join(", ")}. Revise a seleção antes de salvar.`,
+    });
+  }
+
+  if (value.allowedOutcomes?.length === 0) {
+    issues.push({
+      field: "allowedOutcomes",
+      message:
+        "Selecione ao menos um resultado permitido ou escolha todos os resultados ativos.",
+    });
+  } else if (unknownOutcomes.length) {
+    issues.push({
+      field: "allowedOutcomes",
+      message: `Esta regra contém resultados antigos ou não reconhecidos: ${unknownOutcomes.join(", ")}. Revise a seleção antes de salvar.`,
+    });
+  }
+
+  if (
+    !Number.isFinite(maxEvidenceSizeMb) ||
+    maxEvidenceSizeMb <= 0 ||
+    maxEvidenceSizeMb > 10
+  ) {
+    issues.push({
+      field: "maxEvidenceSizeMb",
+      message: "Informe um limite por evidência entre 0,01 MB e 10 MB.",
+    });
+  }
+
+  if (
+    retentionDays !== null &&
+    (!Number.isInteger(retentionDays) ||
+      retentionDays < 1 ||
+      retentionDays > 3650)
+  ) {
+    issues.push({
+      field: "retentionDays",
+      message:
+        "Informe uma retenção em dias entre 1 e 3650, ou deixe o campo vazio.",
+    });
+  }
+
+  return issues;
+}
+
 export function hasInvalidGovernanceRuleSelection(
   value: GovernanceRuleFormValue,
   outcomes: readonly GovernanceOutcomeOption[]
 ) {
-  if (value.allowedChannels && value.allowedChannels.length === 0) return true;
-  if (value.allowedOutcomes && value.allowedOutcomes.length === 0) return true;
-  return (
-    unrecognizedGovernanceOutcomeCodes(value, outcomes).length > 0 ||
-    unrecognizedGovernanceChannelCodes(value).length > 0
-  );
+  return governanceRuleValidationIssues(value, outcomes).length > 0;
 }
 
 function ChannelSelection({
@@ -139,16 +271,21 @@ function ChannelSelection({
   value,
   onChange,
   disabled,
+  issue,
 }: {
   label: string;
   description: string;
   value: string[] | null;
   onChange: (value: string[] | null) => void;
   disabled: boolean;
+  issue?: string;
 }) {
   const restricted = value !== null;
   return (
-    <fieldset className="space-y-3 rounded-md border p-3">
+    <fieldset
+      id="governance-allowed-channels"
+      className="space-y-3 rounded-md border p-3"
+    >
       <legend className="px-1 text-sm font-medium">{label}</legend>
       <p className="text-xs text-muted-foreground">{description}</p>
       <RadioGroup
@@ -182,6 +319,14 @@ function ChannelSelection({
           ))}
         </div>
       )}
+      {issue && (
+        <p
+          role="alert"
+          className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground"
+        >
+          {issue}
+        </p>
+      )}
     </fieldset>
   );
 }
@@ -197,8 +342,9 @@ export function GovernanceRuleEditor({
   onChange: (value: GovernanceRuleFormValue) => void;
   disabled?: boolean;
 }) {
-  const unknownOutcomes = unrecognizedGovernanceOutcomeCodes(value, outcomes);
-  const unknownChannels = unrecognizedGovernanceChannelCodes(value);
+  const issues = governanceRuleValidationIssues(value, outcomes);
+  const issueFor = (field: GovernanceRuleValidationIssue["field"]) =>
+    issues.find(issue => issue.field === field)?.message;
   const restrictedOutcomes = value.allowedOutcomes !== null;
   const toggleMime = (mime: string) =>
     onChange({
@@ -243,27 +389,31 @@ export function GovernanceRuleEditor({
         description="Restrinja somente quando a operação não puder registrar tratativas por todos os canais disponíveis."
         value={value.allowedChannels}
         disabled={disabled}
-        onChange={allowedChannels => onChange({ ...value, allowedChannels })}
+        issue={issueFor("allowedChannels")}
+        onChange={allowedChannels =>
+          onChange({
+            ...value,
+            allowedChannels: reviewedGovernanceChannelCodes(allowedChannels),
+          })
+        }
       />
-      {unknownChannels.length > 0 && (
-        <p
-          role="alert"
-          className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground"
-        >
-          Esta regra contém canais antigos ou não reconhecidos:{" "}
-          {Array.from(new Set(unknownChannels)).join(", ")}. Revise a seleção
-          antes de salvar.
-        </p>
-      )}
 
-      <section className="space-y-3 rounded-md border p-3">
+      <section
+        id="governance-evidence"
+        className="space-y-3 rounded-md border p-3"
+      >
         <h3 className="text-sm font-medium">Evidência</h3>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={value.evidenceRequired}
             disabled={disabled}
             onCheckedChange={checked =>
-              onChange({ ...value, evidenceRequired: checked === true })
+              onChange({
+                ...value,
+                evidenceRequired: checked === true,
+                evidenceRequiredChannels:
+                  checked === true ? [] : value.evidenceRequiredChannels,
+              })
             }
           />
           Exigir evidência em todas as tratativas
@@ -285,7 +435,9 @@ export function GovernanceRuleEditor({
                   onChange({
                     ...value,
                     evidenceRequiredChannels: toggle(
-                      value.evidenceRequiredChannels,
+                      reviewedGovernanceChannelCodes(
+                        value.evidenceRequiredChannels
+                      ) ?? [],
                       channel.code
                     ),
                   })
@@ -295,9 +447,20 @@ export function GovernanceRuleEditor({
             </label>
           ))}
         </div>
+        {issueFor("evidenceRequiredChannels") && (
+          <p
+            role="alert"
+            className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground"
+          >
+            {issueFor("evidenceRequiredChannels")}
+          </p>
+        )}
       </section>
 
-      <section className="space-y-3 rounded-md border p-3">
+      <section
+        id="governance-allowed-outcomes"
+        className="space-y-3 rounded-md border p-3"
+      >
         <h3 className="text-sm font-medium">
           Resultados permitidos nas tratativas
         </h3>
@@ -313,8 +476,9 @@ export function GovernanceRuleEditor({
               allowedOutcomes:
                 next === "all"
                   ? null
-                  : (value.allowedOutcomes?.filter(code =>
-                      outcomes.some(outcome => outcome.code === code)
+                  : (reviewedGovernanceOutcomeCodes(
+                      value.allowedOutcomes,
+                      outcomes
                     ) ?? []),
             })
           }
@@ -332,13 +496,12 @@ export function GovernanceRuleEditor({
             Selecionar resultados específicos
           </label>
         </RadioGroup>
-        {unknownOutcomes.length > 0 && (
+        {issueFor("allowedOutcomes") && (
           <p
             role="alert"
             className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground"
           >
-            Esta regra contém resultados antigos ou não reconhecidos:{" "}
-            {unknownOutcomes.join(", ")}. Revise a seleção antes de salvar.
+            {issueFor("allowedOutcomes")}
           </p>
         )}
         {restrictedOutcomes && (
@@ -357,7 +520,10 @@ export function GovernanceRuleEditor({
                     onChange({
                       ...value,
                       allowedOutcomes: toggle(
-                        value.allowedOutcomes ?? [],
+                        reviewedGovernanceOutcomeCodes(
+                          value.allowedOutcomes,
+                          outcomes
+                        ) ?? [],
                         outcome.code
                       ),
                     })
@@ -395,7 +561,7 @@ export function GovernanceRuleEditor({
         </div>
       </section>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="space-y-1 text-sm">
+        <label id="governance-max-evidence-size" className="space-y-1 text-sm">
           <span>Limite por evidência (MB)</span>
           <Input
             disabled={disabled}
@@ -405,8 +571,13 @@ export function GovernanceRuleEditor({
               onChange({ ...value, maxEvidenceSizeMb: event.target.value })
             }
           />
+          {issueFor("maxEvidenceSizeMb") && (
+            <span role="alert" className="block text-xs text-destructive">
+              {issueFor("maxEvidenceSizeMb")}
+            </span>
+          )}
         </label>
-        <label className="space-y-1 text-sm">
+        <label id="governance-retention-days" className="space-y-1 text-sm">
           <span>Retenção em dias (opcional)</span>
           <Input
             disabled={disabled}
@@ -417,6 +588,11 @@ export function GovernanceRuleEditor({
             }
             placeholder="Sem prazo automático"
           />
+          {issueFor("retentionDays") && (
+            <span role="alert" className="block text-xs text-destructive">
+              {issueFor("retentionDays")}
+            </span>
+          )}
         </label>
       </div>
     </div>

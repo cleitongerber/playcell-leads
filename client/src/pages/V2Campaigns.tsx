@@ -16,7 +16,8 @@ import {
 import {
   blankGovernanceRule,
   GovernanceRuleEditor,
-  hasInvalidGovernanceRuleSelection,
+  governanceRuleIssueAnchor,
+  governanceRuleValidationIssues,
   governanceFormToInput,
   governanceRuleToForm,
   type GovernanceRuleFormValue,
@@ -388,6 +389,10 @@ export function V2CampaignDetail() {
         : campaign.status === "closed"
           ? "archived"
           : null;
+  const campaignGovernanceIssues = governanceRuleValidationIssues(
+    governanceForm,
+    treatmentResults.data ?? []
+  );
   return (
     <main className="v2-page space-y-6">
       <V2PageHeader
@@ -673,15 +678,37 @@ export function V2CampaignDetail() {
                 disabled={treatmentResults.isLoading}
               />
             )}
+            {governanceMode === "override" &&
+              campaignGovernanceIssues.length > 0 && (
+                <div
+                  role="alert"
+                  className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground"
+                >
+                  <p className="font-medium">
+                    Revise {campaignGovernanceIssues.length} configuraç
+                    {campaignGovernanceIssues.length === 1 ? "ão" : "ões"} antes
+                    de salvar.
+                  </p>
+                  <ul className="list-disc space-y-1 pl-5">
+                    {campaignGovernanceIssues.map(issue => (
+                      <li key={issue.field}>
+                        <a
+                          className="underline"
+                          href={`#${governanceRuleIssueAnchor(issue.field)}`}
+                        >
+                          {issue.message}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             <Button
               disabled={
                 setCampaignGovernance.isPending ||
                 treatmentResults.isLoading ||
                 (governanceMode === "override" &&
-                  hasInvalidGovernanceRuleSelection(
-                    governanceForm,
-                    treatmentResults.data ?? []
-                  ))
+                  campaignGovernanceIssues.length > 0)
               }
               onClick={() =>
                 setCampaignGovernance.mutate({
