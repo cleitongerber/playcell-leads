@@ -249,193 +249,6 @@ export default function V2Dashboard() {
             />
           </section>
 
-          <section className="v2-dashboard-primary-layout grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
-            <Card className="v2-section-card v2-dashboard-funnel">
-              <CardHeader>
-                <CardTitle>Funil do período</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Coorte de Leads recebidos no período, acompanhada até o fim
-                  dele.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {[
-                  ["Recebidos", dashboard.data.funnel.received],
-                  ["Trabalhados", dashboard.data.funnel.worked],
-                  ["Com tentativa", dashboard.data.funnel.attempted],
-                  ["Com contato efetivo", dashboard.data.funnel.contacted],
-                  ["Interessados", dashboard.data.funnel.interested],
-                  ["Convertidos", dashboard.data.funnel.converted],
-                ].map(([label, raw]) => {
-                  const count = Number(raw);
-                  const width = dashboard.data.funnel.received
-                    ? Math.min(
-                        100,
-                        (count / dashboard.data.funnel.received) * 100
-                      )
-                    : 0;
-                  return (
-                    <div key={String(label)} className="v2-dashboard-funnel-stage">
-                      <span className="text-sm text-muted-foreground">{label}</span>
-                      <div
-                        role="img"
-                        aria-label={`${label}: ${number(count)}`}
-                        style={{ width: `${Math.max(width, count ? 8 : 0)}%` }}
-                      />
-                      <strong className="text-sm">{number(count)}</strong>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-            <Card className="v2-section-card">
-              <CardHeader>
-                <CardTitle>Saúde da operação</CardTitle>
-              </CardHeader>
-              <CardContent className="v2-health-list space-y-3">
-                <HealthItem
-                  label="Sem responsável"
-                  value={dashboard.data.health.unassigned}
-                  onClick={() => openHealthDetail("unassigned")}
-                />
-                <HealthItem
-                  label="Atribuídos sem trabalho"
-                  value={dashboard.data.health.assignedWithoutWork}
-                  onClick={() => openHealthDetail("assigned_without_work")}
-                />
-                <HealthItem
-                  label="Follow-ups vencidos"
-                  value={dashboard.data.health.followUpsOverdue}
-                  onClick={() => openHealthDetail("follow_ups_overdue")}
-                />
-                <HealthItem
-                  label="Pendências documentais"
-                  value={dashboard.data.health.governancePending}
-                  onClick={() => openHealthDetail("governance_pending")}
-                />
-                <HealthItem
-                  label="Aguardando resposta"
-                  value={dashboard.data.health.awaitingResponse}
-                  onClick={() => openHealthDetail("awaiting_response")}
-                />
-                <HealthItem
-                  label="Follow-ups residuais em Leads terminais"
-                  value={dashboard.data.health.terminalResidualFollowUps}
-                  onClick={() =>
-                    openHealthDetail("terminal_residual_follow_ups")
-                  }
-                />
-                <div className="rounded-md border border-brand-accent/30 bg-brand-accent/5 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-medium">
-                        Cobertura de evidências
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Tratativas efetivas elegíveis com ao menos uma evidência
-                        disponível.
-                      </p>
-                    </div>
-                    <strong className="text-lg">
-                      {percent(dashboard.data.health.evidenceCoverage.coverage)}
-                    </strong>
-                  </div>
-                  <div className="v2-mobile-detail-grid mt-3 text-xs text-muted-foreground sm:grid-cols-2">
-                    <HealthMetricButton
-                      label="Elegíveis"
-                      value={dashboard.data.health.evidenceCoverage.eligible}
-                      onClick={() => openHealthDetail("evidence_eligible")}
-                    />
-                    <HealthMetricButton
-                      label="Com evidência"
-                      value={
-                        dashboard.data.health.evidenceCoverage.withEvidence
-                      }
-                      onClick={() => openHealthDetail("evidence_with")}
-                    />
-                    <HealthMetricButton
-                      label="Sem evidência"
-                      value={
-                        dashboard.data.health.evidenceCoverage.withoutEvidence
-                      }
-                      onClick={() => openHealthDetail("evidence_without")}
-                    />
-                    <HealthMetricButton
-                      label="Obrigatórias pendentes"
-                      value={
-                        dashboard.data.health.evidenceCoverage.requiredPending
-                      }
-                      onClick={() =>
-                        openHealthDetail("evidence_required_pending")
-                      }
-                    />
-                  </div>
-                  <div className="mt-4 border-t border-brand-accent/20 pt-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-medium">
-                          Tentativas de contato
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Tentativas são auditadas separadamente de tratativas
-                          efetivas.
-                        </p>
-                      </div>
-                      <strong className="text-lg">
-                        {percent(
-                          dashboard.data.health.evidenceCoverage.attemptCoverage
-                            .coverage
-                        )}
-                      </strong>
-                    </div>
-                    <div className="v2-mobile-detail-grid mt-3 text-xs text-muted-foreground sm:grid-cols-2">
-                      <HealthMetricButton
-                        label="Elegíveis"
-                        value={
-                          dashboard.data.health.evidenceCoverage.attemptCoverage
-                            .eligible
-                        }
-                        onClick={() =>
-                          openHealthDetail("attempt_evidence_eligible")
-                        }
-                      />
-                      <HealthMetricButton
-                        label="Com evidência"
-                        value={
-                          dashboard.data.health.evidenceCoverage.attemptCoverage
-                            .withEvidence
-                        }
-                        onClick={() =>
-                          openHealthDetail("attempt_evidence_with")
-                        }
-                      />
-                      <HealthMetricButton
-                        label="Sem evidência"
-                        value={
-                          dashboard.data.health.evidenceCoverage.attemptCoverage
-                            .withoutEvidence
-                        }
-                        onClick={() =>
-                          openHealthDetail("attempt_evidence_without")
-                        }
-                      />
-                      <HealthMetricButton
-                        label="Obrigatórias pendentes"
-                        value={
-                          dashboard.data.health.evidenceCoverage.attemptCoverage
-                            .requiredPending
-                        }
-                        onClick={() =>
-                          openHealthDetail("attempt_evidence_required_pending")
-                        }
-                      />
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-
           <section className="v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 v2-dashboard-secondary-metrics">
             <MetricCard
               title="Taxa de contato efetivo"
@@ -468,12 +281,194 @@ export default function V2Dashboard() {
             />
           </section>
 
-          <Overview
-            title="Campanhas"
-            rows={dashboard.data.campaigns}
-            campaign
-          />
-          <Overview title="PDVs" rows={dashboard.data.pdvs} />
+          <section className="v2-dashboard-primary-layout">
+            <Card className="v2-section-card v2-dashboard-funnel">
+              <CardHeader>
+                <CardTitle>Funil do período</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Coorte de Leads recebidos no período, acompanhada até o fim
+                  dele.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {[
+                  ["Recebidos", dashboard.data.funnel.received],
+                  ["Trabalhados", dashboard.data.funnel.worked],
+                  ["Com tentativa", dashboard.data.funnel.attempted],
+                  ["Com contato efetivo", dashboard.data.funnel.contacted],
+                  ["Interessados", dashboard.data.funnel.interested],
+                  ["Convertidos", dashboard.data.funnel.converted],
+                ].map(([label, raw]) => {
+                  const count = Number(raw);
+                  const width = dashboard.data.funnel.received
+                    ? Math.min(
+                        100,
+                        (count / dashboard.data.funnel.received) * 100
+                      )
+                    : 0;
+                  return (
+                    <div
+                      key={String(label)}
+                      className="v2-dashboard-funnel-stage"
+                    >
+                      <span className="text-sm text-muted-foreground">
+                        {label}
+                      </span>
+                      <div
+                        role="img"
+                        aria-label={`${label}: ${number(count)}`}
+                        style={{ width: `${Math.max(width, count ? 8 : 0)}%` }}
+                      />
+                      <strong className="text-sm">{number(count)}</strong>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+            <Card className="v2-section-card v2-dashboard-health">
+              <CardHeader>
+                <CardTitle>Saúde da operação</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Principais indicadores de pendência no seu escopo.
+                </p>
+              </CardHeader>
+              <CardContent className="v2-health-list">
+                <HealthItem
+                  label="Sem responsável"
+                  value={dashboard.data.health.unassigned}
+                  onClick={() => openHealthDetail("unassigned")}
+                />
+                <HealthItem
+                  label="Atribuídos sem trabalho"
+                  value={dashboard.data.health.assignedWithoutWork}
+                  onClick={() => openHealthDetail("assigned_without_work")}
+                />
+                <HealthItem
+                  label="Pendências documentais"
+                  value={dashboard.data.health.governancePending}
+                  onClick={() => openHealthDetail("governance_pending")}
+                />
+                <HealthItem
+                  label="Aguardando resposta"
+                  value={dashboard.data.health.awaitingResponse}
+                  onClick={() => openHealthDetail("awaiting_response")}
+                />
+                <HealthItem
+                  label="Follow-ups residuais em Leads terminais"
+                  value={dashboard.data.health.terminalResidualFollowUps}
+                  onClick={() =>
+                    openHealthDetail("terminal_residual_follow_ups")
+                  }
+                />
+                <div className="v2-health-coverage">
+                  <div className="v2-health-summary">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Cobertura de evidências
+                      </p>
+                    </div>
+                    <strong className="text-lg">
+                      {percent(dashboard.data.health.evidenceCoverage.coverage)}
+                    </strong>
+                  </div>
+                  <div className="v2-health-inline-metrics">
+                    <HealthMetricButton
+                      label="Elegíveis"
+                      value={dashboard.data.health.evidenceCoverage.eligible}
+                      onClick={() => openHealthDetail("evidence_eligible")}
+                    />
+                    <HealthMetricButton
+                      label="Com evidência"
+                      value={
+                        dashboard.data.health.evidenceCoverage.withEvidence
+                      }
+                      onClick={() => openHealthDetail("evidence_with")}
+                    />
+                    <HealthMetricButton
+                      label="Sem evidência"
+                      value={
+                        dashboard.data.health.evidenceCoverage.withoutEvidence
+                      }
+                      onClick={() => openHealthDetail("evidence_without")}
+                    />
+                    <HealthMetricButton
+                      label="Obrigatórias pendentes"
+                      value={
+                        dashboard.data.health.evidenceCoverage.requiredPending
+                      }
+                      onClick={() =>
+                        openHealthDetail("evidence_required_pending")
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="v2-health-attempt-coverage">
+                  <div className="v2-health-summary">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Tentativas de contato
+                      </p>
+                    </div>
+                    <strong className="text-lg">
+                      {percent(
+                        dashboard.data.health.evidenceCoverage.attemptCoverage
+                          .coverage
+                      )}
+                    </strong>
+                  </div>
+                  <div className="v2-health-inline-metrics">
+                    <HealthMetricButton
+                      label="Elegíveis"
+                      value={
+                        dashboard.data.health.evidenceCoverage.attemptCoverage
+                          .eligible
+                      }
+                      onClick={() =>
+                        openHealthDetail("attempt_evidence_eligible")
+                      }
+                    />
+                    <HealthMetricButton
+                      label="Com evidência"
+                      value={
+                        dashboard.data.health.evidenceCoverage.attemptCoverage
+                          .withEvidence
+                      }
+                      onClick={() => openHealthDetail("attempt_evidence_with")}
+                    />
+                    <HealthMetricButton
+                      label="Sem evidência"
+                      value={
+                        dashboard.data.health.evidenceCoverage.attemptCoverage
+                          .withoutEvidence
+                      }
+                      onClick={() =>
+                        openHealthDetail("attempt_evidence_without")
+                      }
+                    />
+                    <HealthMetricButton
+                      label="Obrigatórias pendentes"
+                      value={
+                        dashboard.data.health.evidenceCoverage.attemptCoverage
+                          .requiredPending
+                      }
+                      onClick={() =>
+                        openHealthDetail("attempt_evidence_required_pending")
+                      }
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+
+          <section className="v2-dashboard-overviews">
+            <Overview
+              title="Campanhas"
+              rows={dashboard.data.campaigns}
+              campaign
+            />
+            <Overview title="PDVs" rows={dashboard.data.pdvs} />
+          </section>
           <p className="text-xs text-muted-foreground">
             Período:{" "}
             {new Date(dashboard.data.period.start).toLocaleString("pt-BR")} até{" "}
@@ -664,7 +659,7 @@ function Overview({
   campaign?: boolean;
 }) {
   return (
-    <Card>
+    <Card className="v2-section-card v2-dashboard-overview">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>

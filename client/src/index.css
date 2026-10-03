@@ -241,10 +241,32 @@
   .v2-health-item { display:flex; min-height:3.5rem; align-items:center; justify-content:space-between; gap:var(--space-3); border-color:var(--border); background:color-mix(in srgb,var(--surface-alt) 62%,var(--card)); transition:background-color 150ms ease,border-color 150ms ease; }
   .v2-health-item:hover { border-color:color-mix(in srgb,var(--brand-secondary) 35%,var(--border)); background:color-mix(in srgb,var(--brand-accent) 7%,var(--card)); }
   .v2-health-item strong { font-family:var(--font-manrope); font-size:1.125rem; letter-spacing:-.02em; }
+  .v2-dashboard-primary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .v2-dashboard-filters .v2-analytics-desktop-grid { gap:.75rem 1rem; }
   .v2-dashboard-primary-layout { display:grid; gap:1.5rem; }
   .v2-dashboard-funnel { min-height:23rem; }
   .v2-dashboard-funnel-stage { display:grid; grid-template-columns:minmax(4.75rem,.65fr) minmax(0,2fr) auto; align-items:center; gap:.75rem; }
   .v2-dashboard-funnel-stage > div { height:1.2rem; border-radius:.25rem; background:linear-gradient(90deg,var(--brand-primary),var(--brand-secondary)); }
+  .v2-health-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
+  .v2-dashboard-health .v2-health-item { min-height:4rem; padding:.75rem; }
+  .v2-dashboard-health .v2-health-item p { font-size:.8125rem; line-height:1.2; }
+  .v2-health-coverage,.v2-health-attempt-coverage { display:grid; gap:.5rem; min-width:0; border:1px solid color-mix(in srgb,var(--brand-accent) 28%,var(--border)); border-radius:.5rem; background:color-mix(in srgb,var(--brand-accent) 5%,var(--card)); padding:.75rem; }
+  .v2-health-summary { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+  .v2-health-summary strong { flex:none; font-family:var(--font-manrope); font-size:1.125rem; letter-spacing:-.025em; }
+  .v2-health-inline-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.25rem .5rem; }
+  .v2-health-inline-metrics button { min-width:0; border-radius:.25rem; color:var(--muted-foreground); font-size:.6875rem; line-height:1.25; }
+  .v2-health-inline-metrics button:hover { color:var(--brand-primary); text-decoration:underline; }
+  .v2-health-inline-metrics strong { margin-top:.1rem; font-size:.8125rem; }
+  .v2-health-attempt-coverage { grid-column:1 / -1; grid-template-columns:minmax(0,1fr) minmax(11rem,.85fr); align-items:center; background:color-mix(in srgb,var(--brand-accent) 7%,var(--card)); }
+  .v2-dashboard-overviews { display:grid; gap:1.5rem; }
+
+  /* Reports use one deliberate responsive grid, rather than independently wrapping filter groups. */
+  .v2-reports-toolbar { display:grid; grid-template-columns:minmax(0,1fr); align-items:end; }
+  .v2-reports-toolbar-fields { display:grid; min-width:0; gap:.75rem; }
+  .v2-reports-contextual-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem 1rem; }
+  .v2-reports-toolbar-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
+  .v2-reports-toolbar-actions [data-slot="button"] { min-height:2.75rem; }
+  .v2-reports-analytics > .hidden { grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem 1rem; }
 
   /* Journey, settings, imports */
   .v2-lead-journey details { border-color:var(--border); background:color-mix(in srgb,var(--surface-alt) 45%,var(--card)); }
@@ -306,8 +328,9 @@
     .v2-follow-up-actions .v2-follow-up-complete { width:100%; min-height:2.75rem; }
     .v2-follow-up-secondary-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
     .v2-follow-up-secondary-actions [data-slot="button"] { min-height:2.75rem; }
-    .v2-health-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
+    .v2-health-list { grid-template-columns:1fr; }
     .v2-health-item { min-height:4.75rem; padding:.75rem; }
+    .v2-health-attempt-coverage { grid-template-columns:1fr; }
     .v2-tab-list { width:100%; }
     .v2-tab-list [data-slot="button"] { flex:1 1 auto; }
     .v2-administration-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible; }
@@ -324,7 +347,11 @@
   @media (min-width:768px) {
     .v2-metric-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
     .v2-dashboard-primary-layout { grid-template-columns:minmax(0,1.65fr) minmax(19rem,.85fr); }
-    .v2-dashboard-secondary-metrics { grid-template-columns:repeat(5,minmax(0,1fr)); }
+    .v2-dashboard-secondary-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .v2-dashboard-overviews { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .v2-reports-toolbar-fields { grid-template-columns:repeat(3,minmax(0,1fr)); gap:.75rem 1rem; }
+    .v2-reports-contextual-fields,.v2-reports-analytics,.v2-reports-analytics > .hidden { display:contents; }
+    .v2-reports-toolbar .v2-reports-analytics > .hidden > div { min-width:0; }
   }
   @media (min-width: 1024px) {
     .v2-app-shell { padding-left:14rem; }
@@ -334,9 +361,19 @@
     .v2-topbar { min-height:4.25rem; padding-inline:1.5rem; }
     .v2-page { padding:2rem 2rem 3rem; }
     .v2-metric-grid { grid-template-columns:repeat(auto-fit,minmax(11.5rem,1fr)); }
+    .v2-dashboard-primary-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
     .v2-login-shell { grid-template-columns:minmax(25rem,1fr) minmax(34rem,1.15fr); }
     .v2-login-aside { display:flex; }
     .v2-login-panel { padding:2.5rem; }
+  }
+  @media (min-width:1280px) {
+    .v2-dashboard-secondary-metrics { grid-template-columns:repeat(5,minmax(0,1fr)); }
+    .v2-dashboard-filters .v2-analytics-desktop-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }
+    .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child { grid-column:auto; }
+    .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child > span { display:none; }
+    .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child [data-slot="button"] { width:100%; min-height:2.5rem; }
+    .v2-reports-toolbar { grid-template-columns:minmax(0,1fr) 11rem; }
+    .v2-reports-toolbar-actions { grid-template-columns:1fr; }
   }
   @media (min-width:1440px) { .v2-page { max-width:100rem; padding-inline:2rem; } }
 }

@@ -10,7 +10,10 @@ describe("FLUXO visual system experience contracts", () => {
   const shell = readProjectFile("client/src/components/v2/V2AppShell.tsx");
   const leads = readProjectFile("client/src/pages/V2Leads.tsx");
   const followUps = readProjectFile("client/src/pages/V2FollowUps.tsx");
-  const administration = readProjectFile("client/src/pages/V2Administration.tsx");
+  const administration = readProjectFile(
+    "client/src/pages/V2Administration.tsx"
+  );
+  const dashboard = readProjectFile("client/src/pages/V2Dashboard.tsx");
   const reports = readProjectFile("client/src/pages/V2Reports.tsx");
   const journey = readProjectFile(
     "client/src/components/v2/V2SeparatedLeadJourney.tsx"
@@ -67,5 +70,29 @@ describe("FLUXO visual system experience contracts", () => {
     expect(administration.indexOf("Comunicação com Leads")).toBeLessThan(
       administration.indexOf("<CardTitle>Mensagem inicial do WhatsApp")
     );
+  });
+
+  it("keeps the operational dashboard in the approved KPI, funnel, health, and overview order", () => {
+    const firstKpi = dashboard.indexOf('title="Leads recebidos"');
+    const secondMetricBand = dashboard.indexOf(
+      "v2-dashboard-secondary-metrics"
+    );
+    const mainLayout = dashboard.indexOf("v2-dashboard-primary-layout");
+    const overviewLayout = dashboard.indexOf("v2-dashboard-overviews");
+
+    expect(firstKpi).toBeGreaterThan(-1);
+    expect(secondMetricBand).toBeGreaterThan(firstKpi);
+    expect(mainLayout).toBeGreaterThan(secondMetricBand);
+    expect(overviewLayout).toBeGreaterThan(mainLayout);
+    expect(dashboard).toContain("v2-dashboard-health");
+    expect(dashboard).toContain("v2-health-attempt-coverage");
+  });
+
+  it("uses one responsive reports toolbar instead of independently wrapping filter groups", () => {
+    expect(reports).toContain('className="v2-reports-toolbar-fields"');
+    expect(reports).toContain('className="v2-reports-toolbar-actions"');
+    expect(reports).toContain("hideClear");
+    expect(styles).toContain(".v2-reports-toolbar-fields");
+    expect(styles).toContain(".v2-reports-toolbar-actions");
   });
 });

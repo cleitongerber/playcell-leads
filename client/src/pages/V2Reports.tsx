@@ -1,5 +1,6 @@
 import {
   AnalyticsFilters,
+  defaultAnalyticsFilters,
   type AnalyticsUiFilters,
   useAnalyticsUrlFilters,
 } from "@/components/v2/AnalyticsFilters";
@@ -110,131 +111,141 @@ export default function V2Reports() {
       />
 
       <PageToolbar className="v2-reports-toolbar">
-        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
-            <label className="text-sm font-medium" htmlFor="report-type">
-              Tipo de relatório
-            </label>
-            <Select
-              value={type}
-              onValueChange={value => {
-                setType(value as ReportType);
-                setPage(1);
-                setExpandedRows([]);
-                setEvidenceFilter("all");
-                setFollowUpSituation("all");
-              }}
-            >
-              <SelectTrigger id="report-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(reportLabels) as ReportType[])
-                  .filter(
-                    item =>
-                      access.data?.role !== "seller" ||
-                      (item !== "imports" && item !== "distributions")
-                  )
-                  .map(item => (
-                    <SelectItem key={item} value={item}>
-                      {reportLabels[item]}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {(type === "leads" ||
-            type === "attempts" ||
-            type === "treatments") && (
-            <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
-              <label
-                className="text-sm font-medium"
-                htmlFor="report-evidence-filter"
-              >
-                Evidências
+        <div className="v2-reports-toolbar-fields">
+          <div className="v2-reports-contextual-fields">
+            <div className="min-w-0 space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="report-type">
+                Tipo de relatório
               </label>
               <Select
-                value={evidenceFilter}
+                value={type}
                 onValueChange={value => {
-                  setEvidenceFilter(value as typeof evidenceFilter);
+                  setType(value as ReportType);
                   setPage(1);
+                  setExpandedRows([]);
+                  setEvidenceFilter("all");
+                  setFollowUpSituation("all");
                 }}
               >
-                <SelectTrigger id="report-evidence-filter">
+                <SelectTrigger id="report-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="with_evidence">Com evidência</SelectItem>
-                  <SelectItem value="without_evidence">
-                    Sem evidência
-                  </SelectItem>
-                  <SelectItem value="required_pending">
-                    Pendência obrigatória
-                  </SelectItem>
+                  {(Object.keys(reportLabels) as ReportType[])
+                    .filter(
+                      item =>
+                        access.data?.role !== "seller" ||
+                        (item !== "imports" && item !== "distributions")
+                    )
+                    .map(item => (
+                      <SelectItem key={item} value={item}>
+                        {reportLabels[item]}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
-          )}
-          {type === "follow_ups" && (
-            <>
-              <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
+            {(type === "leads" ||
+              type === "attempts" ||
+              type === "treatments") && (
+              <div className="min-w-0 space-y-1.5">
                 <label
                   className="text-sm font-medium"
-                  htmlFor="report-follow-up-situation"
+                  htmlFor="report-evidence-filter"
                 >
-                  Situação operacional
+                  Evidências
                 </label>
                 <Select
-                  value={followUpSituation}
+                  value={evidenceFilter}
                   onValueChange={value => {
-                    setFollowUpSituation(value as typeof followUpSituation);
+                    setEvidenceFilter(value as typeof evidenceFilter);
                     setPage(1);
                   }}
                 >
-                  <SelectTrigger id="report-follow-up-situation">
+                  <SelectTrigger id="report-evidence-filter">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas</SelectItem>
-                    <SelectItem value="overdue">Vencidos</SelectItem>
-                    <SelectItem value="today">Hoje</SelectItem>
-                    <SelectItem value="upcoming">A vencer</SelectItem>
-                    <SelectItem value="pending">Pendentes</SelectItem>
-                    <SelectItem value="completed">Concluídos</SelectItem>
-                    <SelectItem value="cancelled">Cancelados</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
-                <label
-                  className="text-sm font-medium"
-                  htmlFor="report-follow-up-date"
-                >
-                  Período por
-                </label>
-                <Select
-                  value={followUpDateField}
-                  onValueChange={value => {
-                    setFollowUpDateField(value as typeof followUpDateField);
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger id="report-follow-up-date">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="dueAt">
-                      Data prevista de retorno
+                    <SelectItem value="with_evidence">Com evidência</SelectItem>
+                    <SelectItem value="without_evidence">
+                      Sem evidência
                     </SelectItem>
-                    <SelectItem value="createdAt">Data de criação</SelectItem>
+                    <SelectItem value="required_pending">
+                      Pendência obrigatória
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            </>
-          )}
+            )}
+            {type === "follow_ups" && (
+              <>
+                <div className="min-w-0 space-y-1.5">
+                  <label
+                    className="text-sm font-medium"
+                    htmlFor="report-follow-up-situation"
+                  >
+                    Situação operacional
+                  </label>
+                  <Select
+                    value={followUpSituation}
+                    onValueChange={value => {
+                      setFollowUpSituation(value as typeof followUpSituation);
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger id="report-follow-up-situation">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      <SelectItem value="overdue">Vencidos</SelectItem>
+                      <SelectItem value="today">Hoje</SelectItem>
+                      <SelectItem value="upcoming">A vencer</SelectItem>
+                      <SelectItem value="pending">Pendentes</SelectItem>
+                      <SelectItem value="completed">Concluídos</SelectItem>
+                      <SelectItem value="cancelled">Cancelados</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="min-w-0 space-y-1.5">
+                  <label
+                    className="text-sm font-medium"
+                    htmlFor="report-follow-up-date"
+                  >
+                    Período por
+                  </label>
+                  <Select
+                    value={followUpDateField}
+                    onValueChange={value => {
+                      setFollowUpDateField(value as typeof followUpDateField);
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger id="report-follow-up-date">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dueAt">
+                        Data prevista de retorno
+                      </SelectItem>
+                      <SelectItem value="createdAt">Data de criação</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+          </div>
+          <AnalyticsFilters
+            className="v2-reports-analytics min-w-0"
+            value={filters}
+            onChange={updateFilters}
+            inline
+            hideClear
+          />
+        </div>
+        <div className="v2-reports-toolbar-actions">
           <Button
-            className="sm:ml-auto"
             disabled={!canQuery || exportCsv.isPending || !report.data?.total}
             onClick={() =>
               exportCsv.mutate({
@@ -251,13 +262,14 @@ export default function V2Reports() {
           >
             Exportar CSV
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => updateFilters(defaultAnalyticsFilters)}
+          >
+            Limpar
+          </Button>
         </div>
-        <AnalyticsFilters
-          className="v2-reports-analytics min-w-0 flex-1"
-          value={filters}
-          onChange={updateFilters}
-          inline
-        />
       </PageToolbar>
 
       {!canQuery ? (

@@ -128,6 +128,7 @@ function FilterControls({
   onClear,
   timeZone,
   idPrefix,
+  hideClear = false,
 }: {
   value: AnalyticsUiFilters;
   patch: (next: Partial<AnalyticsUiFilters>) => void;
@@ -138,6 +139,7 @@ function FilterControls({
   onClear: () => void;
   timeZone?: string;
   idPrefix: string;
+  hideClear?: boolean;
 }) {
   return (
     <>
@@ -261,14 +263,16 @@ function FilterControls({
           </Select>
         </div>
       )}
-      <div className="flex items-end gap-2 text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">
-        <span className="flex-1">
-          Datas calculadas no servidor em {timeZone ?? "…"}.
-        </span>
-        <Button type="button" size="sm" variant="ghost" onClick={onClear}>
-          Limpar
-        </Button>
-      </div>
+      {!hideClear && (
+        <div className="flex items-end gap-2 text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">
+          <span className="flex-1">
+            Datas calculadas no servidor em {timeZone ?? "…"}.
+          </span>
+          <Button type="button" size="sm" variant="ghost" onClick={onClear}>
+            Limpar
+          </Button>
+        </div>
+      )}
     </>
   );
 }
@@ -279,12 +283,15 @@ export function AnalyticsFilters({
   includeSeller = true,
   className,
   inline = false,
+  hideClear = false,
 }: {
   value: AnalyticsUiFilters;
   onChange: (next: AnalyticsUiFilters) => void;
   includeSeller?: boolean;
   className?: string;
   inline?: boolean;
+  /** Lets a parent toolbar place its existing clear action alongside other actions. */
+  hideClear?: boolean;
 }) {
   const filters = v2trpc.analytics.filters.useQuery();
   const access = v2trpc.access.context.useQuery();
@@ -312,42 +319,52 @@ export function AnalyticsFilters({
     canFilterSeller,
     onClear: () => onChange(defaultAnalyticsFilters),
     timeZone: filters.data?.timeZone,
+    hideClear,
   };
   const content = (
     <>
-        <div className="flex items-center justify-between gap-3 md:hidden">
-          <div>
-            <p className="font-medium">Filtros</p>
-            <p className="text-xs text-muted-foreground">
-              {activeCount
-                ? `${activeCount} filtro(s) ativo(s)`
-                : "Período padrão"}
-            </p>
-          </div>
-          <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
-            <DrawerTrigger asChild>
-              <Button type="button" variant="outline">
-                <SlidersHorizontal className="mr-2 size-4" /> Ajustar
-              </Button>
-            </DrawerTrigger>
-            <DrawerContent className="max-h-[90dvh] overflow-y-auto">
-              <DrawerHeader>
-                <DrawerTitle>Filtros analíticos</DrawerTitle>
-                <DrawerDescription>
-                  Escolha o universo autorizado para os indicadores.
-                </DrawerDescription>
-              </DrawerHeader>
-              <div className="grid gap-4 p-4">
-                <FilterControls {...controlProps} idPrefix="mobile-analytics" />
-              </div>
-            </DrawerContent>
-          </Drawer>
+      <div className="flex items-center justify-between gap-3 md:hidden">
+        <div>
+          <p className="font-medium">Filtros</p>
+          <p className="text-xs text-muted-foreground">
+            {activeCount
+              ? `${activeCount} filtro(s) ativo(s)`
+              : "Período padrão"}
+          </p>
         </div>
-        <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
-          <FilterControls {...controlProps} idPrefix="desktop-analytics" />
-        </div>
+        <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+          <DrawerTrigger asChild>
+            <Button type="button" variant="outline">
+              <SlidersHorizontal className="mr-2 size-4" /> Ajustar
+            </Button>
+          </DrawerTrigger>
+          <DrawerContent className="max-h-[90dvh] overflow-y-auto">
+            <DrawerHeader>
+              <DrawerTitle>Filtros analíticos</DrawerTitle>
+              <DrawerDescription>
+                Escolha o universo autorizado para os indicadores.
+              </DrawerDescription>
+            </DrawerHeader>
+            <div className="grid gap-4 p-4">
+              <FilterControls {...controlProps} idPrefix="mobile-analytics" />
+            </div>
+          </DrawerContent>
+        </Drawer>
+      </div>
+      <div className="v2-analytics-desktop-grid hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
+        <FilterControls {...controlProps} idPrefix="desktop-analytics" />
+      </div>
     </>
   );
-  if (inline) return <div className={cn("v2-analytics-filter-controls", className)}>{content}</div>;
-  return <Card className={cn("v2-filter-panel v2-analytics-filters", className)}><CardContent>{content}</CardContent></Card>;
+  if (inline)
+    return (
+      <div className={cn("v2-analytics-filter-controls", className)}>
+        {content}
+      </div>
+    );
+  return (
+    <Card className={cn("v2-filter-panel v2-analytics-filters", className)}>
+      <CardContent>{content}</CardContent>
+    </Card>
+  );
 }
