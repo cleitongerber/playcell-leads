@@ -183,13 +183,17 @@ export default function V2Dashboard() {
     });
 
   return (
-    <main className="v2-page space-y-6">
+    <main className="v2-page v2-dashboard-page space-y-6">
       <V2PageHeader
         eyebrow="Gestão"
         title="Dashboard operacional"
         description="Fatos operacionais no período selecionado e pendências atuais no seu escopo."
       />
-      <AnalyticsFilters value={filters} onChange={setFilters} />
+      <AnalyticsFilters
+        className="v2-dashboard-filters"
+        value={filters}
+        onChange={setFilters}
+      />
       {!canQuery ? (
         <Card>
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
@@ -205,7 +209,7 @@ export default function V2Dashboard() {
         />
       ) : dashboard.data ? (
         <>
-          <section className="v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
+          <section className="v2-metric-grid grid-cols-2 lg:grid-cols-3 v2-dashboard-primary-metrics">
             <MetricCard
               title="Leads recebidos"
               value={number(dashboard.data.cards.leadsReceived)}
@@ -245,8 +249,8 @@ export default function V2Dashboard() {
             />
           </section>
 
-          <section className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
-            <Card className="v2-section-card">
+          <section className="v2-dashboard-primary-layout grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
+            <Card className="v2-section-card v2-dashboard-funnel">
               <CardHeader>
                 <CardTitle>Funil do período</CardTitle>
                 <p className="text-sm text-muted-foreground">
@@ -271,17 +275,14 @@ export default function V2Dashboard() {
                       )
                     : 0;
                   return (
-                    <div key={String(label)}>
-                      <div className="mb-1 flex justify-between text-sm">
-                        <span>{label}</span>
-                        <strong>{number(count)}</strong>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded bg-muted">
-                        <div
-                          className="h-full rounded bg-primary"
-                          style={{ width: `${width}%` }}
-                        />
-                      </div>
+                    <div key={String(label)} className="v2-dashboard-funnel-stage">
+                      <span className="text-sm text-muted-foreground">{label}</span>
+                      <div
+                        role="img"
+                        aria-label={`${label}: ${number(count)}`}
+                        style={{ width: `${Math.max(width, count ? 8 : 0)}%` }}
+                      />
+                      <strong className="text-sm">{number(count)}</strong>
                     </div>
                   );
                 })}
@@ -435,7 +436,7 @@ export default function V2Dashboard() {
             </Card>
           </section>
 
-          <section className="v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
+          <section className="v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 v2-dashboard-secondary-metrics">
             <MetricCard
               title="Taxa de contato efetivo"
               value={percent(dashboard.data.cards.effectiveContactRate)}

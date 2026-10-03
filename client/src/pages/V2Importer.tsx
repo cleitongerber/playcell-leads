@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { v2trpc } from "@/lib/v2trpc";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { SectionCard } from "@/components/v2/V2Layout";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -343,7 +344,7 @@ export default function V2Importer() {
   }
 
   return (
-    <main className="v2-page space-y-6">
+    <main className="v2-page v2-importer-page space-y-6">
       <V2PageHeader
         eyebrow="Campanhas / Importações"
         title="Importar leads"
@@ -364,7 +365,8 @@ export default function V2Importer() {
         ].map(([number, label]) => (
           <div
             key={number}
-            className={`rounded-lg border p-3 text-sm ${step === number ? "border-brand-secondary bg-brand-accent/10 text-foreground" : "text-muted-foreground"}`}
+            aria-current={step === number ? "step" : undefined}
+            className={`v2-import-step rounded-lg border p-3 text-sm ${step === number ? "is-current border-brand-secondary bg-brand-accent/10 text-foreground" : step > Number(number) ? "is-complete" : "text-muted-foreground"}`}
           >
             <strong>{number}.</strong> {label}
           </div>
@@ -372,11 +374,12 @@ export default function V2Importer() {
       </section>
 
       {step === 1 && (
-        <Card>
-          <CardHeader>
+        <SectionCard>
+          <CardHeader className="border-b border-border/70 pb-4">
             <CardTitle>1. Arquivo e PDV de destino</CardTitle>
+            <p className="text-sm text-muted-foreground">Escolha o contexto do arquivo antes de enviar dados para validação.</p>
           </CardHeader>
-          <CardContent className="grid gap-5 lg:grid-cols-2">
+          <CardContent className="grid gap-5 pt-5 lg:grid-cols-2">
             <div className="space-y-3">
               <label className="text-sm font-medium">
                 PDV para todo o arquivo
@@ -417,20 +420,20 @@ export default function V2Importer() {
               )}
             </label>
           </CardContent>
-        </Card>
+        </SectionCard>
       )}
 
       {step === 2 && batchId && (
         <>
-          <Card>
-            <CardHeader>
+          <SectionCard>
+            <CardHeader className="border-b border-border/70 pb-4">
               <CardTitle>2. Mapeamento das colunas</CardTitle>
               <p className="text-sm text-muted-foreground">
                 Os nomes de cabeçalho vêm exclusivamente do seu arquivo; escolha
                 o destino interno de cada coluna.
               </p>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-5">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium">
@@ -676,7 +679,7 @@ export default function V2Importer() {
                 </p>
               )}
             </CardContent>
-          </Card>
+          </SectionCard>
 
           {canManage && (
             <Card>
@@ -811,15 +814,15 @@ export default function V2Importer() {
             </Card>
           </section>
           {step === 3 && (
-            <Card>
-              <CardHeader>
+            <SectionCard>
+              <CardHeader className="border-b border-border/70 pb-4">
                 <CardTitle>3. Prévia obrigatória</CardTitle>
                 <p className="text-sm text-muted-foreground">
                   Esta etapa ainda não criou leads. A confirmação abaixo é
                   explícita e só pode ser processada uma vez.
                 </p>
               </CardHeader>
-              <CardContent className="space-y-5">
+              <CardContent className="space-y-5 pt-5">
                 <div className="grid gap-2 md:hidden">
                   {preview.data?.items.map(row => (
                     <div key={row.rowNumber} className="rounded-lg border p-3">
@@ -896,11 +899,11 @@ export default function V2Importer() {
                   Confirmar importação
                 </Button>
               </CardContent>
-            </Card>
+            </SectionCard>
           )}
           {step === 4 && (
-            <Card>
-              <CardHeader>
+            <SectionCard>
+              <CardHeader className="border-b border-border/70 pb-4">
                 <CardTitle>4. Resultado da importação</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
@@ -931,14 +934,15 @@ export default function V2Importer() {
                   )}
                 </div>
               </CardContent>
-            </Card>
+            </SectionCard>
           )}
         </>
       )}
 
       {canManage && (
-        <Card>
-          <CardHeader>
+        <SectionCard>
+          <CardHeader className="border-b border-border/70 pb-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Configuração da campanha</p>
             <CardTitle>Política de duplicidade da campanha</CardTitle>
             <p className="text-sm text-muted-foreground">
               O override da campanha prevalece sobre o padrão do parceiro.
@@ -946,7 +950,7 @@ export default function V2Importer() {
               follow-ups ou evidências.
             </p>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-4">
+          <CardContent className="grid gap-3 pt-5 sm:grid-cols-4">
             <select
               className="h-10 rounded-md border bg-background px-2"
               value={policyMode}
@@ -1008,14 +1012,15 @@ export default function V2Importer() {
               Salvar política
             </Button>
           </CardContent>
-        </Card>
+        </SectionCard>
       )}
 
-      <Card>
-        <CardHeader>
+      <SectionCard>
+        <CardHeader className="border-b border-border/70 pb-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Rastreabilidade</p>
           <CardTitle>Histórico de importações</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 pt-5">
           {history.data?.items.map(item => (
             <article
               key={item.id}
@@ -1044,7 +1049,7 @@ export default function V2Importer() {
             </p>
           )}
         </CardContent>
-      </Card>
+      </SectionCard>
     </main>
   );
 }

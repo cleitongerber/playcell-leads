@@ -18,6 +18,7 @@ import {
   type FollowUpCompletionChoice,
 } from "@/components/v2/FollowUpCompletionDialog";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { DataTable, PageToolbar } from "@/components/v2/V2Layout";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
@@ -161,14 +162,14 @@ export default function V2FollowUps() {
   });
 
   return (
-    <main className="v2-page space-y-6">
+    <main className="v2-page v2-followups-page space-y-6">
       <V2PageHeader
         eyebrow="Operação"
         title="Follow-ups"
         description={`Agenda do parceiro em ${alerts.data?.timezone ?? "…"}. Vencimento é calculado no servidor, não no navegador.`}
       />
 
-      <section className="v2-metric-grid sm:grid-cols-3">
+      <section className="v2-metric-grid v2-followups-metrics sm:grid-cols-3">
         <Card
           className={`v2-metric-card ${alerts.data?.overdue ? "border-destructive" : ""}`}
         >
@@ -197,8 +198,7 @@ export default function V2FollowUps() {
         </Card>
       </section>
 
-      <Card className="v2-filter-panel">
-        <CardContent className="flex flex-col gap-3 p-4 lg:flex-row">
+      <PageToolbar className="v2-followups-toolbar">
           <div className="v2-tab-list" aria-label="Situação de follow-ups">
             {(Object.keys(viewLabels) as FollowUpView[]).map(option => (
               <Button
@@ -269,8 +269,7 @@ export default function V2FollowUps() {
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </PageToolbar>
       {campaignId && (
         <Card>
           <CardContent className="flex flex-wrap items-center gap-2 p-3 text-sm">
@@ -290,12 +289,58 @@ export default function V2FollowUps() {
         </Card>
       )}
 
-      <Card className="v2-section-card">
+      <Card className="v2-section-card v2-followups-results">
         <CardHeader>
           <CardTitle>{viewLabels[view]}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {list.data?.items.map(item => {
+          {list.data?.items.length ? (
+            <>
+              <DataTable className="hidden md:block">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Lead</th>
+                      <th>Campanha / PDV</th>
+                      <th>Data e hora</th>
+                      <th>Status</th>
+                      <th>Responsável</th>
+                      <th aria-label="Ações" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.data.items.flatMap(item => {
+                      const isPending = item.status === "pending";
+                      const proposedAt = reschedule[item.id] ?? asDateTimeLocal(item.dueAt);
+                      const isRescheduleOpen = rescheduleOpen.includes(item.id);
+                      return [
+                        <tr key={item.id}>
+                          <td><Link href={buildV2Path(`/v2/leads/${item.leadId}`, { from: currentV2Path() })}><span className="font-medium hover:underline">{item.leadName || "Lead sem nome"}</span></Link></td>
+                          <td>{item.campaignName} · {item.pdvName}</td>
+                          <td>{new Date(item.dueAt).toLocaleString("pt-BR")}</td>
+                          <td><Badge variant={item.derivedStatus === "overdue" ? "destructive" : "outline"}>{followUpStatusLabel(item.status, item.derivedStatus)}</Badge></td>
+                          <td>{item.ownerName}</td>
+                          <td className="text-right">
+                            {isPending && !isReadOnly ? <div className="flex justify-end gap-2">
+                              <Button size="sm" onClick={() => setCompleteTarget({ id: item.id, leadId: item.leadId, leadName: item.leadName || "este Lead" })}>Concluir</Button>
+                              <Button size="sm" variant="outline" onClick={() => setRescheduleOpen(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id])}>Reagendar</Button>
+                              <Button size="sm" variant="ghost" onClick={() => setCancelTarget({ id: item.id, leadName: item.leadName || "este Lead" })}>Cancelar</Button>
+                            </div> : "—"}
+                          </td>
+                        </tr>,
+                        ...(isRescheduleOpen ? [<tr key={`reschedule-${item.id}`}><td colSpan={6} className="bg-muted/20">
+                          <div className="flex items-center gap-2">
+                            <Input className="max-w-xs" type="datetime-local" value={proposedAt} onChange={event => setReschedule(current => ({ ...current, [item.id]: event.target.value }))} />
+                            <Button size="sm" variant="secondary" disabled={rescheduleFollowUp.isPending || !proposedAt} onClick={() => rescheduleFollowUp.mutate({ id: item.id, dueAt: new Date(proposedAt) })}>Confirmar reagendamento</Button>
+                          </div>
+                        </td></tr>] : []),
+                      ];
+                    })}
+                  </tbody>
+                </table>
+              </DataTable>
+              <div className="grid gap-2 md:hidden">
+          {list.data.items.map(item => {
             const proposedAt =
               reschedule[item.id] ?? asDateTimeLocal(item.dueAt);
             const isPending = item.status === "pending";
@@ -304,7 +349,7 @@ export default function V2FollowUps() {
             return (
               <article
                 key={item.id}
-                className="v2-follow-up-record rounded-lg border p-4"
+                className={`v2-follow-up-record rounded-lg border p-4 ${item.derivedStatus === "overdue" ? "is-overdue" : ""}`}
               >
                 <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
                   <div>
@@ -326,7 +371,7 @@ export default function V2FollowUps() {
                     </p>
                     {item.note && <p className="mt-2 text-sm">{item.note}</p>}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge
                       variant={
                         item.derivedStatus === "overdue"
@@ -336,9 +381,9 @@ export default function V2FollowUps() {
                     >
                       {followUpStatusLabel(item.status, item.derivedStatus)}
                     </Badge>
-                    <span className="text-sm text-muted-foreground">
+                    <time className="v2-follow-up-due text-sm text-muted-foreground" dateTime={new Date(item.dueAt).toISOString()}>
                       {new Date(item.dueAt).toLocaleString("pt-BR")}
-                    </span>
+                    </time>
                   </div>
                 </div>
                 {isPending && !isReadOnly && (
@@ -346,6 +391,7 @@ export default function V2FollowUps() {
                     <div className="v2-follow-up-actions">
                       <Button
                         size="sm"
+                        className="v2-follow-up-complete"
                         disabled={complete.isPending}
                         onClick={() =>
                           setCompleteTarget({
@@ -357,37 +403,39 @@ export default function V2FollowUps() {
                       >
                         {complete.isPending ? "Concluindo…" : "Concluir"}
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        aria-expanded={isRescheduleOpen}
-                        aria-controls={rescheduleId}
-                        onClick={() =>
-                          setRescheduleOpen(current =>
-                            current.includes(item.id)
-                              ? current.filter(id => id !== item.id)
-                              : [...current, item.id]
-                          )
-                        }
-                      >
-                        {isRescheduleOpen
-                          ? "Fechar reagendamento"
-                          : "Reagendar"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={cancel.isPending}
-                        onClick={() =>
-                          setCancelTarget({
-                            id: item.id,
-                            leadName: item.leadName || "este Lead",
-                          })
-                        }
-                      >
-                        Cancelar
-                      </Button>
+                      <div className="v2-follow-up-secondary-actions">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          aria-expanded={isRescheduleOpen}
+                          aria-controls={rescheduleId}
+                          onClick={() =>
+                            setRescheduleOpen(current =>
+                              current.includes(item.id)
+                                ? current.filter(id => id !== item.id)
+                                : [...current, item.id]
+                            )
+                          }
+                        >
+                          {isRescheduleOpen
+                            ? "Fechar reagendamento"
+                            : "Reagendar"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={cancel.isPending}
+                          onClick={() =>
+                            setCancelTarget({
+                              id: item.id,
+                              leadName: item.leadName || "este Lead",
+                            })
+                          }
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
                     </div>
                     {isRescheduleOpen && (
                       <div
@@ -425,7 +473,9 @@ export default function V2FollowUps() {
               </article>
             );
           })}
-          {!list.data?.items.length && (
+              </div>
+            </>
+          ) : (
             <p className="p-8 text-center text-sm text-muted-foreground">
               Nenhum follow-up nesta lista.
             </p>

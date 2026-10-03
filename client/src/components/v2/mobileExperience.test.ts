@@ -14,8 +14,8 @@ describe("mobile operational experience contracts", () => {
     expect(moreSheet).toContain('surface="more"');
     expect(moreSheet).toContain("v2-mobile-more-nav-item w-full");
     expect(moreSheet).not.toContain('className="v2-sidebar-nav-item');
-    expect(styles).toContain(".v2-mobile-more-nav-item {");
-    expect(styles).toContain("color: var(--foreground);");
+    expect(styles).toContain(".v2-mobile-more-nav-item");
+    expect(styles).toContain("color:var(--foreground)");
     expect(styles).toContain(".v2-mobile-more-nav-item:focus-visible");
     expect(shell).toContain("const moreIsActive = moreNavigation.some");
   });
@@ -30,7 +30,7 @@ describe("mobile operational experience contracts", () => {
     expect(styles).toContain(".v2-metric-grid");
     expect(styles).toContain(".v2-mobile-detail-grid");
     expect(dashboard).toContain(
-      "v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6"
+      "v2-metric-grid grid-cols-2 lg:grid-cols-3"
     );
     expect(productivity).toContain("aria-expanded={expanded}");
     expect(productivity).toContain("Ver detalhes");

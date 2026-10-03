@@ -24,6 +24,7 @@ import {
 } from "@/components/v2/GovernanceRuleEditor";
 import { CampaignLeadManagement } from "@/components/v2/CampaignLeadManagement";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { DataTable, PageToolbar } from "@/components/v2/V2Layout";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { safeV2ReturnPath } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
@@ -63,6 +64,9 @@ export default function V2Campaigns() {
   const [createdCampaignId, setCreatedCampaignId] = useState<number | null>(
     null
   );
+  const [createOpen, setCreateOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "closed">("all");
+  const [search, setSearch] = useState("");
   const campaigns = v2trpc.campaigns.list.useQuery({ includeArchived: true });
   const pdvs = v2trpc.pdvs.list.useQuery({ includeInactive: false });
   const access = v2trpc.access.context.useQuery();
@@ -74,12 +78,25 @@ export default function V2Campaigns() {
     onSuccess: campaignId => {
       setForm(blank);
       setCreatedCampaignId(campaignId);
+      setCreateOpen(false);
       utils.campaigns.list.invalidate();
       toast.success("Campanha criada como rascunho");
     },
     onError: error => toast.error(error.message),
   });
   const activePdvs = useMemo(() => pdvs.data ?? [], [pdvs.data]);
+  const visibleCampaigns = useMemo(
+    () =>
+      (campaigns.data ?? []).filter(campaign => {
+        const statusMatches =
+          statusFilter === "all" ||
+          (statusFilter === "active" && campaign.status === "active") ||
+          (statusFilter === "closed" && ["closed", "archived"].includes(campaign.status));
+        const query = search.trim().toLocaleLowerCase("pt-BR");
+        return statusMatches && (!query || `${campaign.name} ${campaign.code} ${campaign.description ?? ""}`.toLocaleLowerCase("pt-BR").includes(query));
+      }),
+    [campaigns.data, search, statusFilter]
+  );
   const toggle = (id: number) =>
     setForm(current => ({
       ...current,
@@ -89,20 +106,22 @@ export default function V2Campaigns() {
     }));
 
   return (
-    <main className="v2-page space-y-6">
+    <main className="v2-page v2-campaigns-page space-y-6">
       <V2PageHeader
         eyebrow="Operação"
         title="Campanhas"
         description="Crie a campanha, defina os PDVs e deixe-a pronta para a importação de Leads."
+        actions={canManage ? <Button onClick={() => setCreateOpen(true)}>+ Nova campanha</Button> : undefined}
       />
       {canManage && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Nova campanha</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Nova campanha</DialogTitle>
+              <DialogDescription>Defina os dados básicos e os PDVs participantes.</DialogDescription>
+            </DialogHeader>
             <form
-              className="grid gap-3"
+              className="grid gap-4"
               onSubmit={(event: FormEvent) => {
                 event.preventDefault();
                 create.mutate({
@@ -193,14 +212,13 @@ export default function V2Campaigns() {
                 </div>
               </div>
               <Button
-                className="w-fit"
                 disabled={create.isPending || !form.pdvIds.length}
               >
                 {create.isPending ? "Salvando…" : "Salvar rascunho"}
               </Button>
             </form>
-          </CardContent>
-        </Card>
+          </DialogContent>
+        </Dialog>
       )}
       {createdCampaignId && (
         <Card className="border-primary/30">
@@ -225,17 +243,38 @@ export default function V2Campaigns() {
           </CardContent>
         </Card>
       )}
-      <Card className="v2-section-card">
+      <PageToolbar className="v2-campaigns-toolbar">
+        <div className="v2-tab-list" aria-label="Status das campanhas">
+          {([["all", "Todas"], ["active", "Em andamento"], ["closed", "Concluídas"]] as const).map(([value, label]) => (
+            <Button key={value} type="button" size="sm" variant="ghost" className={statusFilter === value ? "is-active" : undefined} onClick={() => setStatusFilter(value)}>{label}</Button>
+          ))}
+        </div>
+        <div className="min-w-[14rem] flex-1 space-y-1.5">
+          <Label htmlFor="campaign-search">Busca</Label>
+          <Input id="campaign-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar campanha" />
+        </div>
+      </PageToolbar>
+      <Card className="v2-section-card v2-campaigns-results">
         <CardHeader>
           <CardTitle>Campanhas do parceiro</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {campaigns.data?.map(campaign => (
-            <Link key={campaign.id} href={`/v2/campaigns/${campaign.id}`}>
+          {visibleCampaigns.length ? (
+            <>
+              <DataTable className="hidden md:block">
+                <table><thead><tr><th>Campanha</th><th>Código</th><th>Status</th><th>Operação</th><th aria-label="Ações" /></tr></thead><tbody>
+                  {visibleCampaigns.map(campaign => (
+                    <tr key={campaign.id}><td className="font-semibold">{campaign.name}</td><td>{campaign.code}</td><td><Badge variant={campaign.status === "active" ? "secondary" : "outline"}>{statusLabel[campaign.status]}</Badge></td><td>{campaign.isFrozen ? "Congelada" : "Disponível"}</td><td className="text-right"><Link href={`/v2/campaigns/${campaign.id}`}><Button size="sm" variant="outline">Abrir</Button></Link></td></tr>
+                  ))}
+                </tbody></table>
+              </DataTable>
+              <div className="grid gap-2 md:hidden">
+          {visibleCampaigns.map(campaign => (
+            <Link key={campaign.id} href={`/v2/campaigns/${campaign.id}`} aria-label={`Abrir campanha ${campaign.name}`}>
               <div className="v2-campaign-list-item cursor-pointer rounded-lg border p-4 transition hover:bg-muted/40">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold">{campaign.name}</p>
-                  <Badge
+                <div className="flex items-start justify-between gap-3">
+                  <div><p className="font-semibold">{campaign.name}</p><p className="mt-0.5 text-sm text-muted-foreground">{campaign.code}</p></div>
+                  <div className="flex flex-wrap justify-end gap-1.5"><Badge
                     variant={
                       campaign.status === "active" ? "secondary" : "outline"
                     }
@@ -245,17 +284,16 @@ export default function V2Campaigns() {
                   {campaign.isFrozen && (
                     <Badge variant="destructive">Congelada</Badge>
                   )}
+                  </div>
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {campaign.code}
-                  {campaign.description ? ` · ${campaign.description}` : ""}
-                </p>
+                <div className="mt-3 flex items-end justify-between gap-3"><p className="line-clamp-2 text-sm text-muted-foreground">{campaign.description || "Sem descrição"}</p><span className="shrink-0 text-sm font-medium text-primary">Abrir</span></div>
               </div>
             </Link>
-          ))}
-          {!campaigns.data?.length && (
+          ))}</div>
+            </>
+          ) : (
             <p className="p-6 text-center text-sm text-muted-foreground">
-              Nenhuma campanha visível neste escopo.
+              Nenhuma campanha encontrada neste contexto.
             </p>
           )}
         </CardContent>

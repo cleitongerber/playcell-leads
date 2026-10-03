@@ -1,10 +1,11 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { v2trpc } from "@/lib/v2trpc";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { KpiCard, SectionCard } from "@/components/v2/V2Layout";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -77,23 +78,30 @@ export default function V2ImportConfiguration() {
   });
 
   return (
-    <main className="v2-page space-y-6">
-      <V2PageHeader eyebrow="Administração" title="Configuração de importações" description="Defina a política padrão, campos personalizados e templates reutilizáveis do parceiro." actions={<Link href="/v2/admin"><Button variant="outline">← Administração</Button></Link>} />
+    <main className="v2-page v2-import-settings-page space-y-6">
+     <V2PageHeader eyebrow="Administração" title="Configuração de importações" description="Defina a política padrão, campos personalizados e templates reutilizáveis do parceiro." actions={<Link href="/v2/admin"><Button variant="outline">← Administração</Button></Link>} />
+      <section className="v2-metric-grid v2-import-summary">
+        <KpiCard label="Política de duplicidade" value={policy === "reject" ? "Recusar" : policy === "allow" ? "Permitir" : "Atualizar"} detail="regra padrão" />
+        <KpiCard label="Campos personalizados" value={fields.data?.length ?? 0} detail="cadastrados" />
+        <KpiCard label="Templates" value={templates.data?.length ?? 0} detail="reutilizáveis" />
+      </section>
       {!canManage ? (
-        <Card>
+        <SectionCard>
           <CardContent className="p-6 text-sm text-muted-foreground">
             Seu perfil não pode administrar templates, campos ou políticas de
             importação.
           </CardContent>
-        </Card>
+        </SectionCard>
       ) : (
         <>
-          <Card>
-            <CardHeader>
+          <SectionCard>
+            <CardHeader className="border-b border-border/70 pb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Política</p>
               <CardTitle>Política padrão de duplicidade</CardTitle>
+              <p className="text-sm text-muted-foreground">Defina como o parceiro identifica registros repetidos antes de iniciar um processamento.</p>
             </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-3">
-              <select
+            <CardContent className="grid gap-4 pt-5 sm:grid-cols-3">
+              <label className="space-y-1.5 text-sm font-medium">Ao encontrar duplicidade<select
                 className="h-10 rounded-md border bg-background px-2"
                 value={policy}
                 onChange={event =>
@@ -105,8 +113,8 @@ export default function V2ImportConfiguration() {
                 <option value="update_safe_fields">
                   UPDATE_SAFE_FIELDS — atualizar campos seguros
                 </option>
-              </select>
-              <select
+              </select></label>
+              <label className="space-y-1.5 text-sm font-medium">Critério de comparação<select
                 className="h-10 rounded-md border bg-background px-2"
                 value={matchStrategy}
                 onChange={event =>
@@ -117,7 +125,7 @@ export default function V2ImportConfiguration() {
                 <option value="phone">Telefone</option>
                 <option value="email">E-mail</option>
                 <option value="phone_and_email">Telefone e e-mail</option>
-              </select>
+              </select></label>
               <Button
                 disabled={savePolicy.isPending}
                 onClick={() =>
@@ -137,12 +145,14 @@ export default function V2ImportConfiguration() {
                 Salvar padrão
               </Button>
             </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
+          </SectionCard>
+          <SectionCard>
+            <CardHeader className="border-b border-border/70 pb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Dados</p>
               <CardTitle>Campos personalizados de lead</CardTitle>
+              <p className="text-sm text-muted-foreground">Inclua somente os campos que sua operação precisa mapear durante a importação.</p>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-5">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <Input
                   value={field.key}
@@ -242,12 +252,14 @@ export default function V2ImportConfiguration() {
                 )}
               </div>
             </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
+          </SectionCard>
+          <SectionCard>
+            <CardHeader className="border-b border-border/70 pb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Reutilização</p>
               <CardTitle>Templates de importação</CardTitle>
+              <p className="text-sm text-muted-foreground">Mantenha os mapeamentos aprovados disponíveis para os próximos arquivos.</p>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-2 pt-5">
               {templates.data?.map(template => (
                 <div
                   key={template.id}
@@ -283,7 +295,7 @@ export default function V2ImportConfiguration() {
                 </p>
               )}
             </CardContent>
-          </Card>
+          </SectionCard>
         </>
       )}
     </main>

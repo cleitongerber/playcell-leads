@@ -33,6 +33,7 @@ import { toast } from "sonner";
 import { ManagementUsersPanel } from "@/components/v2/ManagementUsersPanel";
 
 type Role = "partner_admin" | "manager" | "seller";
+type AdminSection = "users" | "access" | "pdvs" | "settings";
 const roleLabel: Record<Role, string> = {
   partner_admin: "Administrador do parceiro",
   manager: "Gestor",
@@ -57,6 +58,9 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       return "";
     }
   });
+ const [adminSection, setAdminSection] = useState<AdminSection>("users");
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [createPdvOpen, setCreatePdvOpen] = useState(false);
   const [partnerForm, setPartnerForm] = useState({ code: "", name: "" });
   const [pdvForm, setPdvForm] = useState({
     code: "",
@@ -153,6 +157,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const createPdv = v2trpc.pdvs.create.useMutation({
     onSuccess: () => {
       setPdvForm({ code: "", name: "", city: "", region: "" });
+      setCreatePdvOpen(false);
       refresh();
       toast.success("PDV criado");
     },
@@ -171,6 +176,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         role: "seller",
         pdvIds: [],
       });
+      setCreateUserOpen(false);
       refresh();
       toast.success("Usuário e acesso criados");
     },
@@ -246,11 +252,11 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     }
   );
   return (
-    <main className="v2-page space-y-6">
+    <main className="v2-page v2-administration-page space-y-6">
       <V2PageHeader
         eyebrow="Administração"
-        title="PDVs e acessos operacionais"
-        description="O usuário global, o acesso ao parceiro e os PDVs atribuídos são controlados separadamente."
+        title="Administração"
+        description="Gerencie usuários, acessos, PDVs e configurações operacionais no contexto autorizado."
       />
       {isSuperAdmin && (
         <Card>
@@ -286,8 +292,7 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           </CardContent>
         </Card>
       )}
-      {isSuperAdmin && <ManagementUsersPanel />}
-      <Card>
+      <Card className="v2-filter-panel v2-administration-context">
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
           <div className="flex-1">
             <label className="mb-1 block text-sm font-medium">
@@ -335,8 +340,14 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         </Card>
       ) : (
         <>
-          <section className="grid gap-6 lg:grid-cols-2">
-            <Card>
+          <div className="v2-tab-list v2-administration-tabs" aria-label="Seções de administração">
+            <Button type="button" size="sm" variant="ghost" className={adminSection === "users" ? "is-active" : undefined} aria-pressed={adminSection === "users"} onClick={() => setAdminSection("users")}>Usuários</Button>
+            {isSuperAdmin && <Button type="button" size="sm" variant="ghost" className={adminSection === "access" ? "is-active" : undefined} aria-pressed={adminSection === "access"} onClick={() => setAdminSection("access")}>Perfis e acessos</Button>}
+            <Button type="button" size="sm" variant="ghost" className={adminSection === "pdvs" ? "is-active" : undefined} aria-pressed={adminSection === "pdvs"} onClick={() => setAdminSection("pdvs")}>PDVs</Button>
+            <Button type="button" size="sm" variant="ghost" className={adminSection === "settings" ? "is-active" : undefined} aria-pressed={adminSection === "settings"} onClick={() => setAdminSection("settings")}>Configurações</Button>
+          </div>
+          {adminSection === "pdvs" && <section className={`grid gap-6 ${createPdvOpen ? "lg:grid-cols-2" : ""}`}>
+            {createPdvOpen && <Card>
               <CardHeader>
                 <CardTitle>Novo PDV</CardTitle>
               </CardHeader>
@@ -384,13 +395,13 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                       }
                     />
                   </div>
-                  <Button disabled={createPdv.isPending}>Criar PDV</Button>
+                  <div className="flex gap-2"><Button disabled={createPdv.isPending}>Criar PDV</Button><Button type="button" variant="outline" onClick={() => setCreatePdvOpen(false)}>Cancelar</Button></div>
                 </form>
               </CardContent>
-            </Card>
+            </Card>}
             <Card>
               <CardHeader>
-                <CardTitle>PDVs do parceiro</CardTitle>
+                <div className="flex items-center justify-between gap-3"><CardTitle>PDVs do parceiro</CardTitle><Button size="sm" onClick={() => setCreatePdvOpen(true)}>Novo PDV</Button></div>
               </CardHeader>
               <CardContent className="space-y-2">
                 {pdvs.data?.map(pdv => (
@@ -425,8 +436,10 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                 ))}
               </CardContent>
             </Card>
-          </section>
-          <Card>
+          </section>}
+          {adminSection === "settings" && <section className="space-y-4">
+            <p className="v2-settings-section-label">Comunicação com Leads</p>
+          <Card className="v2-section-card">
             <CardHeader>
               <CardTitle>Mensagem inicial do WhatsApp</CardTitle>
               <p className="text-sm text-muted-foreground">
@@ -503,8 +516,10 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
               </Button>
             </CardContent>
           </Card>
-          <section className="grid gap-6 lg:grid-cols-2">
-            <Card>
+          </section>}
+          {adminSection === "users" && <>
+          {(createUserOpen || editing) && <section className="grid gap-6 lg:grid-cols-2">
+            {createUserOpen && <Card>
               <CardHeader>
                 <CardTitle>Criar usuário e acesso</CardTitle>
               </CardHeader>
@@ -581,11 +596,11 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     onChange={ids => setUserForm({ ...userForm, pdvIds: ids })}
                     toggle={toggle}
                   />
-                  <Button disabled={createUser.isPending}>Criar acesso</Button>
+                  <div className="flex gap-2"><Button disabled={createUser.isPending}>Criar acesso</Button><Button type="button" variant="outline" onClick={() => setCreateUserOpen(false)}>Cancelar</Button></div>
                 </form>
               </CardContent>
-            </Card>
-            <Card>
+            </Card>}
+            {editing && <Card>
               <CardHeader>
                 <CardTitle>Editar usuário</CardTitle>
               </CardHeader>
@@ -707,11 +722,11 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                   </p>
                 )}
               </CardContent>
-            </Card>
-          </section>
-          <Card>
+            </Card>}
+          </section>}
+          <Card className="v2-section-card">
             <CardHeader>
-              <CardTitle>Usuários do parceiro</CardTitle>
+              <div className="flex items-center justify-between gap-3"><CardTitle>Usuários do parceiro</CardTitle><Button size="sm" onClick={() => setCreateUserOpen(true)}>Novo usuário</Button></div>
             </CardHeader>
             <CardContent className="space-y-3">
               {users.data?.map(person => (
@@ -802,6 +817,8 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
               ))}
             </CardContent>
           </Card>
+          </>}
+          {adminSection === "access" && isSuperAdmin && <ManagementUsersPanel />}
           <Dialog
             open={Boolean(resetTarget)}
             onOpenChange={open => {

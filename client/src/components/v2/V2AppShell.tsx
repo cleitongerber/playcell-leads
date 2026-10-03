@@ -121,12 +121,41 @@ function V2AuthAside() {
         <FluxoBrand inverse />
       </div>
       <div className="v2-login-aside-copy">
-        <p className="v2-login-aside-eyebrow">Gestão comercial conectada</p>
-        <h2>Organize cada oportunidade até o próximo passo.</h2>
+        <p className="v2-login-aside-eyebrow">Gestão de leads e performance comercial</p>
+        <h2>
+          Mais oportunidades.
+          <br />
+          Mais conversões.
+          <br />
+          <span>Mais resultados.</span>
+        </h2>
         <p>
-          Acompanhe Leads, contatos, retornos e resultados no contexto
-          autorizado da sua operação.
+          O FLUXO ajuda sua operação a transformar Leads em clientes, com
+          organização, visibilidade e disciplina em cada próximo passo.
         </p>
+        <ul className="v2-login-benefits" aria-label="Benefícios do FLUXO">
+          <li>
+            <UsersRound aria-hidden="true" />
+            <span>
+              <strong>Organize seus Leads</strong>
+              Centralize contatos, carteira e próximos passos.
+            </span>
+          </li>
+          <li>
+            <BarChart3 aria-hidden="true" />
+            <span>
+              <strong>Aumente a produtividade</strong>
+              Registre a operação e acompanhe o que importa.
+            </span>
+          </li>
+          <li>
+            <Target aria-hidden="true" />
+            <span>
+              <strong>Acompanhe seus resultados</strong>
+              Decisões comerciais apoiadas por fatos operacionais.
+            </span>
+          </li>
+        </ul>
       </div>
       <div className="v2-login-aside-footer">
         Gestão de leads e performance comercial
@@ -155,10 +184,10 @@ function V2Login() {
           <FluxoBrand className="v2-login-mobile-brand" />
           <div>
             <h1 id="v2-login-title" className="v2-login-title">
-              Acesse sua operação
+              Bem-vindo(a) ao FLUXO
             </h1>
             <p className="v2-login-description">
-              Informe seus dados para acessar o ambiente autorizado.
+              Faça seu login para continuar.
             </p>
           </div>
           <form

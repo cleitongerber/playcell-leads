@@ -208,13 +208,17 @@ export default function V2Productivity() {
   });
   const access = v2trpc.access.context.useQuery();
   return (
-    <main className="v2-page space-y-6">
+    <main className="v2-page v2-productivity-page space-y-6">
       <V2PageHeader
         eyebrow="Gestão"
         title="Produtividade"
         description="Esforço, contato efetivo, disciplina de follow-up e resultado por vendedor."
       />
-      <AnalyticsFilters value={filters} onChange={setFilters} />
+      <AnalyticsFilters
+        className="v2-productivity-filters"
+        value={filters}
+        onChange={setFilters}
+      />
       {!canQuery ? (
         <Card>
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
@@ -230,7 +234,7 @@ export default function V2Productivity() {
         />
       ) : productivity.data ? (
         <>
-          <section className="v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
+          <section className="v2-metric-grid v2-productivity-metrics grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
             <Summary
               title="Vendedores visíveis"
               value={number(productivity.data.totals.sellers)}
@@ -257,7 +261,27 @@ export default function V2Productivity() {
               destructive
             />
           </section>
-          <Card className="v2-section-card">
+          <section className="grid gap-6 lg:grid-cols-2">
+            <Card className="v2-section-card">
+              <CardHeader><CardTitle>Atividade por vendedor</CardTitle><p className="text-sm text-muted-foreground">Tentativas registradas no período selecionado.</p></CardHeader>
+              <CardContent className="space-y-3">
+                {productivity.data.sellers.slice(0, 6).map(row => {
+                  const maximum = Math.max(1, ...productivity.data.sellers.map(item => item.attempts));
+                  return <div key={row.membershipId} className="v2-dashboard-funnel-stage"><span className="truncate text-sm">{row.name}</span><div style={{ width: `${Math.max(row.attempts ? (row.attempts / maximum) * 100 : 0, row.attempts ? 8 : 0)}%` }} /><strong className="text-sm">{number(row.attempts)}</strong></div>;
+                })}
+              </CardContent>
+            </Card>
+            <Card className="v2-section-card">
+              <CardHeader><CardTitle>Qualidade operacional</CardTitle><p className="text-sm text-muted-foreground">Leitura consolidada dos dados já calculados por vendedor.</p></CardHeader>
+              <CardContent className="v2-mobile-detail-grid text-sm text-muted-foreground">
+                <span>Follow-ups concluídos<strong>{number(productivity.data.sellers.reduce((total, row) => total + row.followUpsCompleted, 0))}</strong></span>
+                <span>Pendências de governança<strong>{number(productivity.data.sellers.reduce((total, row) => total + row.governancePending, 0))}</strong></span>
+                <span>Leads sem trabalho<strong>{number(productivity.data.sellers.reduce((total, row) => total + row.leadsWithoutWork, 0))}</strong></span>
+                <span>Taxa de follow-up<strong>{percent(productivity.data.sellers.length ? productivity.data.sellers.reduce((total, row) => total + (row.followUpCompletionRate ?? 0), 0) / productivity.data.sellers.length : null)}</strong></span>
+              </CardContent>
+            </Card>
+          </section>
+          <Card className="v2-section-card v2-productivity-results">
             <CardHeader>
               <CardTitle>Equipe no período</CardTitle>
               <p className="text-sm text-muted-foreground">

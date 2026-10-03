@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { v2trpc } from "@/lib/v2trpc";
+import { cn } from "@/lib/utils";
 import { SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -276,10 +277,14 @@ export function AnalyticsFilters({
   value,
   onChange,
   includeSeller = true,
+  className,
+  inline = false,
 }: {
   value: AnalyticsUiFilters;
   onChange: (next: AnalyticsUiFilters) => void;
   includeSeller?: boolean;
+  className?: string;
+  inline?: boolean;
 }) {
   const filters = v2trpc.analytics.filters.useQuery();
   const access = v2trpc.access.context.useQuery();
@@ -308,9 +313,8 @@ export function AnalyticsFilters({
     onClear: () => onChange(defaultAnalyticsFilters),
     timeZone: filters.data?.timeZone,
   };
-  return (
-    <Card className="v2-filter-panel">
-      <CardContent className="p-4">
+  const content = (
+    <>
         <div className="flex items-center justify-between gap-3 md:hidden">
           <div>
             <p className="font-medium">Filtros</p>
@@ -342,7 +346,8 @@ export function AnalyticsFilters({
         <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
           <FilterControls {...controlProps} idPrefix="desktop-analytics" />
         </div>
-      </CardContent>
-    </Card>
+    </>
   );
+  if (inline) return <div className={cn("v2-analytics-filter-controls", className)}>{content}</div>;
+  return <Card className={cn("v2-filter-panel v2-analytics-filters", className)}><CardContent>{content}</CardContent></Card>;
 }

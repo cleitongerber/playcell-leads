@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { DataTable, PageToolbar } from "@/components/v2/V2Layout";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
@@ -125,7 +126,7 @@ export default function V2Leads() {
   const followUpAlerts = v2trpc.followUps.alerts.useQuery();
 
   return (
-    <main className="v2-page space-y-6">
+    <main className="v2-page v2-leads-page space-y-6">
       <V2PageHeader
         eyebrow="Operação"
         title="Leads"
@@ -145,8 +146,7 @@ export default function V2Leads() {
         }
       />
 
-      <Card className="v2-filter-panel">
-        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row">
+      <PageToolbar className="v2-leads-toolbar">
           <div className="min-w-0 flex-1 space-y-1.5">
             <Label>Visão</Label>
             <div className="v2-tab-list" aria-label="Visão de Leads">
@@ -185,8 +185,7 @@ export default function V2Leads() {
               }
             />
           </div>
-        </CardContent>
-      </Card>
+      </PageToolbar>
 
       {(campaignId ||
         pdvId ||
@@ -238,7 +237,7 @@ export default function V2Leads() {
         </Card>
       )}
 
-      <Card>
+      <Card className="v2-section-card v2-leads-results">
         <CardHeader>
           <CardTitle>
             {view === "available"
@@ -257,10 +256,44 @@ export default function V2Leads() {
               onRetry={() => list.refetch()}
             />
           ) : list.data?.items.length ? (
-            list.data.items.map(lead => (
+            <>
+              <DataTable className="hidden md:block">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Lead</th>
+                      <th>Telefone</th>
+                      <th>Campanha</th>
+                      <th>PDV</th>
+                      <th>Situação</th>
+                      <th>Responsável</th>
+                      <th aria-label="Ações" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.data.items.map(lead => (
+                      <tr key={lead.id}>
+                        <td className="font-medium">{lead.name || "Lead sem nome"}</td>
+                        <td>{lead.phone || "—"}</td>
+                        <td>{lead.campaignName || "—"}</td>
+                        <td>{lead.pdvName || "—"}</td>
+                        <td><Badge variant="outline">{lead.statusLabel}</Badge></td>
+                        <td>{lead.assignedMembershipId ? "Atribuído" : "Disponível"}</td>
+                        <td className="text-right">
+                          <Button size="sm" variant="outline" onClick={() => navigate(buildV2Path(`/v2/leads/${lead.id}`, { from: currentV2Path() }))}>
+                            Abrir
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </DataTable>
+              <div className="grid gap-2 md:hidden">
+              {list.data.items.map(lead => (
               <button
                 key={lead.id}
-                className="v2-lead-list-item flex w-full flex-col justify-between gap-2 rounded-lg border p-4 text-left hover:bg-muted/40 sm:flex-row sm:items-center"
+                className="v2-lead-list-item flex w-full flex-col justify-between gap-3 rounded-lg border p-4 text-left hover:bg-muted/40"
                 onClick={() =>
                   navigate(
                     buildV2Path(`/v2/leads/${lead.id}`, {
@@ -269,23 +302,28 @@ export default function V2Leads() {
                   )
                 }
               >
-                <div>
-                  <p className="font-medium">{lead.name || "Lead sem nome"}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {lead.phone || "Sem telefone"} · {lead.campaignName} ·{" "}
-                    {lead.pdvName}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{lead.name || "Lead sem nome"}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">{lead.phone || "Sem telefone"}</p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-1.5">
                   <Badge variant="outline">{lead.statusLabel}</Badge>
                   {lead.assignedMembershipId ? (
                     <Badge variant="secondary">Atribuído</Badge>
                   ) : (
                     <Badge>Disponível</Badge>
                   )}
+                  </div>
+                </div>
+                <div className="flex items-end justify-between gap-3 text-sm text-muted-foreground">
+                  <span className="min-w-0 truncate">{lead.campaignName || "Sem campanha"} · {lead.pdvName || "Sem PDV"}</span>
+                  <span className="shrink-0 font-medium text-primary">Abrir</span>
                 </div>
               </button>
-            ))
+              ))}
+              </div>
+            </>
           ) : (
             <p className="p-8 text-center text-sm text-muted-foreground">
               {view === "available"

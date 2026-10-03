@@ -10,6 +10,8 @@ describe("FLUXO visual system experience contracts", () => {
   const shell = readProjectFile("client/src/components/v2/V2AppShell.tsx");
   const leads = readProjectFile("client/src/pages/V2Leads.tsx");
   const followUps = readProjectFile("client/src/pages/V2FollowUps.tsx");
+  const administration = readProjectFile("client/src/pages/V2Administration.tsx");
+  const reports = readProjectFile("client/src/pages/V2Reports.tsx");
   const journey = readProjectFile(
     "client/src/components/v2/V2SeparatedLeadJourney.tsx"
   );
@@ -37,6 +39,8 @@ describe("FLUXO visual system experience contracts", () => {
     expect(shell).toContain('id="v2-login-email"');
     expect(shell).toContain('id="v2-login-password"');
     expect(shell).toContain("v2trpc.auth.login.useMutation");
+    expect(shell).toContain("Mais oportunidades.");
+    expect(shell).toContain("Mais resultados.");
   });
 
   it("uses compact visual tabs while preserving the existing lead and follow-up state", () => {
@@ -51,5 +55,17 @@ describe("FLUXO visual system experience contracts", () => {
     expect(journey).not.toContain('actionPresentation.cta === "contact"');
     expect(journey).toContain("onClick={openWhatsApp}");
     expect(journey).toContain("onClick={openTelephone}");
+  });
+
+  it("keeps operational filters compact and separates administration by purpose", () => {
+    expect(reports).toContain('<PageToolbar className="v2-reports-toolbar">');
+    expect(reports).toContain("inline");
+    expect(administration).toContain('setAdminSection("users")');
+    expect(administration).toContain('setAdminSection("pdvs")');
+    expect(administration).toContain('setAdminSection("settings")');
+    expect(administration).toContain("Comunicação com Leads");
+    expect(administration.indexOf("Comunicação com Leads")).toBeLessThan(
+      administration.indexOf("<CardTitle>Mensagem inicial do WhatsApp")
+    );
   });
 });

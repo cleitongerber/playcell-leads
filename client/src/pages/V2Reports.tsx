@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { v2trpc } from "@/lib/v2trpc";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
+import { PageToolbar } from "@/components/v2/V2Layout";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -101,15 +102,15 @@ export default function V2Reports() {
   };
 
   return (
-    <main className="v2-page space-y-6">
+    <main className="v2-page v2-reports-page space-y-6">
       <V2PageHeader
         eyebrow="Gestão"
         title="Relatórios"
         description="Análise histórica e exportação CSV com o mesmo escopo autorizado da consulta."
       />
 
-      <Card className="v2-filter-panel">
-        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+      <PageToolbar className="v2-reports-toolbar">
+        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
             <label className="text-sm font-medium" htmlFor="report-type">
               Tipo de relatório
@@ -250,12 +251,17 @@ export default function V2Reports() {
           >
             Exportar CSV
           </Button>
-        </CardContent>
-      </Card>
-      <AnalyticsFilters value={filters} onChange={updateFilters} />
+        </div>
+        <AnalyticsFilters
+          className="v2-reports-analytics min-w-0 flex-1"
+          value={filters}
+          onChange={updateFilters}
+          inline
+        />
+      </PageToolbar>
 
       {!canQuery ? (
-        <Card className="v2-section-card">
+        <Card className="v2-section-card v2-reports-results">
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
             Informe as duas datas do período personalizado.
           </CardContent>
@@ -268,7 +274,7 @@ export default function V2Reports() {
           onRetry={() => report.refetch()}
         />
       ) : report.data ? (
-        <Card className="v2-section-card">
+        <Card className="v2-section-card v2-reports-results">
           <CardHeader>
             <CardTitle>{reportLabels[type]}</CardTitle>
             <p className="text-sm text-muted-foreground">
