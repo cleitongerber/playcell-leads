@@ -309,7 +309,7 @@ export function AnalyticsFilters({
     timeZone: filters.data?.timeZone,
   };
   return (
-    <Card>
+    <Card className="v2-filter-panel">
       <CardContent className="p-4">
         <div className="flex items-center justify-between gap-3 md:hidden">
           <div>

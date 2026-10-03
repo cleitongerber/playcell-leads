@@ -225,7 +225,7 @@ export default function V2Campaigns() {
           </CardContent>
         </Card>
       )}
-      <Card>
+      <Card className="v2-section-card">
         <CardHeader>
           <CardTitle>Campanhas do parceiro</CardTitle>
         </CardHeader>

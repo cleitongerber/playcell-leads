@@ -257,7 +257,7 @@ export default function V2Productivity() {
               destructive
             />
           </section>
-          <Card>
+          <Card className="v2-section-card">
             <CardHeader>
               <CardTitle>Equipe no período</CardTitle>
               <p className="text-sm text-muted-foreground">

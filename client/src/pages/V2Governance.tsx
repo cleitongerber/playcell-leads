@@ -61,7 +61,7 @@ export default function V2Governance() {
           </Link>
         }
       />
-      <Card>
+      <Card className="v2-section-card">
         <CardHeader>
           <CardTitle>Regra padrão do parceiro</CardTitle>
         </CardHeader>

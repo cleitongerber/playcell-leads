@@ -111,6 +111,30 @@ const roleLabel: Record<V2NavigationRole, string> = {
   seller: "Vendedor",
 };
 
+/** Institutional half of the authentication screen.  It intentionally
+ * contains no tenant or authentication state: the login flow remains exactly
+ * the same, while the visual hierarchy follows the FLUXO shell. */
+function V2AuthAside() {
+  return (
+    <aside className="v2-login-aside" aria-label="Sobre o FLUXO">
+      <div className="v2-login-aside-brand">
+        <FluxoBrand inverse />
+      </div>
+      <div className="v2-login-aside-copy">
+        <p className="v2-login-aside-eyebrow">Gestão comercial conectada</p>
+        <h2>Organize cada oportunidade até o próximo passo.</h2>
+        <p>
+          Acompanhe Leads, contatos, retornos e resultados no contexto
+          autorizado da sua operação.
+        </p>
+      </div>
+      <div className="v2-login-aside-footer">
+        Gestão de leads e performance comercial
+      </div>
+    </aside>
+  );
+}
+
 function V2Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -125,55 +149,57 @@ function V2Login() {
 
   return (
     <main className="v2-login-shell">
-      <section className="v2-login-card" aria-labelledby="v2-login-title">
-        <FluxoBrand />
-        <div>
-          <h1 id="v2-login-title" className="v2-login-title">
-            Acesse sua operação
-          </h1>
-          <p className="v2-login-description">
-            Entre para acompanhar Leads, campanhas e follow-ups no contexto
-            autorizado do seu parceiro.
-          </p>
+      <V2AuthAside />
+      <section className="v2-login-panel">
+        <div className="v2-login-card" aria-labelledby="v2-login-title">
+          <FluxoBrand className="v2-login-mobile-brand" />
+          <div>
+            <h1 id="v2-login-title" className="v2-login-title">
+              Acesse sua operação
+            </h1>
+            <p className="v2-login-description">
+              Informe seus dados para acessar o ambiente autorizado.
+            </p>
+          </div>
+          <form
+            className="space-y-4"
+            onSubmit={(event: FormEvent) => {
+              event.preventDefault();
+              login.mutate({ email, password });
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="v2-login-email">E-mail</Label>
+              <Input
+                id="v2-login-email"
+                autoComplete="email"
+                autoFocus
+                required
+                type="email"
+                value={email}
+                onChange={event => setEmail(event.target.value)}
+                placeholder="voce@empresa.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="v2-login-password">Senha</Label>
+              <Input
+                id="v2-login-password"
+                autoComplete="current-password"
+                minLength={8}
+                required
+                type="password"
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                placeholder="Sua senha"
+              />
+            </div>
+            <Button className="w-full" size="lg" disabled={login.isPending}>
+              {login.isPending ? "Entrando…" : "Entrar"}
+            </Button>
+          </form>
+          <InstallAppButton className="pt-1" />
         </div>
-        <form
-          className="space-y-4"
-          onSubmit={(event: FormEvent) => {
-            event.preventDefault();
-            login.mutate({ email, password });
-          }}
-        >
-          <div className="space-y-2">
-            <Label htmlFor="v2-login-email">E-mail</Label>
-            <Input
-              id="v2-login-email"
-              autoComplete="email"
-              autoFocus
-              required
-              type="email"
-              value={email}
-              onChange={event => setEmail(event.target.value)}
-              placeholder="voce@empresa.com"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="v2-login-password">Senha</Label>
-            <Input
-              id="v2-login-password"
-              autoComplete="current-password"
-              minLength={8}
-              required
-              type="password"
-              value={password}
-              onChange={event => setPassword(event.target.value)}
-              placeholder="Sua senha"
-            />
-          </div>
-          <Button className="w-full" size="lg" disabled={login.isPending}>
-            {login.isPending ? "Entrando…" : "Entrar"}
-          </Button>
-        </form>
-        <InstallAppButton className="pt-1" />
       </section>
     </main>
   );
@@ -182,12 +208,15 @@ function V2Login() {
 function ShellLoading() {
   return (
     <main className="v2-login-shell">
-      <section className="v2-login-card" aria-label="Carregando aplicação">
-        <Skeleton className="size-12 rounded-xl" />
-        <Skeleton className="h-6 w-44" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-full" />
+      <V2AuthAside />
+      <section className="v2-login-panel">
+        <div className="v2-login-card" aria-label="Carregando aplicação">
+          <Skeleton className="size-12 rounded-xl" />
+          <Skeleton className="h-6 w-44" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
       </section>
     </main>
   );
@@ -419,20 +448,24 @@ function PasswordChangeForm({
 function PasswordChangeGate({ user }: { user: V2SessionUser }) {
   return (
     <main className="v2-login-shell">
-      <section
-        className="v2-login-card"
-        aria-labelledby="password-change-title"
-      >
-        <FluxoBrand />
-        <div>
-          <h1 id="password-change-title" className="v2-login-title">
-            Crie sua nova senha
-          </h1>
-          <p className="v2-login-description">
-            Por segurança, altere a senha temporária antes de acessar o FLUXO.
-          </p>
+      <V2AuthAside />
+      <section className="v2-login-panel">
+        <div
+          className="v2-login-card"
+          aria-labelledby="password-change-title"
+        >
+          <FluxoBrand className="v2-login-mobile-brand" />
+          <div>
+            <h1 id="password-change-title" className="v2-login-title">
+              Crie sua nova senha
+            </h1>
+            <p className="v2-login-description">
+              Por segurança, altere a senha temporária antes de acessar o
+              FLUXO.
+            </p>
+          </div>
+          <PasswordChangeForm forced onComplete={() => undefined} />
         </div>
-        <PasswordChangeForm forced onComplete={() => undefined} />
       </section>
     </main>
   );

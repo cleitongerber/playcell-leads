@@ -108,7 +108,7 @@ export default function V2Reports() {
         description="Análise histórica e exportação CSV com o mesmo escopo autorizado da consulta."
       />
 
-      <Card>
+      <Card className="v2-filter-panel">
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
             <label className="text-sm font-medium" htmlFor="report-type">
@@ -255,7 +255,7 @@ export default function V2Reports() {
       <AnalyticsFilters value={filters} onChange={updateFilters} />
 
       {!canQuery ? (
-        <Card>
+        <Card className="v2-section-card">
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
             Informe as duas datas do período personalizado.
           </CardContent>
@@ -268,7 +268,7 @@ export default function V2Reports() {
           onRetry={() => report.refetch()}
         />
       ) : report.data ? (
-        <Card>
+        <Card className="v2-section-card">
           <CardHeader>
             <CardTitle>{reportLabels[type]}</CardTitle>
             <p className="text-sm text-muted-foreground">

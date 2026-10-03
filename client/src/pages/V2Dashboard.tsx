@@ -246,7 +246,7 @@ export default function V2Dashboard() {
           </section>
 
           <section className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
-            <Card>
+            <Card className="v2-section-card">
               <CardHeader>
                 <CardTitle>Funil do período</CardTitle>
                 <p className="text-sm text-muted-foreground">
@@ -287,7 +287,7 @@ export default function V2Dashboard() {
                 })}
               </CardContent>
             </Card>
-            <Card>
+            <Card className="v2-section-card">
               <CardHeader>
                 <CardTitle>Saúde da operação</CardTitle>
               </CardHeader>

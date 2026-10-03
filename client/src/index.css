@@ -102,6 +102,17 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: color-mix(in srgb, #ffffff 18%, transparent);
   --sidebar-ring: var(--brand-accent);
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --shadow-card: 0 1px 2px rgb(31 41 55 / 0.035),
+    0 8px 24px rgb(31 41 55 / 0.035);
+  --shadow-floating: 0 18px 38px rgb(15 76 92 / 0.12);
 }
 
 .dark {
@@ -187,6 +198,80 @@
     min-height: 0;
   }
 
+  /* Shared primitives: V2 uses the same Radix/shadcn components across every
+     route, so these rules create visual consistency without changing any
+     operation, API or role decision. */
+  [data-slot="card"] {
+    border-color: var(--border);
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-card);
+  }
+  [data-slot="card-title"] {
+    font-family: var(--font-manrope);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+  [data-slot="button"] {
+    border-radius: 0.55rem;
+    font-weight: 600;
+  }
+  [data-slot="button"][data-variant="default"] {
+    box-shadow: 0 1px 1px rgb(15 76 92 / 0.12);
+  }
+  [data-slot="input"],
+  [data-slot="textarea"],
+  [data-slot="select-trigger"] {
+    border-color: var(--input);
+    background-color: var(--card);
+    box-shadow: inset 0 1px 1px rgb(31 41 55 / 0.015);
+  }
+  [data-slot="input"]:hover,
+  [data-slot="textarea"]:hover,
+  [data-slot="select-trigger"]:hover {
+    border-color: color-mix(in srgb, var(--brand-secondary) 42%, var(--input));
+  }
+  [data-slot="input"]:focus-visible,
+  [data-slot="textarea"]:focus-visible,
+  [data-slot="select-trigger"]:focus-visible {
+    border-color: var(--brand-secondary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-accent) 22%, transparent);
+  }
+  [data-slot="dialog-content"],
+  [data-slot="select-content"] {
+    border-color: var(--border);
+    box-shadow: var(--shadow-floating);
+  }
+  [data-slot="dialog-content"] {
+    background: var(--card);
+    border-radius: 0.75rem;
+  }
+  [data-slot="badge"] {
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.015em;
+  }
+  .v2-page select:not([data-slot]) {
+    min-height: 2.5rem;
+    width: 100%;
+    border-color: var(--input);
+    border-radius: 0.55rem;
+    background-color: var(--card);
+    color: var(--foreground);
+    box-shadow: inset 0 1px 1px rgb(31 41 55 / 0.015);
+  }
+  .v2-page select:not([data-slot]):focus-visible {
+    border-color: var(--brand-secondary);
+    outline: 3px solid color-mix(in srgb, var(--brand-accent) 22%, transparent);
+    outline-offset: 0;
+  }
+  .v2-page label {
+    color: var(--foreground);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
   .fluxo-brand {
     display: grid;
     min-width: 0;
@@ -264,7 +349,7 @@
     justify-content: space-between;
     gap: 1rem;
     border-bottom: 1px solid var(--border);
-    background: color-mix(in srgb, #ffffff 94%, var(--background));
+    background: color-mix(in srgb, #ffffff 96%, var(--background));
     padding: 0.625rem 1rem;
     backdrop-filter: blur(14px);
   }
@@ -327,7 +412,7 @@
   }
   .v2-sidebar-nav-item:hover,
   .v2-sidebar-nav-item.is-active {
-    background: var(--sidebar-accent);
+    background: color-mix(in srgb, var(--brand-accent) 34%, transparent);
     color: var(--sidebar-accent-foreground);
   }
   .v2-sidebar-footer {
@@ -422,20 +507,20 @@
 
   .v2-page {
     width: 100%;
-    max-width: 96rem;
+    max-width: 100rem;
     margin: 0 auto;
-    padding: 1.5rem 1rem 2.5rem;
+    padding: var(--space-6) var(--space-4) var(--space-10);
   }
   .v2-page-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-6);
   }
   .v2-page-header h1 {
     font-family: var(--font-manrope);
-    font-size: clamp(1.5rem, 2vw, 2rem);
+    font-size: clamp(1.625rem, 2vw, 2.125rem);
     font-weight: 700;
     line-height: 1.15;
   }
@@ -463,11 +548,22 @@
   .v2-metric-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
   .v2-metric-card {
-    min-height: 7.75rem;
+    min-height: 8.125rem;
     border-color: var(--border);
+    overflow: hidden;
+    position: relative;
+  }
+  .v2-metric-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 2px;
+    height: 100%;
+    background: color-mix(in srgb, var(--brand-accent) 58%, transparent);
   }
   .v2-metric-card [data-slot="card-content"] > p:nth-child(2),
   .v2-kpi-value {
@@ -555,14 +651,15 @@
   .v2-table-scroll {
     overflow: auto;
     border: 1px solid var(--border);
-    border-radius: 0.625rem;
+    border-radius: 0.75rem;
+    background: var(--card);
   }
   .v2-table-scroll table {
     width: 100%;
     border-collapse: collapse;
   }
   .v2-table-scroll thead {
-    background: var(--surface-alt);
+    background: color-mix(in srgb, var(--surface-alt) 84%, var(--brand-accent));
     color: var(--muted-foreground);
     font-size: 0.75rem;
     font-weight: 600;
@@ -592,33 +689,186 @@
     text-align: center;
   }
 
+  .v2-filter-panel [data-slot="card-content"] {
+    padding: var(--space-4);
+  }
+  .v2-filter-panel {
+    border-color: color-mix(in srgb, var(--brand-secondary) 20%, var(--border));
+    background: color-mix(in srgb, #ffffff 92%, var(--surface-alt));
+  }
+  .v2-lead-list-item,
+  .v2-follow-up-record,
+  .v2-campaign-list-item,
+  .v2-admin-list-item {
+    border-color: var(--border);
+    background: var(--card);
+    transition: border-color 150ms ease, background-color 150ms ease,
+      box-shadow 150ms ease, transform 150ms ease;
+  }
+  .v2-lead-list-item:hover,
+  .v2-follow-up-record:hover,
+  .v2-campaign-list-item:hover {
+    border-color: color-mix(in srgb, var(--brand-secondary) 34%, var(--border));
+    background: color-mix(in srgb, var(--brand-accent) 4%, var(--card));
+    box-shadow: 0 6px 16px rgb(15 76 92 / 0.055);
+  }
+  .v2-tab-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    padding: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    background: var(--surface-alt);
+  }
+  .v2-tab-list [data-slot="button"] {
+    background: transparent;
+    color: var(--muted-foreground);
+    box-shadow: none;
+  }
+  .v2-tab-list [data-slot="button"].is-active {
+    background: var(--card);
+    color: var(--brand-primary);
+    box-shadow: 0 1px 2px rgb(31 41 55 / 0.07);
+  }
+  .v2-section-card > [data-slot="card-header"] {
+    border-bottom: 1px solid var(--border);
+  }
+  .v2-health-item {
+    position: relative;
+    display: flex;
+    min-height: 3.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    border-color: var(--border);
+    background: color-mix(in srgb, var(--surface-alt) 62%, var(--card));
+    transition: background-color 150ms ease, border-color 150ms ease;
+  }
+  .v2-health-item:hover {
+    border-color: color-mix(in srgb, var(--brand-secondary) 35%, var(--border));
+    background: color-mix(in srgb, var(--brand-accent) 7%, var(--card));
+  }
+  .v2-health-item strong {
+    font-family: var(--font-manrope);
+    font-size: 1.125rem;
+    letter-spacing: -0.02em;
+  }
+  .v2-lead-journey details {
+    border-color: var(--border);
+    background: color-mix(in srgb, var(--surface-alt) 45%, var(--card));
+  }
+  .v2-lead-journey details[open] {
+    background: var(--card);
+  }
+  .v2-lead-journey details > summary {
+    color: var(--foreground);
+  }
+  .v2-lead-journey .border-l-2 {
+    border-color: color-mix(in srgb, var(--brand-accent) 72%, transparent);
+  }
+  .v2-contact-shortcuts [data-slot="button"] {
+    min-height: 2.75rem;
+  }
+  .v2-follow-up-record [data-slot="badge"] {
+    align-self: flex-start;
+  }
+
   .v2-login-shell {
     display: grid;
     min-height: 100dvh;
-    place-items: center;
+    background: var(--background);
+  }
+  .v2-login-aside {
+    position: relative;
+    display: none;
+    min-height: 100%;
+    overflow: hidden;
+    flex-direction: column;
     background:
-      radial-gradient(
-        circle at 84% 0%,
-        color-mix(in srgb, var(--brand-accent) 14%, transparent),
-        transparent 32%
-      ),
-      var(--background);
+      radial-gradient(circle at 9% 80%, rgb(70 179 188 / 0.26), transparent 34%),
+      radial-gradient(circle at 88% 14%, rgb(255 255 255 / 0.12), transparent 30%),
+      var(--brand-primary);
+    color: #ffffff;
+    padding: clamp(2.5rem, 6vw, 5rem);
+  }
+  .v2-login-aside::before,
+  .v2-login-aside::after {
+    position: absolute;
+    border: 1px solid rgb(255 255 255 / 0.15);
+    border-radius: 999px;
+    content: "";
+    pointer-events: none;
+  }
+  .v2-login-aside::before {
+    right: -13rem;
+    bottom: -14rem;
+    width: 35rem;
+    height: 35rem;
+  }
+  .v2-login-aside::after {
+    right: -5rem;
+    bottom: -6rem;
+    width: 22rem;
+    height: 22rem;
+  }
+  .v2-login-aside-brand,
+  .v2-login-aside-copy,
+  .v2-login-aside-footer {
+    position: relative;
+    z-index: 1;
+  }
+  .v2-login-aside-copy {
+    max-width: 31rem;
+    margin: auto 0;
+  }
+  .v2-login-aside-eyebrow {
+    color: color-mix(in srgb, #ffffff 76%, transparent);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .v2-login-aside h2 {
+    max-width: 28rem;
+    margin-top: 1rem;
+    font-family: var(--font-manrope);
+    font-size: clamp(2rem, 3vw, 3.25rem);
+    font-weight: 700;
+    line-height: 1.13;
+    letter-spacing: -0.035em;
+  }
+  .v2-login-aside-copy > p:last-child {
+    max-width: 26rem;
+    margin-top: 1.25rem;
+    color: color-mix(in srgb, #ffffff 78%, transparent);
+    font-size: 1rem;
+    line-height: 1.65;
+  }
+  .v2-login-aside-footer {
+    color: color-mix(in srgb, #ffffff 68%, transparent);
+    font-size: 0.8125rem;
+  }
+  .v2-login-panel {
+    display: grid;
+    min-width: 0;
+    place-items: center;
     padding: 1rem;
   }
   .v2-login-card {
     display: grid;
-    width: min(100%, 30rem);
-    gap: 1.5rem;
+    width: min(100%, 26rem);
+    gap: 1.75rem;
     border: 1px solid var(--border);
     border-radius: 0.75rem;
     background: var(--card);
-    padding: clamp(1.5rem, 4vw, 2rem);
-    box-shadow: 0 10px 26px color-mix(in srgb, #1f2937 8%, transparent);
+    padding: clamp(1.5rem, 4vw, 2.25rem);
+    box-shadow: var(--shadow-floating);
   }
   .v2-login-title {
     margin-top: 0.25rem;
     font-family: var(--font-manrope);
-    font-size: 1.75rem;
+    font-size: 1.875rem;
     font-weight: 700;
   }
   .v2-login-description {
@@ -726,6 +976,12 @@
       min-height: 4.75rem;
       padding: 0.75rem;
     }
+    .v2-tab-list {
+      width: 100%;
+    }
+    .v2-tab-list [data-slot="button"] {
+      flex: 1 1 auto;
+    }
     .v2-campaign-list-item {
       padding: 0.875rem;
     }
@@ -754,6 +1010,18 @@
     }
   }
   @media (min-width: 1024px) {
+    .v2-login-shell {
+      grid-template-columns: minmax(25rem, 44%) minmax(0, 1fr);
+    }
+    .v2-login-aside {
+      display: flex;
+    }
+    .v2-login-panel {
+      padding: clamp(2rem, 5vw, 6rem);
+    }
+    .v2-login-mobile-brand {
+      display: none;
+    }
     .v2-desktop-sidebar {
       position: fixed;
       inset: 0 auto 0 0;
@@ -781,6 +1049,9 @@
     }
     .v2-page {
       padding: 2rem 2rem 3.5rem;
+    }
+    .v2-filter-panel [data-slot="card-content"] {
+      padding: 1.25rem 1.5rem;
     }
   }
 }

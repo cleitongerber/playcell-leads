@@ -1094,7 +1094,7 @@ export function V2SeparatedLeadJourney() {
 
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(19rem,.8fr)]">
         <div className="min-w-0 space-y-5">
-          <Card className="border-brand-secondary/25">
+          <Card className="v2-section-card border-brand-secondary/25">
             <CardHeader className="pb-3">
               <p className="v2-eyebrow">Situação atual</p>
               <CardTitle className="text-xl">
@@ -1156,30 +1156,6 @@ export function V2SeparatedLeadJourney() {
                   >
                     Registrar tratativa
                   </Button>
-                )}
-              {actionPresentation.cta === "contact" &&
-                canStartCommercialWork && (
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      disabled={
-                        !telephoneUrl ||
-                        whatsappTemplate.isLoading ||
-                        whatsappTemplate.isError
-                      }
-                      onClick={openWhatsApp}
-                    >
-                      <MessageCircle className="mr-2 size-4" /> Abrir WhatsApp
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={!telephoneUrl}
-                      onClick={openTelephone}
-                    >
-                      <PhoneCall className="mr-2 size-4" /> Ligar
-                    </Button>
-                  </div>
                 )}
             </CardContent>
           </Card>
@@ -1298,7 +1274,7 @@ export function V2SeparatedLeadJourney() {
             </Card>
           )}
 
-          <Card>
+          <Card className="v2-section-card">
             <CardHeader>
               <p className="v2-eyebrow">Agir</p>
               <CardTitle>Atendimento do Lead</CardTitle>
@@ -1319,7 +1295,7 @@ export function V2SeparatedLeadJourney() {
                 </div>
               ) : (
                 <>
-                  <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="v2-contact-shortcuts flex flex-col gap-2 sm:flex-row">
                     <Button
                       type="button"
                       className="sm:flex-1"
@@ -1386,7 +1362,7 @@ export function V2SeparatedLeadJourney() {
           {pendingGovernance.length > 0 ||
           followUpNeedsAttention ||
           (isTerminal && pendingFollowUps.length > 0) ? (
-            <Card className="border-warning/35">
+            <Card className="v2-section-card border-warning/35">
               <CardHeader>
                 <p className="v2-eyebrow">Pendências</p>
                 <CardTitle>O que ainda precisa de atenção</CardTitle>
@@ -1503,7 +1479,7 @@ export function V2SeparatedLeadJourney() {
             </Card>
           ) : null}
 
-          <Card>
+          <Card className="v2-section-card">
             <CardHeader>
               <p className="v2-eyebrow">Contexto</p>
               <CardTitle>Informações e histórico</CardTitle>
@@ -1776,7 +1752,7 @@ export function V2SeparatedLeadJourney() {
         </div>
 
         <aside className="min-w-0 space-y-5">
-          <Card className={requirementTone(actionPresentation.tone)}>
+          <Card className={`v2-section-card ${requirementTone(actionPresentation.tone)}`}>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">
                 Próxima ação programada
@@ -1798,7 +1774,7 @@ export function V2SeparatedLeadJourney() {
           </Card>
 
           {canAdministerStatus && (
-            <Card>
+            <Card className="v2-section-card">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">
                   Ações administrativas

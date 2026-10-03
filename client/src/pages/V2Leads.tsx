@@ -3,13 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
@@ -152,27 +145,33 @@ export default function V2Leads() {
         }
       />
 
-      <Card>
+      <Card className="v2-filter-panel">
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row">
           <div className="min-w-0 flex-1 space-y-1.5">
-            <Label htmlFor="leads-view">Visão</Label>
-            <Select
-              value={view}
-              onValueChange={value =>
-                updateListState({ view: value as View, page: 1 })
-              }
-            >
-              <SelectTrigger id="leads-view" className="w-full sm:w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="available">Fila disponível</SelectItem>
-                <SelectItem value="mine">Minha carteira</SelectItem>
-                {access.data?.role !== "seller" && (
-                  <SelectItem value="all">Todos no escopo</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+            <Label>Visão</Label>
+            <div className="v2-tab-list" aria-label="Visão de Leads">
+              {(
+                [
+                  ["available", "Fila disponível"],
+                  ["mine", "Minha carteira"],
+                  ...(access.data?.role !== "seller"
+                    ? [["all", "Todos no escopo"]]
+                    : []),
+                ] as Array<[View, string]>
+              ).map(([option, label]) => (
+                <Button
+                  key={option}
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className={view === option ? "is-active" : undefined}
+                  aria-pressed={view === option}
+                  onClick={() => updateListState({ view: option, page: 1 })}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
           </div>
           <div className="min-w-0 flex-1 space-y-1.5">
             <Label htmlFor="leads-search">Busca</Label>

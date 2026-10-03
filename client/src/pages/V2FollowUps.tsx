@@ -197,14 +197,16 @@ export default function V2FollowUps() {
         </Card>
       </section>
 
-      <Card>
+      <Card className="v2-filter-panel">
         <CardContent className="flex flex-col gap-3 p-4 lg:flex-row">
-          <div className="flex flex-wrap gap-2">
+          <div className="v2-tab-list" aria-label="Situação de follow-ups">
             {(Object.keys(viewLabels) as FollowUpView[]).map(option => (
               <Button
                 key={option}
                 size="sm"
-                variant={view === option ? "default" : "outline"}
+                variant="ghost"
+                className={view === option ? "is-active" : undefined}
+                aria-pressed={view === option}
                 onClick={() => {
                   setView(option);
                   setPage(1);
@@ -288,7 +290,7 @@ export default function V2FollowUps() {
         </Card>
       )}
 
-      <Card>
+      <Card className="v2-section-card">
         <CardHeader>
           <CardTitle>{viewLabels[view]}</CardTitle>
         </CardHeader>
