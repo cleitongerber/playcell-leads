@@ -103,7 +103,7 @@ export default function V2Reports() {
   };
 
   return (
-    <main className="v2-page v2-reports-page space-y-6">
+    <main className="v2-page v2-reports-page">
       <V2PageHeader
         eyebrow="Gestão"
         title="Relatórios"

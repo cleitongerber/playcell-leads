@@ -12,6 +12,11 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
@@ -21,12 +26,12 @@ import {
   CheckCircle2,
   Clock3,
   Inbox,
+  Info,
   MessageSquareText,
   PhoneCall,
   Send,
   Timer,
   TrendingUp,
-  UserRoundX,
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -150,6 +155,9 @@ export default function V2Dashboard() {
     null
   );
   const [healthPage, setHealthPage] = useState(1);
+  const [overviewTab, setOverviewTab] = useState<"campaigns" | "pdvs">(
+    "campaigns"
+  );
   const openHealthDetail = (kind: HealthDetailKind) => {
     setHealthPage(1);
     setHealthDetail(kind);
@@ -183,7 +191,7 @@ export default function V2Dashboard() {
     });
 
   return (
-    <main className="v2-page v2-dashboard-page space-y-6">
+    <main className="v2-page v2-dashboard-page">
       <V2PageHeader
         eyebrow="Gestão"
         title="Dashboard operacional"
@@ -209,7 +217,9 @@ export default function V2Dashboard() {
         />
       ) : dashboard.data ? (
         <>
-          <section className="v2-metric-grid grid-cols-2 lg:grid-cols-3 v2-dashboard-primary-metrics">
+          <section>
+            <p className="v2-dashboard-section-label">Indicadores do período</p>
+            <div className="v2-metric-grid grid-cols-2 lg:grid-cols-3 v2-dashboard-primary-metrics">
             <MetricCard
               title="Leads recebidos"
               value={number(dashboard.data.cards.leadsReceived)}
@@ -247,6 +257,7 @@ export default function V2Dashboard() {
               href={followUpPath("overdue")}
               icon={BellRing}
             />
+            </div>
           </section>
 
           <section className="v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 v2-dashboard-secondary-metrics">
@@ -284,13 +295,30 @@ export default function V2Dashboard() {
           <section className="v2-dashboard-primary-layout">
             <Card className="v2-section-card v2-dashboard-funnel">
               <CardHeader>
-                <CardTitle>Funil do período</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  Funil da coorte do período
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Como interpretar o funil da coorte"
+                        className="grid size-5 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <Info className="size-3.5" aria-hidden="true" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs text-center">
+                      Os indicadores acima mostram atividades realizadas no
+                      período. Este funil acompanha somente a evolução dos
+                      leads recebidos dentro do período selecionado.
+                    </TooltipContent>
+                  </Tooltip>
+                </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Coorte de Leads recebidos no período, acompanhada até o fim
-                  dele.
+                  Evolução dos leads recebidos no período selecionado.
                 </p>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="v2-dashboard-funnel-content">
                 {[
                   ["Recebidos", dashboard.data.funnel.received],
                   ["Trabalhados", dashboard.data.funnel.worked],
@@ -320,6 +348,9 @@ export default function V2Dashboard() {
                         style={{ width: `${Math.max(width, count ? 8 : 0)}%` }}
                       />
                       <strong className="text-sm">{number(count)}</strong>
+                      <span className="v2-dashboard-funnel-rate">
+                        {percent(width / 100)}
+                      </span>
                     </div>
                   );
                 })}
@@ -354,7 +385,8 @@ export default function V2Dashboard() {
                   onClick={() => openHealthDetail("awaiting_response")}
                 />
                 <HealthItem
-                  label="Follow-ups residuais em Leads terminais"
+                  label="Follow-ups residuais"
+                  title="Follow-ups residuais em Leads terminais"
                   value={dashboard.data.health.terminalResidualFollowUps}
                   onClick={() =>
                     openHealthDetail("terminal_residual_follow_ups")
@@ -461,13 +493,57 @@ export default function V2Dashboard() {
             </Card>
           </section>
 
-          <section className="v2-dashboard-overviews">
-            <Overview
-              title="Campanhas"
-              rows={dashboard.data.campaigns}
-              campaign
-            />
-            <Overview title="PDVs" rows={dashboard.data.pdvs} />
+          <section className="v2-dashboard-overview-shell">
+            <Card className="v2-section-card v2-dashboard-overview-panel">
+              <CardHeader className="v2-dashboard-overview-heading">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle>Visão operacional</CardTitle>
+                  {overviewTab === "campaigns" && (
+                    <Link
+                      href="/v2/campaigns"
+                      className="text-xs font-semibold text-brand-secondary hover:underline"
+                    >
+                      Ver todas
+                    </Link>
+                  )}
+                </div>
+              </CardHeader>
+              <div
+                className="v2-dashboard-overview-tabs"
+                role="tablist"
+                aria-label="Visão operacional"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={overviewTab === "campaigns"}
+                  className={overviewTab === "campaigns" ? "is-active" : ""}
+                  onClick={() => setOverviewTab("campaigns")}
+                >
+                  Campanhas
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={overviewTab === "pdvs"}
+                  className={overviewTab === "pdvs" ? "is-active" : ""}
+                  onClick={() => setOverviewTab("pdvs")}
+                >
+                  PDVs
+                </button>
+              </div>
+              <div className="v2-dashboard-overview-table">
+                <Overview
+                  title={overviewTab === "campaigns" ? "Campanhas" : "PDVs"}
+                  rows={
+                    overviewTab === "campaigns"
+                      ? dashboard.data.campaigns.slice(0, 5)
+                      : dashboard.data.pdvs.slice(0, 5)
+                  }
+                  campaign={overviewTab === "campaigns"}
+                />
+              </div>
+            </Card>
           </section>
           <p className="text-xs text-muted-foreground">
             Período:{" "}
@@ -597,10 +673,12 @@ export default function V2Dashboard() {
 
 function HealthItem({
   label,
+  title,
   value,
   onClick,
 }: {
   label: string;
+  title?: string;
   value: number;
   onClick: () => void;
 }) {
@@ -608,6 +686,7 @@ function HealthItem({
     <button
       type="button"
       onClick={onClick}
+      title={title ?? label}
       className="v2-health-item block w-full rounded-md border p-3 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <p className="text-sm">{label}</p>

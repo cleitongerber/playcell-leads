@@ -179,6 +179,7 @@
 
   /* Page architecture */
   .v2-page { width:100%; max-width:100rem; margin:0 auto; padding:1.75rem var(--space-4) var(--space-10); }
+  .v2-dashboard-page,.v2-reports-page { display:grid; gap:1rem; }
   .v2-page-header { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:0; }
   .v2-page-header h1 { font-size:clamp(1.75rem,2.2vw,2.25rem); font-weight:700; line-height:1.15; letter-spacing:-.04em; }
   .v2-page-header p { max-width:52rem; margin-top:.25rem; color:var(--muted-foreground); font-size:.9375rem; line-height:1.5; }
@@ -242,13 +243,24 @@
   .v2-health-item:hover { border-color:color-mix(in srgb,var(--brand-secondary) 35%,var(--border)); background:color-mix(in srgb,var(--brand-accent) 7%,var(--card)); }
   .v2-health-item strong { font-family:var(--font-manrope); font-size:1.125rem; letter-spacing:-.02em; }
   .v2-dashboard-primary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .v2-dashboard-filters .v2-analytics-desktop-grid { gap:.75rem 1rem; }
-  .v2-dashboard-primary-layout { display:grid; gap:1.5rem; }
-  .v2-dashboard-funnel { min-height:23rem; }
-  .v2-dashboard-funnel-stage { display:grid; grid-template-columns:minmax(4.75rem,.65fr) minmax(0,2fr) auto; align-items:center; gap:.75rem; }
-  .v2-dashboard-funnel-stage > div { height:1.2rem; border-radius:.25rem; background:linear-gradient(90deg,var(--brand-primary),var(--brand-secondary)); }
-  .v2-health-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
-  .v2-dashboard-health .v2-health-item { min-height:4rem; padding:.75rem; }
+  .v2-dashboard-section-label { margin-bottom:.5rem; color:var(--brand-secondary); font-size:.6875rem; font-weight:700; letter-spacing:.12em; line-height:1; text-transform:uppercase; }
+  .v2-dashboard-filters [data-slot="card-content"] { padding:.625rem .875rem; }
+  .v2-dashboard-filters .v2-analytics-desktop-grid { align-items:end; gap:.5rem .75rem; }
+  .v2-dashboard-filters [data-slot="select-trigger"],.v2-dashboard-filters [data-slot="input"] { min-height:2.25rem; }
+  .v2-dashboard-primary-metrics,.v2-dashboard-secondary-metrics { gap:.75rem; }
+  .v2-dashboard-primary-metrics .v2-metric-card { min-height:6.4rem; }
+  .v2-dashboard-secondary-metrics .v2-metric-card { min-height:5.8rem; }
+  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"],.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] { padding:.75rem .875rem; }
+  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > p:nth-child(2),.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > p:nth-child(2) { margin-top:.25rem; }
+  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > p:last-child,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > p:last-child { margin-top:.25rem; }
+  .v2-dashboard-primary-layout { display:grid; align-items:stretch; gap:1rem; }
+  .v2-dashboard-funnel,.v2-dashboard-health { min-height:19rem; height:100%; }
+  .v2-dashboard-funnel-content { display:grid; align-content:start; gap:.55rem; padding-top:.875rem !important; }
+  .v2-dashboard-funnel-stage { display:grid; grid-template-columns:minmax(6.25rem,.85fr) minmax(0,2fr) auto auto; align-items:center; gap:.5rem; }
+  .v2-dashboard-funnel-stage > div { height:.75rem; border-radius:.25rem; background:linear-gradient(90deg,var(--brand-primary),var(--brand-secondary)); }
+  .v2-dashboard-funnel-rate { min-width:2.7rem; color:var(--muted-foreground); font-size:.6875rem; text-align:right; }
+  .v2-health-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-content:start; gap:.5rem; }
+  .v2-dashboard-health .v2-health-item { min-height:3.15rem; padding:.5rem .625rem; }
   .v2-dashboard-health .v2-health-item p { font-size:.8125rem; line-height:1.2; }
   .v2-health-coverage,.v2-health-attempt-coverage { display:grid; gap:.5rem; min-width:0; border:1px solid color-mix(in srgb,var(--brand-accent) 28%,var(--border)); border-radius:.5rem; background:color-mix(in srgb,var(--brand-accent) 5%,var(--card)); padding:.75rem; }
   .v2-health-summary { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
@@ -257,15 +269,23 @@
   .v2-health-inline-metrics button { min-width:0; border-radius:.25rem; color:var(--muted-foreground); font-size:.6875rem; line-height:1.25; }
   .v2-health-inline-metrics button:hover { color:var(--brand-primary); text-decoration:underline; }
   .v2-health-inline-metrics strong { margin-top:.1rem; font-size:.8125rem; }
-  .v2-health-attempt-coverage { grid-column:1 / -1; grid-template-columns:minmax(0,1fr) minmax(11rem,.85fr); align-items:center; background:color-mix(in srgb,var(--brand-accent) 7%,var(--card)); }
-  .v2-dashboard-overviews { display:grid; gap:1.5rem; }
+  .v2-health-attempt-coverage { grid-column:1 / -1; grid-template-columns:minmax(0,1fr) minmax(11rem,.85fr); align-items:center; background:color-mix(in srgb,var(--brand-accent) 7%,var(--card)); padding:.625rem; }
+  .v2-dashboard-overview-shell { min-width:0; }
+  .v2-dashboard-overview-panel { overflow:hidden; }
+  .v2-dashboard-overview-heading { border-bottom:0 !important; padding-bottom:.625rem !important; }
+  .v2-dashboard-overview-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); padding:0 1.25rem; }
+  .v2-dashboard-overview-tabs button { min-height:2.25rem; border-bottom:2px solid transparent; padding:0 .75rem; color:var(--muted-foreground); font-size:.8125rem; font-weight:600; }
+  .v2-dashboard-overview-tabs button.is-active { border-bottom-color:var(--brand-secondary); color:var(--brand-primary); }
+  .v2-dashboard-overview-table > .v2-dashboard-overview { border:0; border-radius:0; box-shadow:none; }
+  .v2-dashboard-overview-table > .v2-dashboard-overview > [data-slot="card-header"] { display:none; }
+  .v2-dashboard-overview-table > .v2-dashboard-overview > [data-slot="card-content"] { padding:1rem 1.25rem 1.125rem; }
 
   /* Reports use one deliberate responsive grid, rather than independently wrapping filter groups. */
-  .v2-reports-toolbar { display:grid; grid-template-columns:minmax(0,1fr); align-items:end; }
-  .v2-reports-toolbar-fields { display:grid; min-width:0; gap:.75rem; }
+  .v2-reports-toolbar { display:grid; grid-template-columns:minmax(0,1fr); align-items:end; gap:.625rem .875rem; padding:.625rem .75rem; }
+  .v2-reports-toolbar-fields { display:grid; min-width:0; gap:.5rem .75rem; }
   .v2-reports-contextual-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem 1rem; }
   .v2-reports-toolbar-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
-  .v2-reports-toolbar-actions [data-slot="button"] { min-height:2.75rem; }
+  .v2-reports-toolbar-actions [data-slot="button"] { min-height:2.25rem; }
   .v2-reports-analytics > .hidden { grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem 1rem; }
 
   /* Journey, settings, imports */
@@ -329,6 +349,12 @@
     .v2-follow-up-secondary-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
     .v2-follow-up-secondary-actions [data-slot="button"] { min-height:2.75rem; }
     .v2-health-list { grid-template-columns:1fr; }
+    .v2-dashboard-primary-metrics,.v2-dashboard-secondary-metrics { gap:.625rem; }
+    .v2-dashboard-primary-metrics .v2-metric-card,.v2-dashboard-secondary-metrics .v2-metric-card { min-height:0; }
+    .v2-dashboard-funnel-stage { grid-template-columns:minmax(5.5rem,.8fr) minmax(0,1.5fr) auto auto; gap:.35rem; }
+    .v2-dashboard-funnel-stage > span:first-child { font-size:.75rem; }
+    .v2-dashboard-overview-tabs { padding-inline:1rem; }
+    .v2-dashboard-overview-table > .v2-dashboard-overview > [data-slot="card-content"] { padding:.875rem 1rem 1rem; }
     .v2-health-item { min-height:4.75rem; padding:.75rem; }
     .v2-health-attempt-coverage { grid-template-columns:1fr; }
     .v2-tab-list { width:100%; }
@@ -346,11 +372,12 @@
   }
   @media (min-width:768px) {
     .v2-metric-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .v2-dashboard-primary-layout { grid-template-columns:minmax(0,1.65fr) minmax(19rem,.85fr); }
+    .v2-dashboard-primary-layout { grid-template-columns:minmax(0,1.38fr) minmax(0,1fr); }
     .v2-dashboard-secondary-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .v2-dashboard-overviews { grid-template-columns:repeat(2,minmax(0,1fr)); }
-    .v2-reports-toolbar-fields { grid-template-columns:repeat(3,minmax(0,1fr)); gap:.75rem 1rem; }
-    .v2-reports-contextual-fields,.v2-reports-analytics,.v2-reports-analytics > .hidden { display:contents; }
+    .v2-reports-toolbar-fields { grid-template-columns:repeat(3,minmax(0,1fr)); gap:.5rem .75rem; }
+    .v2-reports-contextual-fields,.v2-reports-analytics,.v2-reports-analytics > .hidden { display:contents !important; }
+    .v2-reports-toolbar .v2-reports-contextual-fields,.v2-reports-toolbar .v2-reports-analytics,.v2-reports-toolbar .v2-reports-analytics > .v2-analytics-desktop-grid { display:contents !important; }
+    .v2-reports-toolbar-fields > div { min-width:0; }
     .v2-reports-toolbar .v2-reports-analytics > .hidden > div { min-width:0; }
   }
   @media (min-width: 1024px) {
@@ -366,14 +393,20 @@
     .v2-login-aside { display:flex; }
     .v2-login-panel { padding:2.5rem; }
   }
+  @media (min-width:1200px) {
+    .v2-health-list { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  }
   @media (min-width:1280px) {
+    .v2-dashboard-primary-metrics { grid-template-columns:repeat(6,minmax(0,1fr)); }
     .v2-dashboard-secondary-metrics { grid-template-columns:repeat(5,minmax(0,1fr)); }
     .v2-dashboard-filters .v2-analytics-desktop-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }
     .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child { grid-column:auto; }
     .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child > span { display:none; }
     .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child [data-slot="button"] { width:100%; min-height:2.5rem; }
-    .v2-reports-toolbar { grid-template-columns:minmax(0,1fr) 11rem; }
-    .v2-reports-toolbar-actions { grid-template-columns:1fr; }
+    .v2-reports-toolbar { grid-template-columns:minmax(0,1fr) max-content; }
+    .v2-reports-toolbar-fields { grid-template-columns:repeat(6,minmax(0,1fr)); gap:.5rem .625rem; }
+    .v2-reports-toolbar-actions { grid-template-columns:repeat(2,max-content); align-items:end; }
+    .v2-reports-toolbar-actions [data-slot="button"] { white-space:nowrap; }
   }
   @media (min-width:1440px) { .v2-page { max-width:100rem; padding-inline:2rem; } }
 }

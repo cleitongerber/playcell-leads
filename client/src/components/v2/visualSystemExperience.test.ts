@@ -78,7 +78,7 @@ describe("FLUXO visual system experience contracts", () => {
       "v2-dashboard-secondary-metrics"
     );
     const mainLayout = dashboard.indexOf("v2-dashboard-primary-layout");
-    const overviewLayout = dashboard.indexOf("v2-dashboard-overviews");
+    const overviewLayout = dashboard.indexOf("v2-dashboard-overview-shell");
 
     expect(firstKpi).toBeGreaterThan(-1);
     expect(secondMetricBand).toBeGreaterThan(firstKpi);
@@ -86,6 +86,13 @@ describe("FLUXO visual system experience contracts", () => {
     expect(overviewLayout).toBeGreaterThan(mainLayout);
     expect(dashboard).toContain("v2-dashboard-health");
     expect(dashboard).toContain("v2-health-attempt-coverage");
+    expect(dashboard).toContain("Indicadores do período");
+    expect(dashboard).toContain("Funil da coorte do período");
+    expect(dashboard).toContain("Os indicadores acima mostram atividades realizadas no");
+    expect(dashboard).toContain("Visão operacional");
+    expect(dashboard).toContain("v2-dashboard-overview-tabs");
+    expect(styles).toContain(".v2-dashboard-primary-metrics { grid-template-columns:repeat(6");
+    expect(styles).toContain(".v2-health-list { grid-template-columns:repeat(3");
   });
 
   it("uses one responsive reports toolbar instead of independently wrapping filter groups", () => {
@@ -94,5 +101,6 @@ describe("FLUXO visual system experience contracts", () => {
     expect(reports).toContain("hideClear");
     expect(styles).toContain(".v2-reports-toolbar-fields");
     expect(styles).toContain(".v2-reports-toolbar-actions");
+    expect(styles).toContain(".v2-reports-toolbar-fields { grid-template-columns:repeat(6");
   });
 });
