@@ -125,7 +125,12 @@ function MetricCard({
     <Card className={`v2-metric-card ${destructive ? "border-danger/60" : ""}`}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{title}</p>
+          <p
+            className="v2-metric-label text-sm text-muted-foreground"
+            title={title}
+          >
+            {title}
+          </p>
           <span
             className={
               destructive
@@ -137,7 +142,9 @@ function MetricCard({
             <Icon className="size-4" />
           </span>
         </div>
-        <p className="v2-kpi-value mt-3 text-3xl">{value}</p>
+        <p className="v2-kpi-value mt-3 text-3xl" title={value}>
+          {value}
+        </p>
         {comparison !== undefined && (
           <p className="mt-2 text-xs text-muted-foreground">
             {delta(comparison)}
@@ -217,82 +224,87 @@ export default function V2Dashboard() {
         />
       ) : dashboard.data ? (
         <>
-          <section>
-            <p className="v2-dashboard-section-label">Indicadores do período</p>
-            <div className="v2-metric-grid grid-cols-2 lg:grid-cols-3 v2-dashboard-primary-metrics">
-            <MetricCard
-              title="Leads recebidos"
-              value={number(dashboard.data.cards.leadsReceived)}
-              comparison={dashboard.data.comparisons.leadsReceived}
-              icon={Inbox}
-            />
-            <MetricCard
-              title="Leads trabalhados"
-              value={number(dashboard.data.cards.leadsWorked)}
-              comparison={dashboard.data.comparisons.leadsWorked}
-              icon={MessageSquareText}
-            />
-            <MetricCard
-              title="Tentativas"
-              value={number(dashboard.data.cards.attempts)}
-              comparison={dashboard.data.comparisons.attempts}
-              icon={Send}
-            />
-            <MetricCard
-              title="Contatos efetivos"
-              value={number(dashboard.data.cards.effectiveContacts)}
-              comparison={dashboard.data.comparisons.effectiveContacts}
-              icon={PhoneCall}
-            />
-            <MetricCard
-              title="Conversões"
-              value={number(dashboard.data.cards.conversions)}
-              comparison={dashboard.data.comparisons.conversions}
-              icon={CheckCircle2}
-            />
-            <MetricCard
-              title="Follow-ups vencidos"
-              value={number(dashboard.data.cards.followUpsOverdue)}
-              destructive
-              href={followUpPath("overdue")}
-              icon={BellRing}
-            />
-            </div>
+          <section className="v2-dashboard-indicator-groups">
+            <section className="v2-dashboard-indicator-group v2-dashboard-primary-group">
+              <p className="v2-dashboard-section-label">Indicadores do período</p>
+              <div className="v2-metric-grid v2-dashboard-primary-metrics">
+                <MetricCard
+                  title="Leads recebidos"
+                  value={number(dashboard.data.cards.leadsReceived)}
+                  comparison={dashboard.data.comparisons.leadsReceived}
+                  icon={Inbox}
+                />
+                <MetricCard
+                  title="Leads trabalhados"
+                  value={number(dashboard.data.cards.leadsWorked)}
+                  comparison={dashboard.data.comparisons.leadsWorked}
+                  icon={MessageSquareText}
+                />
+                <MetricCard
+                  title="Tentativas"
+                  value={number(dashboard.data.cards.attempts)}
+                  comparison={dashboard.data.comparisons.attempts}
+                  icon={Send}
+                />
+                <MetricCard
+                  title="Contatos efetivos"
+                  value={number(dashboard.data.cards.effectiveContacts)}
+                  comparison={dashboard.data.comparisons.effectiveContacts}
+                  icon={PhoneCall}
+                />
+                <MetricCard
+                  title="Conversões"
+                  value={number(dashboard.data.cards.conversions)}
+                  comparison={dashboard.data.comparisons.conversions}
+                  icon={CheckCircle2}
+                />
+                <MetricCard
+                  title="Follow-ups vencidos"
+                  value={number(dashboard.data.cards.followUpsOverdue)}
+                  destructive
+                  href={followUpPath("overdue")}
+                  icon={BellRing}
+                />
+              </div>
+            </section>
+
+            <section className="v2-dashboard-indicator-group v2-dashboard-efficiency-group">
+              <p className="v2-dashboard-section-label">Indicadores de eficiência</p>
+              <div className="v2-metric-grid v2-dashboard-secondary-metrics">
+                <MetricCard
+                  title="Tx. contato efetivo"
+                  value={percent(dashboard.data.cards.effectiveContactRate)}
+                  comparison={dashboard.data.comparisons.effectiveContactRate}
+                  icon={TrendingUp}
+                />
+                <MetricCard
+                  title="Tx. conversão"
+                  value={percent(dashboard.data.cards.conversionRate)}
+                  comparison={dashboard.data.comparisons.conversionRate}
+                  icon={TrendingUp}
+                />
+                <MetricCard
+                  title="Interessados"
+                  value={number(dashboard.data.cards.interested)}
+                  icon={CheckCircle2}
+                />
+                <MetricCard
+                  title="1ª tentativa"
+                  value={duration(dashboard.data.cards.firstAttemptAverageSeconds)}
+                  icon={Timer}
+                />
+                <MetricCard
+                  title="1º contato"
+                  value={duration(
+                    dashboard.data.cards.firstEffectiveContactAverageSeconds
+                  )}
+                  icon={Clock3}
+                />
+              </div>
+            </section>
           </section>
 
-          <section className="v2-metric-grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 v2-dashboard-secondary-metrics">
-            <MetricCard
-              title="Taxa de contato efetivo"
-              value={percent(dashboard.data.cards.effectiveContactRate)}
-              comparison={dashboard.data.comparisons.effectiveContactRate}
-              icon={TrendingUp}
-            />
-            <MetricCard
-              title="Taxa de conversão"
-              value={percent(dashboard.data.cards.conversionRate)}
-              comparison={dashboard.data.comparisons.conversionRate}
-              icon={TrendingUp}
-            />
-            <MetricCard
-              title="Interessados"
-              value={number(dashboard.data.cards.interested)}
-              icon={CheckCircle2}
-            />
-            <MetricCard
-              title="Tempo até 1ª tentativa"
-              value={duration(dashboard.data.cards.firstAttemptAverageSeconds)}
-              icon={Timer}
-            />
-            <MetricCard
-              title="Tempo até 1º contato"
-              value={duration(
-                dashboard.data.cards.firstEffectiveContactAverageSeconds
-              )}
-              icon={Clock3}
-            />
-          </section>
-
-          <section className="v2-dashboard-primary-layout">
+          <section className="v2-dashboard-funnel-shell">
             <Card className="v2-section-card v2-dashboard-funnel">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -356,6 +368,9 @@ export default function V2Dashboard() {
                 })}
               </CardContent>
             </Card>
+          </section>
+
+          <section className="v2-dashboard-health-shell">
             <Card className="v2-section-card v2-dashboard-health">
               <CardHeader>
                 <CardTitle>Saúde da operação</CardTitle>
@@ -370,17 +385,20 @@ export default function V2Dashboard() {
                   onClick={() => openHealthDetail("unassigned")}
                 />
                 <HealthItem
-                  label="Atribuídos sem trabalho"
+                  label="Sem trabalho"
+                  title="Leads atribuídos sem trabalho"
                   value={dashboard.data.health.assignedWithoutWork}
                   onClick={() => openHealthDetail("assigned_without_work")}
                 />
                 <HealthItem
-                  label="Pendências documentais"
+                  label="Pend. documentais"
+                  title="Pendências documentais"
                   value={dashboard.data.health.governancePending}
                   onClick={() => openHealthDetail("governance_pending")}
                 />
                 <HealthItem
-                  label="Aguardando resposta"
+                  label="Aguard. resposta"
+                  title="Aguardando resposta"
                   value={dashboard.data.health.awaitingResponse}
                   onClick={() => openHealthDetail("awaiting_response")}
                 />

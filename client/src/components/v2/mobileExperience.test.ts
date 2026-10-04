@@ -29,8 +29,9 @@ describe("mobile operational experience contracts", () => {
 
     expect(styles).toContain(".v2-metric-grid");
     expect(styles).toContain(".v2-mobile-detail-grid");
-    expect(dashboard).toContain(
-      "v2-metric-grid grid-cols-2 lg:grid-cols-3"
+    expect(dashboard).toContain("v2-dashboard-primary-metrics");
+    expect(styles).toContain(
+      ".v2-dashboard-primary-metrics .v2-metric-card,.v2-dashboard-secondary-metrics .v2-metric-card"
     );
     expect(productivity).toContain("aria-expanded={expanded}");
     expect(productivity).toContain("Ver detalhes");

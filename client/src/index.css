@@ -242,34 +242,43 @@
   .v2-health-item { display:flex; min-height:3.5rem; align-items:center; justify-content:space-between; gap:var(--space-3); border-color:var(--border); background:color-mix(in srgb,var(--surface-alt) 62%,var(--card)); transition:background-color 150ms ease,border-color 150ms ease; }
   .v2-health-item:hover { border-color:color-mix(in srgb,var(--brand-secondary) 35%,var(--border)); background:color-mix(in srgb,var(--brand-accent) 7%,var(--card)); }
   .v2-health-item strong { font-family:var(--font-manrope); font-size:1.125rem; letter-spacing:-.02em; }
-  .v2-dashboard-primary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .v2-dashboard-section-label { margin-bottom:.5rem; color:var(--brand-secondary); font-size:.6875rem; font-weight:700; letter-spacing:.12em; line-height:1; text-transform:uppercase; }
-  .v2-dashboard-filters [data-slot="card-content"] { padding:.625rem .875rem; }
+  .v2-dashboard-section-label { margin-bottom:.4rem; color:var(--brand-secondary); font-size:.6875rem; font-weight:700; letter-spacing:.12em; line-height:1; text-transform:uppercase; }
+  .v2-dashboard-filters { gap:0; padding-block:.35rem; }
+  .v2-dashboard-filters [data-slot="card-content"] { padding:.35rem .75rem; }
   .v2-dashboard-filters .v2-analytics-desktop-grid { align-items:end; gap:.5rem .75rem; }
-  .v2-dashboard-filters [data-slot="select-trigger"],.v2-dashboard-filters [data-slot="input"] { min-height:2.25rem; }
-  .v2-dashboard-primary-metrics,.v2-dashboard-secondary-metrics { gap:.75rem; }
-  .v2-dashboard-primary-metrics .v2-metric-card { min-height:6.4rem; }
-  .v2-dashboard-secondary-metrics .v2-metric-card { min-height:5.8rem; }
-  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"],.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] { padding:.75rem .875rem; }
-  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > p:nth-child(2),.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > p:nth-child(2) { margin-top:.25rem; }
-  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > p:last-child,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > p:last-child { margin-top:.25rem; }
-  .v2-dashboard-primary-layout { display:grid; align-items:stretch; gap:1rem; }
-  .v2-dashboard-funnel,.v2-dashboard-health { min-height:19rem; height:100%; }
-  .v2-dashboard-funnel-content { display:grid; align-content:start; gap:.55rem; padding-top:.875rem !important; }
-  .v2-dashboard-funnel-stage { display:grid; grid-template-columns:minmax(6.25rem,.85fr) minmax(0,2fr) auto auto; align-items:center; gap:.5rem; }
-  .v2-dashboard-funnel-stage > div { height:.75rem; border-radius:.25rem; background:linear-gradient(90deg,var(--brand-primary),var(--brand-secondary)); }
+  .v2-dashboard-filters [data-slot="select-trigger"],.v2-dashboard-filters [data-slot="input"] { min-height:2.1rem; }
+  .v2-dashboard-indicator-groups { display:grid; gap:1rem; }
+  .v2-dashboard-indicator-group { min-width:0; }
+  .v2-dashboard-primary-metrics,.v2-dashboard-secondary-metrics { gap:.5rem; min-width:0; }
+  .v2-dashboard-primary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .v2-dashboard-secondary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .v2-dashboard-secondary-metrics .v2-metric-card:last-child { grid-column:1 / -1; }
+  .v2-dashboard-primary-metrics .v2-metric-card,.v2-dashboard-secondary-metrics .v2-metric-card { min-height:5rem; min-width:0; padding-block:0; }
+  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"],.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] { min-width:0; padding:.55rem .65rem; }
+  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > div:first-child,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > div:first-child { min-width:0; gap:.4rem; }
+  .v2-dashboard-primary-metrics .v2-metric-card .size-8,.v2-dashboard-secondary-metrics .v2-metric-card .size-8 { width:1.65rem; height:1.65rem; flex:none; }
+  .v2-dashboard-primary-metrics .v2-metric-label,.v2-dashboard-secondary-metrics .v2-metric-label { display:-webkit-box; min-width:0; max-width:calc(100% - 2.1rem); overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-height:1.15; }
+  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > .v2-kpi-value,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > .v2-kpi-value { margin-top:.2rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > p:last-child,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > p:last-child { margin-top:.15rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .v2-dashboard-funnel-shell,.v2-dashboard-health-shell { min-width:0; }
+  .v2-dashboard-funnel { min-height:15rem; }
+  .v2-dashboard-funnel-content { display:grid; align-content:start; gap:.35rem; padding:.75rem 1.25rem 1rem !important; }
+  .v2-dashboard-funnel-stage { display:grid; grid-template-columns:minmax(7rem,.7fr) minmax(0,3fr) auto auto; min-width:0; align-items:center; gap:.5rem; }
+  .v2-dashboard-funnel-stage > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .v2-dashboard-funnel-stage > div { height:.6rem; border-radius:.25rem; background:linear-gradient(90deg,var(--brand-primary),var(--brand-secondary)); }
   .v2-dashboard-funnel-rate { min-width:2.7rem; color:var(--muted-foreground); font-size:.6875rem; text-align:right; }
-  .v2-health-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-content:start; gap:.5rem; }
-  .v2-dashboard-health .v2-health-item { min-height:3.15rem; padding:.5rem .625rem; }
-  .v2-dashboard-health .v2-health-item p { font-size:.8125rem; line-height:1.2; }
-  .v2-health-coverage,.v2-health-attempt-coverage { display:grid; gap:.5rem; min-width:0; border:1px solid color-mix(in srgb,var(--brand-accent) 28%,var(--border)); border-radius:.5rem; background:color-mix(in srgb,var(--brand-accent) 5%,var(--card)); padding:.75rem; }
+  .v2-health-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-content:start; gap:.5rem; padding-top:.75rem !important; }
+  .v2-dashboard-health { min-height:15rem; }
+  .v2-dashboard-health .v2-health-item { min-width:0; min-height:3.25rem; padding:.5rem .625rem; }
+  .v2-dashboard-health .v2-health-item p { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8125rem; line-height:1.15; }
+  .v2-health-coverage,.v2-health-attempt-coverage { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:.35rem .5rem; min-width:0; border:1px solid color-mix(in srgb,var(--brand-accent) 28%,var(--border)); border-radius:.5rem; background:color-mix(in srgb,var(--brand-accent) 5%,var(--card)); padding:.5rem .625rem; }
   .v2-health-summary { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
   .v2-health-summary strong { flex:none; font-family:var(--font-manrope); font-size:1.125rem; letter-spacing:-.025em; }
-  .v2-health-inline-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.25rem .5rem; }
+  .v2-health-inline-metrics { display:grid; grid-column:1 / -1; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.2rem .35rem; }
   .v2-health-inline-metrics button { min-width:0; border-radius:.25rem; color:var(--muted-foreground); font-size:.6875rem; line-height:1.25; }
   .v2-health-inline-metrics button:hover { color:var(--brand-primary); text-decoration:underline; }
   .v2-health-inline-metrics strong { margin-top:.1rem; font-size:.8125rem; }
-  .v2-health-attempt-coverage { grid-column:1 / -1; grid-template-columns:minmax(0,1fr) minmax(11rem,.85fr); align-items:center; background:color-mix(in srgb,var(--brand-accent) 7%,var(--card)); padding:.625rem; }
+  .v2-health-attempt-coverage { grid-column:auto; background:color-mix(in srgb,var(--brand-accent) 7%,var(--card)); }
   .v2-dashboard-overview-shell { min-width:0; }
   .v2-dashboard-overview-panel { overflow:hidden; }
   .v2-dashboard-overview-heading { border-bottom:0 !important; padding-bottom:.625rem !important; }
@@ -372,13 +381,28 @@
   }
   @media (min-width:768px) {
     .v2-metric-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .v2-dashboard-primary-layout { grid-template-columns:minmax(0,1.38fr) minmax(0,1fr); }
-    .v2-dashboard-secondary-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .v2-reports-toolbar-fields { grid-template-columns:repeat(3,minmax(0,1fr)); gap:.5rem .75rem; }
-    .v2-reports-contextual-fields,.v2-reports-analytics,.v2-reports-analytics > .hidden { display:contents !important; }
-    .v2-reports-toolbar .v2-reports-contextual-fields,.v2-reports-toolbar .v2-reports-analytics,.v2-reports-toolbar .v2-reports-analytics > .v2-analytics-desktop-grid { display:contents !important; }
-    .v2-reports-toolbar-fields > div { min-width:0; }
-    .v2-reports-toolbar .v2-reports-analytics > .hidden > div { min-width:0; }
+    .v2-dashboard-indicator-groups { grid-template-columns:minmax(0,3fr) minmax(0,2fr); align-items:start; }
+    .v2-dashboard-primary-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .v2-dashboard-secondary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .v2-dashboard-secondary-metrics .v2-metric-card:last-child { grid-column:1 / -1; }
+
+    /* Desktop reports are one toolbar with two deliberate rows. The wrappers
+       remain in the DOM for mobile/drawer behavior, but their fields participate
+       directly in this grid at desktop widths. */
+    .v2-reports-toolbar { grid-template-columns:repeat(4,minmax(0,1fr)); gap:.5rem .75rem; }
+    .v2-reports-toolbar-fields,.v2-reports-contextual-fields,.v2-reports-analytics,.v2-reports-analytics > .hidden,.v2-reports-analytics > .v2-analytics-desktop-grid { display:contents !important; }
+    .v2-reports-toolbar [data-report-field],.v2-reports-toolbar [data-analytics-field] { min-width:0; }
+    .v2-reports-toolbar [data-slot="select-trigger"],.v2-reports-toolbar [data-slot="input"] { width:100%; min-width:0; }
+    .v2-reports-toolbar [data-report-field="type"] { grid-column:1; grid-row:1; }
+    .v2-reports-toolbar [data-report-field="evidence"],.v2-reports-toolbar [data-report-field="followup-situation"] { grid-column:2; grid-row:1; }
+    .v2-reports-toolbar [data-analytics-field="period"] { grid-column:3; grid-row:1; }
+    .v2-reports-toolbar-actions { grid-column:4; grid-row:1; grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr); min-width:0; }
+    .v2-reports-toolbar [data-analytics-field="campaign"] { grid-column:1; grid-row:2; }
+    .v2-reports-toolbar [data-analytics-field="pdv"] { grid-column:2; grid-row:2; }
+    .v2-reports-toolbar [data-analytics-field="seller"] { grid-column:3; grid-row:2; }
+    .v2-reports-toolbar [data-report-field="followup-date"] { grid-column:4; grid-row:2; }
+    .v2-reports-toolbar [data-analytics-field="custom-dates"] { grid-column:3 / span 2; grid-row:3; }
+    .v2-reports-toolbar-actions [data-slot="button"] { min-width:0; white-space:nowrap; }
   }
   @media (min-width: 1024px) {
     .v2-app-shell { padding-left:14rem; }
@@ -394,19 +418,26 @@
     .v2-login-panel { padding:2.5rem; }
   }
   @media (min-width:1200px) {
-    .v2-health-list { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .v2-health-list { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .v2-dashboard-secondary-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .v2-dashboard-secondary-metrics .v2-metric-card:last-child { grid-column:auto; }
   }
   @media (min-width:1280px) {
-    .v2-dashboard-primary-metrics { grid-template-columns:repeat(6,minmax(0,1fr)); }
-    .v2-dashboard-secondary-metrics { grid-template-columns:repeat(5,minmax(0,1fr)); }
     .v2-dashboard-filters .v2-analytics-desktop-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }
     .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child { grid-column:auto; }
     .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child > span { display:none; }
     .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child [data-slot="button"] { width:100%; min-height:2.5rem; }
-    .v2-reports-toolbar { grid-template-columns:minmax(0,1fr) max-content; }
-    .v2-reports-toolbar-fields { grid-template-columns:repeat(6,minmax(0,1fr)); gap:.5rem .625rem; }
-    .v2-reports-toolbar-actions { grid-template-columns:repeat(2,max-content); align-items:end; }
-    .v2-reports-toolbar-actions [data-slot="button"] { white-space:nowrap; }
+    .v2-reports-toolbar { grid-template-columns:repeat(5,minmax(0,1fr)); gap:.5rem .75rem; }
+    .v2-reports-toolbar [data-report-field="type"] { grid-column:1; grid-row:1; }
+    .v2-reports-toolbar [data-report-field="evidence"] { grid-column:2; grid-row:1; }
+    .v2-reports-toolbar [data-analytics-field="period"] { grid-column:3; grid-row:1; }
+    .v2-reports-toolbar-actions { grid-column:4 / span 2; grid-row:1; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:end; }
+    .v2-reports-toolbar [data-analytics-field="campaign"] { grid-column:1; grid-row:2; }
+    .v2-reports-toolbar [data-analytics-field="pdv"] { grid-column:2; grid-row:2; }
+    .v2-reports-toolbar [data-analytics-field="seller"] { grid-column:3; grid-row:2; }
+    .v2-reports-toolbar [data-report-field="followup-situation"] { grid-column:4; grid-row:2; }
+    .v2-reports-toolbar [data-report-field="followup-date"] { grid-column:5; grid-row:2; }
+    .v2-reports-toolbar [data-analytics-field="custom-dates"] { grid-column:3 / span 3; grid-row:3; }
   }
   @media (min-width:1440px) { .v2-page { max-width:100rem; padding-inline:2rem; } }
 }

@@ -113,7 +113,10 @@ export default function V2Reports() {
       <PageToolbar className="v2-reports-toolbar">
         <div className="v2-reports-toolbar-fields">
           <div className="v2-reports-contextual-fields">
-            <div className="min-w-0 space-y-1.5">
+            <div
+              className="min-w-0 space-y-1.5"
+              data-report-field="type"
+            >
               <label className="text-sm font-medium" htmlFor="report-type">
                 Tipo de relatório
               </label>
@@ -148,7 +151,10 @@ export default function V2Reports() {
             {(type === "leads" ||
               type === "attempts" ||
               type === "treatments") && (
-              <div className="min-w-0 space-y-1.5">
+              <div
+                className="min-w-0 space-y-1.5"
+                data-report-field="evidence"
+              >
                 <label
                   className="text-sm font-medium"
                   htmlFor="report-evidence-filter"
@@ -180,7 +186,10 @@ export default function V2Reports() {
             )}
             {type === "follow_ups" && (
               <>
-                <div className="min-w-0 space-y-1.5">
+                <div
+                  className="min-w-0 space-y-1.5"
+                  data-report-field="followup-situation"
+                >
                   <label
                     className="text-sm font-medium"
                     htmlFor="report-follow-up-situation"
@@ -208,7 +217,10 @@ export default function V2Reports() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="min-w-0 space-y-1.5">
+                <div
+                  className="min-w-0 space-y-1.5"
+                  data-report-field="followup-date"
+                >
                   <label
                     className="text-sm font-medium"
                     htmlFor="report-follow-up-date"

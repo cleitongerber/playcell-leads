@@ -143,7 +143,7 @@ function FilterControls({
 }) {
   return (
     <>
-      <div className="space-y-1.5">
+      <div className="space-y-1.5" data-analytics-field="period">
         <Label htmlFor={`${idPrefix}-period`}>Período</Label>
         <Select
           value={value.preset}
@@ -171,7 +171,10 @@ function FilterControls({
         </Select>
       </div>
       {value.preset === "custom" && (
-        <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+        <div
+          className="grid grid-cols-2 gap-2 sm:col-span-2"
+          data-analytics-field="custom-dates"
+        >
           <div className="space-y-1.5">
             <Label htmlFor={`${idPrefix}-from`}>Início</Label>
             <Input
@@ -196,7 +199,7 @@ function FilterControls({
           </div>
         </div>
       )}
-      <div className="space-y-1.5">
+      <div className="space-y-1.5" data-analytics-field="campaign">
         <Label htmlFor={`${idPrefix}-campaign`}>Campanha</Label>
         <Select
           value={value.campaignId ? String(value.campaignId) : "all"}
@@ -217,7 +220,7 @@ function FilterControls({
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-1.5" data-analytics-field="pdv">
         <Label htmlFor={`${idPrefix}-pdv`}>PDV</Label>
         <Select
           value={value.pdvId ? String(value.pdvId) : "all"}
@@ -237,7 +240,7 @@ function FilterControls({
         </Select>
       </div>
       {canFilterSeller && (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5" data-analytics-field="seller">
           <Label htmlFor={`${idPrefix}-seller`}>Vendedor</Label>
           <Select
             value={
