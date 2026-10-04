@@ -103,7 +103,7 @@ function delta(value: number | null | undefined) {
     style: "percent",
     maximumFractionDigits: 1,
   }).format(Math.abs(value));
-  return `${value >= 0 ? "+" : "−"}${formatted} vs. período anterior`;
+  return `${value >= 0 ? "+" : "−"}${formatted} vs. anterior`;
 }
 
 function MetricCard({
@@ -113,6 +113,7 @@ function MetricCard({
   comparison,
   href,
   destructive = false,
+  compact = false,
   icon: Icon,
 }: {
   title: string;
@@ -121,11 +122,14 @@ function MetricCard({
   comparison?: number | null;
   href?: string;
   destructive?: boolean;
+  compact?: boolean;
   icon: LucideIcon;
 }) {
   const content = (
-    <Card className={`v2-metric-card ${destructive ? "border-danger/60" : ""}`}>
-      <CardContent className="p-4">
+    <Card
+      className={`v2-metric-card ${compact ? "v2-metric-card--compact" : ""} ${destructive ? "border-danger/60" : ""}`}
+    >
+      <CardContent className="v2-metric-card-content p-4">
         <div className="flex items-start justify-between gap-3">
           <p
             className="v2-metric-label text-sm text-muted-foreground"
@@ -148,7 +152,7 @@ function MetricCard({
           {value}
         </p>
         {comparison !== undefined && (
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="v2-metric-comparison mt-2 text-xs text-muted-foreground">
             {delta(comparison)}
           </p>
         )}
@@ -278,6 +282,7 @@ export default function V2Dashboard() {
                   tooltip="Taxa de contato efetivo"
                   value={percent(dashboard.data.cards.effectiveContactRate)}
                   comparison={dashboard.data.comparisons.effectiveContactRate}
+                  compact
                   icon={TrendingUp}
                 />
                 <MetricCard
@@ -285,17 +290,20 @@ export default function V2Dashboard() {
                   tooltip="Taxa de conversão"
                   value={percent(dashboard.data.cards.conversionRate)}
                   comparison={dashboard.data.comparisons.conversionRate}
+                  compact
                   icon={TrendingUp}
                 />
                 <MetricCard
                   title="Interessados"
                   value={number(dashboard.data.cards.interested)}
+                  compact
                   icon={CheckCircle2}
                 />
                 <MetricCard
                   title="1ª tentativa"
                   tooltip="Tempo até a primeira tentativa"
                   value={duration(dashboard.data.cards.firstAttemptAverageSeconds)}
+                  compact
                   icon={Timer}
                 />
                 <MetricCard
@@ -304,6 +312,7 @@ export default function V2Dashboard() {
                   value={duration(
                     dashboard.data.cards.firstEffectiveContactAverageSeconds
                   )}
+                  compact
                   icon={Clock3}
                 />
               </div>
@@ -478,7 +487,6 @@ export default function V2Dashboard() {
               </div>
               <div className="v2-dashboard-overview-table">
                 <Overview
-                  title={overviewTab === "campaigns" ? "Campanhas" : "PDVs"}
                   rows={
                     overviewTab === "campaigns"
                       ? dashboard.data.campaigns.slice(0, 5)
@@ -679,21 +687,15 @@ type OverviewRow = {
 };
 
 function Overview({
-  title,
   rows,
   campaign = false,
 }: {
-  title: string;
   rows: OverviewRow[];
   campaign?: boolean;
 }) {
   return (
-    <Card className="v2-section-card v2-dashboard-overview">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {rows.length ? (
+    <div className="v2-dashboard-overview-content">
+      {rows.length ? (
           <>
             <div className="grid gap-3 md:hidden">
               {rows.map(row => (
@@ -759,7 +761,7 @@ function Overview({
               <table className="w-full text-sm">
                 <thead className="border-b text-left text-muted-foreground">
                   <tr>
-                    <th className="p-2">{title.slice(0, -1)}</th>
+                    <th className="p-2">{campaign ? "Campanha" : "PDV"}</th>
                     <th className="p-2">Base</th>
                     <th className="p-2">Tentativas</th>
                     <th className="p-2">Contatos</th>
@@ -806,12 +808,11 @@ function Overview({
               </table>
             </div>
           </>
-        ) : (
-          <p className="p-5 text-center text-sm text-muted-foreground">
-            Sem dados no período e escopo selecionados.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+      ) : (
+        <p className="p-5 text-center text-sm text-muted-foreground">
+          Sem dados no período e escopo selecionados.
+        </p>
+      )}
+    </div>
   );
 }

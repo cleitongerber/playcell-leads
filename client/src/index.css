@@ -243,9 +243,9 @@
   .v2-health-item:hover { border-color:color-mix(in srgb,var(--brand-secondary) 35%,var(--border)); background:color-mix(in srgb,var(--brand-accent) 7%,var(--card)); }
   .v2-health-item strong { font-family:var(--font-manrope); font-size:1.125rem; letter-spacing:-.02em; }
   .v2-dashboard-section-label { margin-bottom:.4rem; color:var(--brand-secondary); font-size:.6875rem; font-weight:700; letter-spacing:.12em; line-height:1; text-transform:uppercase; }
-  .v2-dashboard-filters { gap:0; padding-block:.35rem; }
-  .v2-dashboard-filters [data-slot="card-content"] { padding:.35rem .75rem; }
-  .v2-dashboard-filters .v2-analytics-desktop-grid { align-items:end; gap:.5rem .75rem; }
+  .v2-dashboard-filters { gap:0; padding-block:.25rem; }
+  .v2-dashboard-filters [data-slot="card-content"] { padding:.3rem .75rem; }
+  .v2-dashboard-filters .v2-analytics-desktop-grid { align-items:end; gap:.375rem .625rem; }
   .v2-dashboard-filters [data-slot="select-trigger"],.v2-dashboard-filters [data-slot="input"] { min-height:2.1rem; }
   .v2-dashboard-indicator-groups { display:grid; gap:1rem; }
   .v2-dashboard-indicator-group { min-width:0; }
@@ -253,13 +253,13 @@
   .v2-dashboard-primary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .v2-dashboard-secondary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .v2-dashboard-secondary-metrics .v2-metric-card:last-child { grid-column:1 / -1; }
-  .v2-dashboard-primary-metrics .v2-metric-card,.v2-dashboard-secondary-metrics .v2-metric-card { min-height:5rem; min-width:0; padding-block:0; }
+  .v2-dashboard-primary-metrics .v2-metric-card,.v2-dashboard-secondary-metrics .v2-metric-card { min-width:0; padding-block:0; }
   .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"],.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] { min-width:0; padding:.55rem .65rem; }
   .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > div:first-child,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > div:first-child { min-width:0; gap:.4rem; }
   .v2-dashboard-primary-metrics .v2-metric-card .size-8,.v2-dashboard-secondary-metrics .v2-metric-card .size-8 { width:1.65rem; height:1.65rem; flex:none; }
   .v2-dashboard-primary-metrics .v2-metric-label,.v2-dashboard-secondary-metrics .v2-metric-label { display:-webkit-box; min-width:0; max-width:calc(100% - 2.1rem); overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-height:1.15; }
-  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > .v2-kpi-value,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > .v2-kpi-value { margin-top:.2rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > p:last-child,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > p:last-child { margin-top:.15rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > .v2-kpi-value,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > .v2-kpi-value { margin-top:.2rem; min-width:0; white-space:nowrap; }
+  .v2-dashboard-primary-metrics .v2-metric-comparison,.v2-dashboard-secondary-metrics .v2-metric-comparison { margin-top:.15rem; min-width:0; font-size:.6875rem; line-height:1.15; white-space:nowrap; }
   .v2-dashboard-funnel-shell,.v2-dashboard-health-shell { min-width:0; }
   .v2-dashboard-funnel { min-height:14rem; gap:0; padding-block:0; }
   .v2-dashboard-funnel-content { display:grid; align-content:start; gap:.25rem; padding:.625rem 1.25rem .875rem !important; }
@@ -281,9 +281,7 @@
   .v2-dashboard-overview-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); padding:0 1.25rem; }
   .v2-dashboard-overview-tabs button { min-height:2.25rem; border-bottom:2px solid transparent; padding:0 .75rem; color:var(--muted-foreground); font-size:.8125rem; font-weight:600; }
   .v2-dashboard-overview-tabs button.is-active { border-bottom-color:var(--brand-secondary); color:var(--brand-primary); }
-  .v2-dashboard-overview-table > .v2-dashboard-overview { border:0; border-radius:0; box-shadow:none; }
-  .v2-dashboard-overview-table > .v2-dashboard-overview > [data-slot="card-header"] { display:none; }
-  .v2-dashboard-overview-table > .v2-dashboard-overview > [data-slot="card-content"] { padding:.75rem 1.25rem .875rem; }
+  .v2-dashboard-overview-content { padding:.5rem 1.25rem .75rem; }
 
   /* Reports use one deliberate responsive grid, rather than independently wrapping filter groups. */
   .v2-reports-toolbar { display:grid; grid-template-columns:minmax(0,1fr); align-items:end; gap:.625rem .875rem; padding:.625rem .75rem; }
@@ -359,7 +357,7 @@
     .v2-dashboard-funnel-stage { grid-template-columns:minmax(5.5rem,.8fr) minmax(0,1.5fr) auto auto; gap:.35rem; }
     .v2-dashboard-funnel-stage > span:first-child { font-size:.75rem; }
     .v2-dashboard-overview-tabs { padding-inline:1rem; }
-    .v2-dashboard-overview-table > .v2-dashboard-overview > [data-slot="card-content"] { padding:.875rem 1rem 1rem; }
+    .v2-dashboard-overview-content { padding:.625rem 1rem .75rem; }
     .v2-health-item { min-height:4.75rem; padding:.75rem; }
     .v2-tab-list { width:100%; }
     .v2-tab-list [data-slot="button"] { flex:1 1 auto; }
@@ -376,10 +374,22 @@
   }
   @media (min-width:768px) {
     .v2-metric-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .v2-dashboard-indicator-groups { grid-template-columns:minmax(0,3fr) minmax(0,2fr); align-items:start; }
+    .v2-dashboard-indicator-groups { grid-template-columns:minmax(0,1fr); align-items:start; }
     .v2-dashboard-primary-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
     .v2-dashboard-secondary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .v2-dashboard-secondary-metrics .v2-metric-card:last-child { grid-column:1 / -1; }
+    .v2-dashboard-primary-metrics .v2-metric-card { box-sizing:border-box; height:6.25rem; min-height:6.25rem; }
+    .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] { display:flex; height:100%; flex-direction:column; justify-content:center; padding:.5rem .65rem; }
+    .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > .v2-kpi-value { margin-top:.12rem; }
+    .v2-dashboard-primary-metrics .v2-metric-comparison { margin-top:.12rem; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact { box-sizing:border-box; height:4.5rem; min-height:4.5rem; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact [data-slot="card-content"] { display:grid; height:100%; grid-template-columns:minmax(0,1fr) max-content; grid-template-rows:auto auto; align-content:center; column-gap:.4rem; padding:.4rem .6rem; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact [data-slot="card-content"] > div:first-child { grid-column:1; grid-row:1; align-self:center; gap:.3rem; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact .size-8 { width:1.25rem; height:1.25rem; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact .size-8 svg { width:.75rem; height:.75rem; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-label { display:block; max-width:none; overflow:visible; font-size:.75rem; line-height:1.1; white-space:nowrap; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-kpi-value { grid-column:2; grid-row:1; align-self:center; margin:0; overflow:visible; font-size:clamp(1.125rem,1.55vw,1.45rem); line-height:1.05; text-overflow:clip; white-space:nowrap; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-comparison { grid-column:1 / -1; grid-row:2; overflow:hidden; text-overflow:ellipsis; }
 
     /* Desktop reports are one toolbar with two deliberate rows. The wrappers
        remain in the DOM for mobile/drawer behavior, but their fields participate
@@ -413,15 +423,19 @@
     .v2-login-panel { padding:2.5rem; }
   }
   @media (min-width:1200px) {
+    .v2-dashboard-indicator-groups { grid-template-columns:minmax(0,3fr) minmax(0,2fr); }
     .v2-health-list { grid-template-columns:repeat(4,minmax(0,1fr)); }
-    .v2-dashboard-secondary-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .v2-dashboard-secondary-metrics .v2-metric-card:last-child { grid-column:auto; }
   }
   @media (min-width:1280px) {
-    .v2-dashboard-filters .v2-analytics-desktop-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }
-    .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child { grid-column:auto; }
+    .v2-dashboard-filters .v2-analytics-desktop-grid { grid-template-columns:8.75rem minmax(11.25rem,1.2fr) minmax(10rem,.85fr) minmax(12.5rem,1.2fr) max-content; align-items:end; gap:.375rem .625rem; }
+    .v2-dashboard-filters .v2-analytics-desktop-grid [data-analytics-field="period"] { grid-column:1; grid-row:1; min-width:0; }
+    .v2-dashboard-filters .v2-analytics-desktop-grid [data-analytics-field="campaign"] { grid-column:2; grid-row:1; min-width:0; }
+    .v2-dashboard-filters .v2-analytics-desktop-grid [data-analytics-field="pdv"] { grid-column:3; grid-row:1; min-width:0; }
+    .v2-dashboard-filters .v2-analytics-desktop-grid [data-analytics-field="seller"] { grid-column:4; grid-row:1; min-width:0; }
+    .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child { grid-column:5 !important; grid-row:1; align-self:end; min-width:max-content; }
+    .v2-dashboard-filters .v2-analytics-desktop-grid [data-analytics-field="custom-dates"] { grid-column:1 / span 2; grid-row:2; }
     .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child > span { display:none; }
-    .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child [data-slot="button"] { width:100%; min-height:2.5rem; }
+    .v2-dashboard-filters .v2-analytics-desktop-grid > div:last-child [data-slot="button"] { width:auto; min-height:2.1rem; padding-inline:.625rem; white-space:nowrap; }
     .v2-reports-toolbar { grid-template-columns:repeat(5,minmax(0,1fr)); gap:.5rem .75rem; }
     .v2-reports-toolbar [data-report-field="type"] { grid-column:1; grid-row:1; }
     .v2-reports-toolbar [data-report-field="evidence"] { grid-column:2; grid-row:1; }

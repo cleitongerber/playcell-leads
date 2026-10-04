@@ -95,13 +95,27 @@ describe("FLUXO visual system experience contracts", () => {
     expect(dashboard).toContain("Indicadores do período");
     expect(dashboard).toContain("Indicadores de eficiência");
     expect(dashboard).toContain("Tx. contato");
+    expect(dashboard).toMatch(/title="Tx\. contato"[\s\S]*?compact/);
     expect(dashboard).toContain("Funil da coorte do período");
     expect(dashboard).toContain("Os indicadores acima mostram atividades realizadas no");
     expect(dashboard).toContain("Visão operacional");
     expect(dashboard).toContain("v2-dashboard-overview-tabs");
+    expect(dashboard).toContain("v2-dashboard-overview-content");
+    expect(dashboard).not.toContain('CardTitle>{title}</CardTitle>');
     expect(styles).toContain(".v2-dashboard-primary-metrics { grid-template-columns:repeat(3");
+    expect(styles).toContain("height:6.25rem");
+    expect(styles).toContain("v2-metric-card--compact");
+    expect(styles).toContain("text-overflow:clip");
     expect(styles).toContain(".v2-health-list { grid-template-columns:repeat(4");
     expect(styles).toContain(".v2-health-summary-item");
+  });
+
+  it("keeps the dashboard filter action inline and scoped to the dashboard grid", () => {
+    expect(styles).toContain(
+      "grid-template-columns:8.75rem minmax(11.25rem,1.2fr)"
+    );
+    expect(styles).toContain("grid-column:5 !important");
+    expect(styles).toContain("align-self:end");
   });
 
   it("uses one responsive reports toolbar instead of independently wrapping filter groups", () => {
