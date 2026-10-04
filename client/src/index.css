@@ -379,13 +379,13 @@
     .v2-dashboard-primary-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
     .v2-dashboard-secondary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .v2-dashboard-secondary-metrics .v2-metric-card:last-child { grid-column:1 / -1; }
-    .v2-dashboard-primary-metrics .v2-metric-card { box-sizing:border-box; height:6.25rem; min-height:6.25rem; }
-    .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] { display:grid; height:100%; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto minmax(0,1fr) auto; align-items:center; column-gap:.4rem; row-gap:.12rem; padding:.5rem .65rem; }
+    .v2-dashboard-primary-metrics .v2-metric-card { box-sizing:border-box; min-height:6rem; height:auto; }
+    .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] { box-sizing:border-box; display:grid; min-height:6rem; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto; align-content:center; align-items:center; column-gap:.5rem; row-gap:.5rem; padding:.5rem .65rem; }
     .v2-dashboard-primary-metrics .v2-metric-card-header { display:contents; }
     .v2-dashboard-primary-metrics .v2-metric-label { grid-column:1; grid-row:1; max-width:none; font-size:.75rem; line-height:1.15; }
-    .v2-dashboard-primary-metrics .v2-metric-icon { grid-column:2; grid-row:1; }
-    .v2-dashboard-primary-metrics .v2-kpi-value { grid-column:1 / -1; grid-row:2; align-self:center; min-width:0; margin:0; overflow:visible; font-size:clamp(1.5rem,2vw,1.875rem); line-height:1; text-overflow:clip; white-space:nowrap; }
-    .v2-dashboard-primary-metrics .v2-metric-comparison { grid-column:1 / -1; grid-row:3; min-width:0; margin:0; overflow:hidden; font-size:.6875rem; line-height:1.15; text-overflow:ellipsis; white-space:nowrap; }
+    .v2-dashboard-primary-metrics .v2-metric-icon { grid-column:2; grid-row:1; width:1.5rem; height:1.5rem; }
+    .v2-dashboard-primary-metrics .v2-kpi-value { grid-column:1; grid-row:2; align-self:center; min-width:0; margin:0; overflow:visible; font-size:clamp(1.5rem,2vw,1.875rem); line-height:1; text-overflow:clip; white-space:nowrap; }
+    .v2-dashboard-primary-metrics .v2-metric-comparison { grid-column:2; grid-row:2; align-self:center; min-width:0; margin:0; overflow:visible; font-size:.6875rem; line-height:1.15; text-align:right; text-overflow:clip; white-space:nowrap; }
     .v2-dashboard-secondary-metrics .v2-metric-card--compact { box-sizing:border-box; height:4.5rem; min-height:4.5rem; }
     .v2-dashboard-secondary-metrics .v2-metric-card--compact [data-slot="card-content"] { display:grid; height:100%; grid-template-columns:minmax(0,1fr) max-content; grid-template-rows:minmax(0,1fr) auto; align-items:center; column-gap:.5rem; row-gap:.1rem; padding:.4rem .6rem; }
     .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-card-header { display:contents; }

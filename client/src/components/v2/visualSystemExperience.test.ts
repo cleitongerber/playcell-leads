@@ -103,13 +103,15 @@ describe("FLUXO visual system experience contracts", () => {
     expect(dashboard).toContain("v2-dashboard-overview-content");
     expect(dashboard).not.toContain('CardTitle>{title}</CardTitle>');
     expect(styles).toContain(".v2-dashboard-primary-metrics { grid-template-columns:repeat(3");
-    expect(styles).toContain("height:6.25rem");
+    expect(styles).toContain("min-height:6rem");
     expect(styles).toContain("v2-metric-card--compact");
     expect(styles).toContain("text-overflow:clip");
     expect(dashboard).toContain('className="v2-metric-card-header"');
     expect(dashboard).toContain("v2-metric-icon");
-    expect(styles).toContain("grid-template-rows:auto minmax(0,1fr) auto");
-    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-kpi-value { grid-column:1 / -1");
+    expect(styles).toContain("grid-template-rows:auto auto");
+    expect(styles).not.toContain("grid-template-rows:auto minmax(0,1fr) auto");
+    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-kpi-value { grid-column:1; grid-row:2");
+    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-comparison { grid-column:2; grid-row:2");
     expect(styles).toContain(".v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-icon { display:none; }");
     expect(styles).toContain(".v2-health-list { grid-template-columns:repeat(4");
     expect(styles).toContain(".v2-health-summary-item");
