@@ -130,7 +130,7 @@ function MetricCard({
       className={`v2-metric-card ${compact ? "v2-metric-card--compact" : ""} ${destructive ? "border-danger/60" : ""}`}
     >
       <CardContent className="v2-metric-card-content p-4">
-        <div className="flex items-start justify-between gap-3">
+        <div className="v2-metric-card-header">
           <p
             className="v2-metric-label text-sm text-muted-foreground"
             title={tooltip ?? title}
@@ -138,11 +138,11 @@ function MetricCard({
             {title}
           </p>
           <span
-            className={
+            className={`v2-metric-icon ${
               destructive
                 ? "grid size-8 place-items-center rounded-lg bg-danger/10 text-danger"
                 : "grid size-8 place-items-center rounded-lg bg-brand-accent/10 text-brand-secondary"
-            }
+            }`}
             aria-hidden="true"
           >
             <Icon className="size-4" />

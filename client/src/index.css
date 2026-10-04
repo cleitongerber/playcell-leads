@@ -255,9 +255,10 @@
   .v2-dashboard-secondary-metrics .v2-metric-card:last-child { grid-column:1 / -1; }
   .v2-dashboard-primary-metrics .v2-metric-card,.v2-dashboard-secondary-metrics .v2-metric-card { min-width:0; padding-block:0; }
   .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"],.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] { min-width:0; padding:.55rem .65rem; }
-  .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > div:first-child,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > div:first-child { min-width:0; gap:.4rem; }
-  .v2-dashboard-primary-metrics .v2-metric-card .size-8,.v2-dashboard-secondary-metrics .v2-metric-card .size-8 { width:1.65rem; height:1.65rem; flex:none; }
-  .v2-dashboard-primary-metrics .v2-metric-label,.v2-dashboard-secondary-metrics .v2-metric-label { display:-webkit-box; min-width:0; max-width:calc(100% - 2.1rem); overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-height:1.15; }
+  .v2-metric-card-header { display:flex; min-width:0; align-items:flex-start; justify-content:space-between; gap:.4rem; }
+  .v2-metric-icon { flex:none; }
+  .v2-dashboard-primary-metrics .v2-metric-card .size-8,.v2-dashboard-secondary-metrics .v2-metric-card .size-8 { width:1.65rem; height:1.65rem; }
+  .v2-dashboard-primary-metrics .v2-metric-label,.v2-dashboard-secondary-metrics .v2-metric-label { display:-webkit-box; min-width:0; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-height:1.15; }
   .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > .v2-kpi-value,.v2-dashboard-secondary-metrics .v2-metric-card [data-slot="card-content"] > .v2-kpi-value { margin-top:.2rem; min-width:0; white-space:nowrap; }
   .v2-dashboard-primary-metrics .v2-metric-comparison,.v2-dashboard-secondary-metrics .v2-metric-comparison { margin-top:.15rem; min-width:0; font-size:.6875rem; line-height:1.15; white-space:nowrap; }
   .v2-dashboard-funnel-shell,.v2-dashboard-health-shell { min-width:0; }
@@ -379,17 +380,19 @@
     .v2-dashboard-secondary-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .v2-dashboard-secondary-metrics .v2-metric-card:last-child { grid-column:1 / -1; }
     .v2-dashboard-primary-metrics .v2-metric-card { box-sizing:border-box; height:6.25rem; min-height:6.25rem; }
-    .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] { display:flex; height:100%; flex-direction:column; justify-content:center; padding:.5rem .65rem; }
-    .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] > .v2-kpi-value { margin-top:.12rem; }
-    .v2-dashboard-primary-metrics .v2-metric-comparison { margin-top:.12rem; }
+    .v2-dashboard-primary-metrics .v2-metric-card [data-slot="card-content"] { display:grid; height:100%; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto minmax(0,1fr) auto; align-items:center; column-gap:.4rem; row-gap:.12rem; padding:.5rem .65rem; }
+    .v2-dashboard-primary-metrics .v2-metric-card-header { display:contents; }
+    .v2-dashboard-primary-metrics .v2-metric-label { grid-column:1; grid-row:1; max-width:none; font-size:.75rem; line-height:1.15; }
+    .v2-dashboard-primary-metrics .v2-metric-icon { grid-column:2; grid-row:1; }
+    .v2-dashboard-primary-metrics .v2-kpi-value { grid-column:1 / -1; grid-row:2; align-self:center; min-width:0; margin:0; overflow:visible; font-size:clamp(1.5rem,2vw,1.875rem); line-height:1; text-overflow:clip; white-space:nowrap; }
+    .v2-dashboard-primary-metrics .v2-metric-comparison { grid-column:1 / -1; grid-row:3; min-width:0; margin:0; overflow:hidden; font-size:.6875rem; line-height:1.15; text-overflow:ellipsis; white-space:nowrap; }
     .v2-dashboard-secondary-metrics .v2-metric-card--compact { box-sizing:border-box; height:4.5rem; min-height:4.5rem; }
-    .v2-dashboard-secondary-metrics .v2-metric-card--compact [data-slot="card-content"] { display:grid; height:100%; grid-template-columns:minmax(0,1fr) max-content; grid-template-rows:auto auto; align-content:center; column-gap:.4rem; padding:.4rem .6rem; }
-    .v2-dashboard-secondary-metrics .v2-metric-card--compact [data-slot="card-content"] > div:first-child { grid-column:1; grid-row:1; align-self:center; gap:.3rem; }
-    .v2-dashboard-secondary-metrics .v2-metric-card--compact .size-8 { width:1.25rem; height:1.25rem; }
-    .v2-dashboard-secondary-metrics .v2-metric-card--compact .size-8 svg { width:.75rem; height:.75rem; }
-    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-label { display:block; max-width:none; overflow:visible; font-size:.75rem; line-height:1.1; white-space:nowrap; }
-    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-kpi-value { grid-column:2; grid-row:1; align-self:center; margin:0; overflow:visible; font-size:clamp(1.125rem,1.55vw,1.45rem); line-height:1.05; text-overflow:clip; white-space:nowrap; }
-    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-comparison { grid-column:1 / -1; grid-row:2; overflow:hidden; text-overflow:ellipsis; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact [data-slot="card-content"] { display:grid; height:100%; grid-template-columns:minmax(0,1fr) max-content; grid-template-rows:minmax(0,1fr) auto; align-items:center; column-gap:.5rem; row-gap:.1rem; padding:.4rem .6rem; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-card-header { display:contents; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-icon { display:none; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-label { grid-column:1; grid-row:1; display:block; max-width:none; overflow:visible; font-size:.75rem; line-height:1.1; white-space:nowrap; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-kpi-value { grid-column:2; grid-row:1; align-self:center; min-width:0; margin:0; overflow:visible; font-size:clamp(1.125rem,1.55vw,1.45rem); line-height:1.05; text-overflow:clip; white-space:nowrap; }
+    .v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-comparison { grid-column:1 / -1; grid-row:2; min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
     /* Desktop reports are one toolbar with two deliberate rows. The wrappers
        remain in the DOM for mobile/drawer behavior, but their fields participate

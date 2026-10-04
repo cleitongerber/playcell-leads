@@ -106,6 +106,11 @@ describe("FLUXO visual system experience contracts", () => {
     expect(styles).toContain("height:6.25rem");
     expect(styles).toContain("v2-metric-card--compact");
     expect(styles).toContain("text-overflow:clip");
+    expect(dashboard).toContain('className="v2-metric-card-header"');
+    expect(dashboard).toContain("v2-metric-icon");
+    expect(styles).toContain("grid-template-rows:auto minmax(0,1fr) auto");
+    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-kpi-value { grid-column:1 / -1");
+    expect(styles).toContain(".v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-icon { display:none; }");
     expect(styles).toContain(".v2-health-list { grid-template-columns:repeat(4");
     expect(styles).toContain(".v2-health-summary-item");
   });
