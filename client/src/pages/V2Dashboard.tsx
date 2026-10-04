@@ -126,10 +126,10 @@ function MetricCard({
   icon: LucideIcon;
 }) {
   const content = (
-    <Card
+    <article
       className={`v2-metric-card ${compact ? "v2-metric-card--compact" : ""} ${destructive ? "border-danger/60" : ""}`}
     >
-      <CardContent className="v2-metric-card-content p-4">
+      <div className="v2-metric-card-content">
         <div className="v2-metric-card-header">
           <p
             className="v2-metric-label text-sm text-muted-foreground"
@@ -156,8 +156,8 @@ function MetricCard({
             {delta(comparison)}
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </article>
   );
   return href ? <Link href={href}>{content}</Link> : content;
 }
