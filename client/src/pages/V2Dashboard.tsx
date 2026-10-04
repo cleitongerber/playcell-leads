@@ -108,6 +108,7 @@ function delta(value: number | null | undefined) {
 
 function MetricCard({
   title,
+  tooltip,
   value,
   comparison,
   href,
@@ -115,6 +116,7 @@ function MetricCard({
   icon: Icon,
 }: {
   title: string;
+  tooltip?: string;
   value: string;
   comparison?: number | null;
   href?: string;
@@ -127,7 +129,7 @@ function MetricCard({
         <div className="flex items-start justify-between gap-3">
           <p
             className="v2-metric-label text-sm text-muted-foreground"
-            title={title}
+            title={tooltip ?? title}
           >
             {title}
           </p>
@@ -272,13 +274,15 @@ export default function V2Dashboard() {
               <p className="v2-dashboard-section-label">Indicadores de eficiência</p>
               <div className="v2-metric-grid v2-dashboard-secondary-metrics">
                 <MetricCard
-                  title="Tx. contato efetivo"
+                  title="Tx. contato"
+                  tooltip="Taxa de contato efetivo"
                   value={percent(dashboard.data.cards.effectiveContactRate)}
                   comparison={dashboard.data.comparisons.effectiveContactRate}
                   icon={TrendingUp}
                 />
                 <MetricCard
                   title="Tx. conversão"
+                  tooltip="Taxa de conversão"
                   value={percent(dashboard.data.cards.conversionRate)}
                   comparison={dashboard.data.comparisons.conversionRate}
                   icon={TrendingUp}
@@ -290,11 +294,13 @@ export default function V2Dashboard() {
                 />
                 <MetricCard
                   title="1ª tentativa"
+                  tooltip="Tempo até a primeira tentativa"
                   value={duration(dashboard.data.cards.firstAttemptAverageSeconds)}
                   icon={Timer}
                 />
                 <MetricCard
                   title="1º contato"
+                  tooltip="Tempo até o primeiro contato efetivo"
                   value={duration(
                     dashboard.data.cards.firstEffectiveContactAverageSeconds
                   )}
@@ -410,103 +416,23 @@ export default function V2Dashboard() {
                     openHealthDetail("terminal_residual_follow_ups")
                   }
                 />
-                <div className="v2-health-coverage">
-                  <div className="v2-health-summary">
-                    <div>
-                      <p className="text-sm font-medium">
-                        Cobertura de evidências
-                      </p>
-                    </div>
-                    <strong className="text-lg">
-                      {percent(dashboard.data.health.evidenceCoverage.coverage)}
-                    </strong>
-                  </div>
-                  <div className="v2-health-inline-metrics">
-                    <HealthMetricButton
-                      label="Elegíveis"
-                      value={dashboard.data.health.evidenceCoverage.eligible}
-                      onClick={() => openHealthDetail("evidence_eligible")}
-                    />
-                    <HealthMetricButton
-                      label="Com evidência"
-                      value={
-                        dashboard.data.health.evidenceCoverage.withEvidence
-                      }
-                      onClick={() => openHealthDetail("evidence_with")}
-                    />
-                    <HealthMetricButton
-                      label="Sem evidência"
-                      value={
-                        dashboard.data.health.evidenceCoverage.withoutEvidence
-                      }
-                      onClick={() => openHealthDetail("evidence_without")}
-                    />
-                    <HealthMetricButton
-                      label="Obrigatórias pendentes"
-                      value={
-                        dashboard.data.health.evidenceCoverage.requiredPending
-                      }
-                      onClick={() =>
-                        openHealthDetail("evidence_required_pending")
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="v2-health-attempt-coverage">
-                  <div className="v2-health-summary">
-                    <div>
-                      <p className="text-sm font-medium">
-                        Tentativas de contato
-                      </p>
-                    </div>
-                    <strong className="text-lg">
-                      {percent(
-                        dashboard.data.health.evidenceCoverage.attemptCoverage
-                          .coverage
-                      )}
-                    </strong>
-                  </div>
-                  <div className="v2-health-inline-metrics">
-                    <HealthMetricButton
-                      label="Elegíveis"
-                      value={
-                        dashboard.data.health.evidenceCoverage.attemptCoverage
-                          .eligible
-                      }
-                      onClick={() =>
-                        openHealthDetail("attempt_evidence_eligible")
-                      }
-                    />
-                    <HealthMetricButton
-                      label="Com evidência"
-                      value={
-                        dashboard.data.health.evidenceCoverage.attemptCoverage
-                          .withEvidence
-                      }
-                      onClick={() => openHealthDetail("attempt_evidence_with")}
-                    />
-                    <HealthMetricButton
-                      label="Sem evidência"
-                      value={
-                        dashboard.data.health.evidenceCoverage.attemptCoverage
-                          .withoutEvidence
-                      }
-                      onClick={() =>
-                        openHealthDetail("attempt_evidence_without")
-                      }
-                    />
-                    <HealthMetricButton
-                      label="Obrigatórias pendentes"
-                      value={
-                        dashboard.data.health.evidenceCoverage.attemptCoverage
-                          .requiredPending
-                      }
-                      onClick={() =>
-                        openHealthDetail("attempt_evidence_required_pending")
-                      }
-                    />
-                  </div>
-                </div>
+                <HealthSummaryItem
+                  label="Cobertura evidências"
+                  title="Cobertura de evidências: abra para ver os registros elegíveis e pendências"
+                  value={percent(dashboard.data.health.evidenceCoverage.coverage)}
+                  detail={`${number(dashboard.data.health.evidenceCoverage.withEvidence)} de ${number(dashboard.data.health.evidenceCoverage.eligible)} elegíveis`}
+                  onClick={() => openHealthDetail("evidence_eligible")}
+                />
+                <HealthSummaryItem
+                  label="Tentativas contato"
+                  title="Cobertura de evidências das tentativas de contato: abra para ver os registros elegíveis e pendências"
+                  value={percent(
+                    dashboard.data.health.evidenceCoverage.attemptCoverage
+                      .coverage
+                  )}
+                  detail={`${number(dashboard.data.health.evidenceCoverage.attemptCoverage.withEvidence)} de ${number(dashboard.data.health.evidenceCoverage.attemptCoverage.eligible)} elegíveis`}
+                  onClick={() => openHealthDetail("attempt_evidence_eligible")}
+                />
               </CardContent>
             </Card>
           </section>
@@ -713,23 +639,29 @@ function HealthItem({
   );
 }
 
-function HealthMetricButton({
+function HealthSummaryItem({
   label,
+  title,
   value,
+  detail,
   onClick,
 }: {
   label: string;
-  value: number;
+  title: string;
+  value: string;
+  detail: string;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="text-left hover:underline"
+      title={title}
+      className="v2-health-summary-item block w-full rounded-md border text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <span>{label}</span>
-      <strong className="block text-foreground">{number(value)}</strong>
+      <p>{label}</p>
+      <strong>{value}</strong>
+      <span>{detail}</span>
     </button>
   );
 }
