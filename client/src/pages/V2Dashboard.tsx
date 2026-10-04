@@ -24,14 +24,11 @@ import { v2trpc } from "@/lib/v2trpc";
 import {
   BellRing,
   CheckCircle2,
-  Clock3,
   Inbox,
   Info,
   MessageSquareText,
   PhoneCall,
   Send,
-  Timer,
-  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -123,11 +120,18 @@ function MetricCard({
   href?: string;
   destructive?: boolean;
   compact?: boolean;
-  icon: LucideIcon;
+  icon?: LucideIcon;
 }) {
+  const comparisonText =
+    comparison !== undefined ? delta(comparison) : undefined;
+  const accessibleLabel = [tooltip ?? title, value, comparisonText]
+    .filter(Boolean)
+    .join(". ");
   const content = (
     <article
       className={`v2-metric-card ${compact ? "v2-metric-card--compact" : ""} ${destructive ? "border-danger/60" : ""}`}
+      aria-label={accessibleLabel}
+      title={compact && comparisonText ? comparisonText : undefined}
     >
       <div className="v2-metric-card-content">
         <div className="v2-metric-card-header">
@@ -137,23 +141,25 @@ function MetricCard({
           >
             {title}
           </p>
-          <span
-            className={`v2-metric-icon ${
-              destructive
-                ? "grid size-8 place-items-center rounded-lg bg-danger/10 text-danger"
-                : "grid size-8 place-items-center rounded-lg bg-brand-accent/10 text-brand-secondary"
-            }`}
-            aria-hidden="true"
-          >
-            <Icon className="size-4" />
-          </span>
+          {!compact && Icon ? (
+            <span
+              className={`v2-metric-icon rounded-lg ${
+                destructive
+                  ? "bg-danger/10 text-danger"
+                  : "bg-brand-accent/10 text-brand-secondary"
+              }`}
+              aria-hidden="true"
+            >
+              <Icon className="size-4" />
+            </span>
+          ) : null}
         </div>
         <p className="v2-kpi-value mt-3 text-3xl" title={value}>
           {value}
         </p>
-        {comparison !== undefined && (
+        {!compact && comparisonText && (
           <p className="v2-metric-comparison mt-2 text-xs text-muted-foreground">
-            {delta(comparison)}
+            {comparisonText}
           </p>
         )}
       </div>
@@ -283,7 +289,6 @@ export default function V2Dashboard() {
                   value={percent(dashboard.data.cards.effectiveContactRate)}
                   comparison={dashboard.data.comparisons.effectiveContactRate}
                   compact
-                  icon={TrendingUp}
                 />
                 <MetricCard
                   title="Tx. conversão"
@@ -291,20 +296,17 @@ export default function V2Dashboard() {
                   value={percent(dashboard.data.cards.conversionRate)}
                   comparison={dashboard.data.comparisons.conversionRate}
                   compact
-                  icon={TrendingUp}
                 />
                 <MetricCard
                   title="Interessados"
                   value={number(dashboard.data.cards.interested)}
                   compact
-                  icon={CheckCircle2}
                 />
                 <MetricCard
                   title="1ª tentativa"
                   tooltip="Tempo até a primeira tentativa"
                   value={duration(dashboard.data.cards.firstAttemptAverageSeconds)}
                   compact
-                  icon={Timer}
                 />
                 <MetricCard
                   title="1º contato"
@@ -313,7 +315,6 @@ export default function V2Dashboard() {
                     dashboard.data.cards.firstEffectiveContactAverageSeconds
                   )}
                   compact
-                  icon={Clock3}
                 />
               </div>
             </section>
