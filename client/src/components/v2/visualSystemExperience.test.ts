@@ -114,13 +114,15 @@ describe("FLUXO visual system experience contracts", () => {
     expect(dashboard).not.toContain("size-8 place-items-center");
     expect(dashboard).toContain('<article\n      className={`v2-metric-card');
     expect(dashboard).toContain('<div className="v2-metric-card-content">');
+    expect(dashboard).toContain('className="v2-metric-card-bottom-row"');
     expect(dashboard).not.toContain('CardContent className="v2-metric-card-content p-4"');
     expect(styles).toContain("grid-template-rows:auto auto");
     expect(styles).not.toContain("grid-template-rows:auto minmax(0,1fr) auto");
     expect(styles).toContain("grid-template-columns:minmax(0,11fr) minmax(0,9fr)");
     expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-icon { grid-column:2; grid-row:1; align-self:start; justify-self:end; width:1.5rem; height:1.5rem; }");
-    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-kpi-value { grid-column:1; grid-row:2");
-    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-comparison { grid-column:2; grid-row:2");
+    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-card-bottom-row { grid-column:1 / -1; grid-row:2; display:grid; min-width:0; grid-template-columns:max-content minmax(0,1fr); align-items:baseline; column-gap:.75rem; }");
+    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-card-bottom-row .v2-kpi-value { grid-column:1; grid-row:1; justify-self:start");
+    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-card-bottom-row .v2-metric-comparison { grid-column:2; grid-row:1; justify-self:end");
     expect(styles).toContain(".v2-dashboard-secondary-metrics .v2-metric-card--compact { box-sizing:border-box; height:5rem; min-height:5rem; padding:0; gap:0; }");
     expect(styles).toContain(".v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-card-content { box-sizing:border-box; display:grid; height:100%; min-height:0; grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto;");
     expect(styles).toContain(".v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-label { grid-column:1; grid-row:1");

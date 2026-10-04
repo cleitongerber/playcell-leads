@@ -154,13 +154,24 @@ function MetricCard({
             </span>
           ) : null}
         </div>
-        <p className="v2-kpi-value mt-3 text-3xl" title={value}>
-          {value}
-        </p>
-        {!compact && comparisonText && (
-          <p className="v2-metric-comparison mt-2 text-xs text-muted-foreground">
-            {comparisonText}
+        {compact ? (
+          <p className="v2-kpi-value mt-3 text-3xl" title={value}>
+            {value}
           </p>
+        ) : (
+          <div className="v2-metric-card-bottom-row">
+            <p className="v2-kpi-value text-3xl" title={value}>
+              {value}
+            </p>
+            {comparisonText && (
+              <p
+                className="v2-metric-comparison text-xs text-muted-foreground"
+                title={comparisonText}
+              >
+                {comparisonText}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </article>
