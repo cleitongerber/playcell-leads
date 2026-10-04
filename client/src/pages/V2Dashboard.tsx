@@ -103,6 +103,18 @@ function delta(value: number | null | undefined) {
   return `${value >= 0 ? "+" : "−"}${formatted} vs. anterior`;
 }
 
+function compactDelta(value: number | null | undefined) {
+  if (value == null) return undefined;
+  const formatted = new Intl.NumberFormat("pt-BR", {
+    style: "percent",
+    maximumFractionDigits: 1,
+  }).format(Math.abs(value));
+
+  if (value > 0) return `↑ ${formatted}`;
+  if (value < 0) return `↓ ${formatted}`;
+  return formatted;
+}
+
 function MetricCard({
   title,
   tooltip,
@@ -124,6 +136,15 @@ function MetricCard({
 }) {
   const comparisonText =
     comparison !== undefined ? delta(comparison) : undefined;
+  const comparisonDisplay = compact ? undefined : compactDelta(comparison);
+  const comparisonTone =
+    comparison == null
+      ? undefined
+      : comparison > 0
+        ? "positive"
+        : comparison < 0
+          ? "negative"
+          : "neutral";
   const accessibleLabel = [tooltip ?? title, value, comparisonText]
     .filter(Boolean)
     .join(". ");
@@ -131,7 +152,7 @@ function MetricCard({
     <article
       className={`v2-metric-card ${compact ? "v2-metric-card--compact" : ""} ${destructive ? "border-danger/60" : ""}`}
       aria-label={accessibleLabel}
-      title={compact && comparisonText ? comparisonText : undefined}
+      title={comparisonText ?? undefined}
     >
       <div className="v2-metric-card-content">
         <div className="v2-metric-card-header">
@@ -163,12 +184,13 @@ function MetricCard({
             <p className="v2-kpi-value text-3xl" title={value}>
               {value}
             </p>
-            {comparisonText && (
+            {comparisonDisplay && (
               <p
-                className="v2-metric-comparison text-xs text-muted-foreground"
+                className={`v2-metric-comparison v2-metric-comparison--${comparisonTone} text-xs`}
                 title={comparisonText}
+                aria-label={comparisonText}
               >
-                {comparisonText}
+                {comparisonDisplay}
               </p>
             )}
           </div>
