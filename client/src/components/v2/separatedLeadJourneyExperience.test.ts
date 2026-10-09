@@ -85,7 +85,7 @@ describe("016.4 unified lead journey experience contract", () => {
     expect(evidenceUploader).toContain("Enviar evidência");
   });
 
-  it("requires a locally selected attempt evidence before the new operation is persisted", () => {
+  it("offers the same attempt evidence surface whether governance makes it optional or required", () => {
     const attemptDialog = workspace.slice(
       workspace.indexOf("open={attemptOpen}"),
       workspace.indexOf("open={treatmentOpen}")
@@ -94,10 +94,20 @@ describe("016.4 unified lead journey experience contract", () => {
       workspace.indexOf("const submitAttempt"),
       workspace.indexOf("const submitTreatment")
     );
-    expect(attemptDialog).toContain("Evidência obrigatória *");
-    expect(attemptDialog).toContain("attemptEvidenceInputRef.current?.click()");
-    expect(attemptDialog).toContain("Arquivo selecionado:");
-    expect(attemptDialog).toContain("Remover");
+    const operationEvidenceField = workspace.slice(
+      workspace.indexOf("function OperationEvidenceField"),
+      workspace.indexOf("function EvidenceAttachmentAction")
+    );
+    expect(attemptDialog).toContain("<OperationEvidenceField");
+    expect(attemptDialog).toContain('inputId="attempt-evidence"');
+    expect(attemptDialog).toContain("operationLabel=\"tentativa\"");
+    expect(attemptDialog).toContain("required={Boolean(");
+    expect(operationEvidenceField).toContain("Evidência {required ?");
+    expect(operationEvidenceField).toContain('"obrigatória *" : "opcional"');
+    expect(operationEvidenceField).toContain("Arquivo selecionado:");
+    expect(operationEvidenceField).toContain("Remover");
+    expect(operationEvidenceField).toContain("htmlFor={inputId}");
+    expect(operationEvidenceField).toContain("aria-required={required}");
     expect(attemptDialog).toContain("!attemptEvidence");
     expect(attemptSubmit).toContain(
       "readEvidenceFileAsBase64(attemptEvidence)"
@@ -109,7 +119,7 @@ describe("016.4 unified lead journey experience contract", () => {
     expect(attemptDialog).not.toContain("evidences.upload.useMutation");
   });
 
-  it("filters treatment results by the effective rule and prevents required evidence before saving", () => {
+  it("filters treatment results by the effective rule and preserves the shared required-evidence flow", () => {
     const treatmentDialog = workspace.slice(
       workspace.indexOf("open={treatmentOpen}"),
       workspace.indexOf("open={independentFollowUpOpen}")
@@ -127,11 +137,10 @@ describe("016.4 unified lead journey experience contract", () => {
     expect(treatmentDialog).toContain(
       "Nenhum resultado está habilitado para este canal"
     );
-    expect(treatmentDialog).toContain("Evidência obrigatória *");
-    expect(treatmentDialog).toContain(
-      "treatmentEvidenceInputRef.current?.click()"
-    );
-    expect(treatmentDialog).toContain("Arquivo selecionado:");
+    expect(treatmentDialog).toContain("<OperationEvidenceField");
+    expect(treatmentDialog).toContain('inputId="treatment-evidence"');
+    expect(treatmentDialog).toContain("operationLabel=\"tratativa\"");
+    expect(treatmentDialog).toContain("required");
     expect(treatmentDialog).toContain("!treatmentEvidence");
     expect(treatmentSubmit).toContain(
       "Adicione a evidência obrigatória para registrar esta tratativa"
@@ -140,6 +149,18 @@ describe("016.4 unified lead journey experience contract", () => {
       "readEvidenceFileAsBase64(treatmentEvidence)"
     );
     expect(treatmentSubmit).toContain("evidence,");
+  });
+
+  it("uses the same attempt dialog, including its evidence field, after follow-up completion", () => {
+    const followUpAttemptFlow = workspace.slice(
+      workspace.indexOf("const startFollowUpCompletion"),
+      workspace.indexOf("const downloadEvidence")
+    );
+    expect(followUpAttemptFlow).toContain('choice === "attempt"');
+    expect(followUpAttemptFlow).toContain("setAttempt(emptyAttempt())");
+    expect(followUpAttemptFlow).toContain("setAttemptEvidence(null)");
+    expect(followUpAttemptFlow).toContain("setAttemptOpen(true)");
+    expect(workspace).toContain("completionAction === \"attempt\"");
   });
 
   it("keeps the mobile workspace constrained, touch-friendly and progressively disclosed", () => {

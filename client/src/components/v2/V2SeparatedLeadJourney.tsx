@@ -294,6 +294,93 @@ function FollowUpFields({
   );
 }
 
+/**
+ * The operation has not been persisted while this field is visible. The file
+ * is therefore staged with the command and, when selected, attached to the
+ * timeline event created by that command. This is deliberately distinct from
+ * LeadEvidenceUploader, which attaches a file to an event that already exists.
+ */
+function OperationEvidenceField({
+  inputId,
+  inputRef,
+  file,
+  required,
+  operationLabel,
+  onFileChange,
+  onClear,
+}: {
+  inputId: string;
+  inputRef: { current: HTMLInputElement | null };
+  file: File | null;
+  required: boolean;
+  operationLabel: "tentativa" | "tratativa";
+  onFileChange: (file: File | null) => void;
+  onClear: () => void;
+}) {
+  const descriptionId = `${inputId}-description`;
+
+  return (
+    <div
+      className={
+        required
+          ? "rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
+          : "rounded-md border border-border bg-muted/20 p-3 text-sm"
+      }
+    >
+      <input
+        ref={inputRef}
+        id={inputId}
+        type="file"
+        className="sr-only"
+        aria-describedby={descriptionId}
+        aria-required={required}
+        accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+        onChange={event => onFileChange(event.target.files?.[0] ?? null)}
+      />
+      <Label htmlFor={inputId} className="font-medium">
+        Evidência {required ? "obrigatória *" : "opcional"}
+      </Label>
+      <p id={descriptionId} className="mt-1 text-muted-foreground">
+        {required
+          ? `Anexe o arquivo antes de registrar a ${operationLabel}.`
+          : `Você pode anexar um arquivo à ${operationLabel}, se for relevante.`}{" "}
+        Ele será vinculado somente a este evento.
+      </p>
+      {file ? (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <p className="min-w-0 flex-1 truncate text-sm" aria-live="polite">
+            Arquivo selecionado: <strong>{file.name}</strong>
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => inputRef.current?.click()}
+          >
+            Trocar
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onClear}>
+            Remover
+          </Button>
+        </div>
+      ) : (
+        <Button
+          className="mt-3"
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => inputRef.current?.click()}
+        >
+          <FileUp className="mr-2 size-4" /> Anexar evidência
+        </Button>
+      )}
+      <p className="mt-2 text-xs text-muted-foreground">
+        Arquivos permitidos: PNG, JPG, WEBP ou PDF. O envio é privado.
+      </p>
+    </div>
+  );
+}
+
 function EvidenceAttachmentAction({
   leadId,
   timelineEventId,
@@ -599,6 +686,9 @@ export function V2SeparatedLeadJourney() {
     setFollowUpToComplete(null);
     if (choice === "attempt") {
       setAttempt(emptyAttempt());
+      setAttemptEvidence(null);
+      if (attemptEvidenceInputRef.current)
+        attemptEvidenceInputRef.current.value = "";
       setAttemptFollowUpOpen(false);
       setAttemptOpen(true);
       return;
@@ -800,6 +890,9 @@ export function V2SeparatedLeadJourney() {
     setCompletionFollowUpId(followUpId);
     if (completionAction === "attempt") {
       setAttempt(emptyAttempt());
+      setAttemptEvidence(null);
+      if (attemptEvidenceInputRef.current)
+        attemptEvidenceInputRef.current.value = "";
       setAttemptFollowUpOpen(false);
       setAttemptOpen(true);
     } else {
@@ -840,6 +933,9 @@ export function V2SeparatedLeadJourney() {
 
   const openAttempt = (channel: string) => {
     setAttempt(emptyAttempt(channel));
+    setAttemptEvidence(null);
+    if (attemptEvidenceInputRef.current)
+      attemptEvidenceInputRef.current.value = "";
     setAttemptFollowUpOpen(false);
     setAttemptRequestKey(null);
     setAttemptOpen(true);
@@ -1875,69 +1971,6 @@ export function V2SeparatedLeadJourney() {
                 />
               </div>
             )}
-            {(attemptRequirements.data as FormRequirements | undefined)
-              ?.requirements.evidenceRequired && (
-              <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
-                <input
-                  ref={attemptEvidenceInputRef}
-                  type="file"
-                  className="sr-only"
-                  aria-label="Selecionar evidência obrigatória"
-                  accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
-                  onChange={event => {
-                    setAttemptEvidence(event.target.files?.[0] ?? null);
-                    setAttemptRequestKey(null);
-                  }}
-                />
-                <p className="font-medium">Evidência obrigatória *</p>
-                <p className="mt-1 text-muted-foreground">
-                  Anexe o arquivo antes de registrar a tentativa. Ele será
-                  vinculado somente ao evento desta tentativa.
-                </p>
-                {attemptEvidence ? (
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <p
-                      className="min-w-0 flex-1 truncate text-sm"
-                      aria-live="polite"
-                    >
-                      Arquivo selecionado:{" "}
-                      <strong>{attemptEvidence.name}</strong>
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => attemptEvidenceInputRef.current?.click()}
-                    >
-                      Trocar
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setAttemptEvidence(null);
-                        setAttemptRequestKey(null);
-                        if (attemptEvidenceInputRef.current)
-                          attemptEvidenceInputRef.current.value = "";
-                      }}
-                    >
-                      Remover
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    className="mt-3"
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => attemptEvidenceInputRef.current?.click()}
-                  >
-                    <FileUp className="mr-2 size-4" /> Anexar evidência
-                  </Button>
-                )}
-              </div>
-            )}
             {((attemptRequirements.data as FormRequirements | undefined)
               ?.requirements.followUp.required ||
               attemptFollowUpOpen) && (
@@ -1969,6 +2002,26 @@ export function V2SeparatedLeadJourney() {
                   tentativa
                 </Button>
               )}
+            <OperationEvidenceField
+              inputId="attempt-evidence"
+              inputRef={attemptEvidenceInputRef}
+              file={attemptEvidence}
+              required={Boolean(
+                (attemptRequirements.data as FormRequirements | undefined)
+                  ?.requirements.evidenceRequired
+              )}
+              operationLabel="tentativa"
+              onFileChange={file => {
+                setAttemptEvidence(file);
+                setAttemptRequestKey(null);
+              }}
+              onClear={() => {
+                setAttemptEvidence(null);
+                setAttemptRequestKey(null);
+                if (attemptEvidenceInputRef.current)
+                  attemptEvidenceInputRef.current.value = "";
+              }}
+            />
             {attemptRequirements.data &&
               !(attemptRequirements.data as FormRequirements).canOperate && (
                 <p className="text-sm text-destructive">
@@ -2172,70 +2225,25 @@ export function V2SeparatedLeadJourney() {
             {treatment.resultId &&
               (treatmentRequirements.data as FormRequirements | undefined)
                 ?.requirements.evidenceRequired && (
-                <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
-                  <input
-                    ref={treatmentEvidenceInputRef}
-                    type="file"
-                    className="sr-only"
-                    aria-label="Selecionar evidência obrigatória da tratativa"
-                    accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
-                    onChange={event => {
-                      setTreatmentEvidence(event.target.files?.[0] ?? null);
-                      setTreatmentRequestKey(null);
-                      treatmentRequestKeyRef.current = null;
-                    }}
-                  />
-                  <p className="font-medium">Evidência obrigatória *</p>
-                  <p className="mt-1 text-muted-foreground">
-                    Anexe o arquivo antes de registrar a tratativa. Ele será
-                    vinculado somente ao evento desta tratativa.
-                  </p>
-                  {treatmentEvidence ? (
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <p
-                        className="min-w-0 flex-1 truncate text-sm"
-                        aria-live="polite"
-                      >
-                        Arquivo selecionado:{" "}
-                        <strong>{treatmentEvidence.name}</strong>
-                      </p>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          treatmentEvidenceInputRef.current?.click()
-                        }
-                      >
-                        Trocar
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setTreatmentEvidence(null);
-                          setTreatmentRequestKey(null);
-                          treatmentRequestKeyRef.current = null;
-                          if (treatmentEvidenceInputRef.current)
-                            treatmentEvidenceInputRef.current.value = "";
-                        }}
-                      >
-                        Remover
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      className="mt-3"
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => treatmentEvidenceInputRef.current?.click()}
-                    >
-                      <FileUp className="mr-2 size-4" /> Anexar evidência
-                    </Button>
-                  )}
-                </div>
+                <OperationEvidenceField
+                  inputId="treatment-evidence"
+                  inputRef={treatmentEvidenceInputRef}
+                  file={treatmentEvidence}
+                  required
+                  operationLabel="tratativa"
+                  onFileChange={file => {
+                    setTreatmentEvidence(file);
+                    setTreatmentRequestKey(null);
+                    treatmentRequestKeyRef.current = null;
+                  }}
+                  onClear={() => {
+                    setTreatmentEvidence(null);
+                    setTreatmentRequestKey(null);
+                    treatmentRequestKeyRef.current = null;
+                    if (treatmentEvidenceInputRef.current)
+                      treatmentEvidenceInputRef.current.value = "";
+                  }}
+                />
               )}
             {treatment.resultId &&
               ((treatmentRequirements.data as FormRequirements | undefined)

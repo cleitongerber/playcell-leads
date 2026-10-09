@@ -98,6 +98,21 @@ describe("016.4 unified journey service contract", () => {
     expect(router).toContain("evidence: z");
   });
 
+  it("accepts optional attempt evidence and binds it atomically to the new attempt event", () => {
+    const attempt = commandSlice(
+      "export async function registerAttempt",
+      "export async function recordEffectiveContact"
+    );
+    expect(attempt).toContain("if (input.evidence)");
+    expect(attempt).toContain("preparePrivateEvidence(");
+    expect(attempt).toContain("timelineEventId,");
+    expect(attempt).toContain("await tx.insert(leadEvidences).values");
+    expect(attempt).toContain("storageStatus: \"available\"");
+    expect(attempt).toContain("stagedEvidence.value?.cleanup()");
+    expect(router).toContain("base64: z.string().min(4)");
+    expect(router).toContain(".optional(),");
+  });
+
   it("persists an effective contact, result snapshot, governance and conversion atomically", () => {
     const contact = commandSlice(
       "export async function recordEffectiveContact",
