@@ -2250,7 +2250,7 @@ function createLeadReportFacts(
       partnerId: leadEvidences.partnerId,
       leadId: leadEvidences.leadId,
       timelineEventId: leadEvidences.timelineEventId,
-      evidenceCount: count(),
+      evidenceCount: count().as("evidenceCount"),
     })
     .from(leadEvidences)
     .innerJoin(
@@ -2278,7 +2278,7 @@ function createLeadReportFacts(
     .select({
       partnerId: leadEvidences.partnerId,
       leadId: leadEvidences.leadId,
-      evidenceCount: count(),
+      evidenceCount: count().as("evidenceCount"),
     })
     .from(leadEvidences)
     .innerJoin(
@@ -2302,7 +2302,7 @@ function createLeadReportFacts(
     .select({
       partnerId: leadContactAttempts.partnerId,
       leadId: leadContactAttempts.leadId,
-      attempts: count(),
+      attempts: count().as("attempts"),
     })
     .from(leadContactAttempts)
     .innerJoin(
@@ -2324,9 +2324,15 @@ function createLeadReportFacts(
     .select({
       partnerId: leadContacts.partnerId,
       leadId: leadContacts.leadId,
-      eligibleTreatments: count(),
-      treatmentsWithEvidence: sql<number>`count(case when ${availableEvidenceByEvent.timelineEventId} is not null then 1 end)`,
-      requiredEvidencePending: sql<number>`count(case when coalesce(json_extract(${leadTreatmentGovernance.appliedRuleJson}, '$.evidenceRequired'), false) and ${availableEvidenceByEvent.timelineEventId} is null then 1 end)`,
+      eligibleTreatments: count().as("eligibleTreatments"),
+      treatmentsWithEvidence:
+        sql<number>`count(case when ${availableEvidenceByEvent.timelineEventId} is not null then 1 end)`.as(
+          "treatmentsWithEvidence"
+        ),
+      requiredEvidencePending:
+        sql<number>`count(case when coalesce(json_extract(${leadTreatmentGovernance.appliedRuleJson}, '$.evidenceRequired'), false) and ${availableEvidenceByEvent.timelineEventId} is null then 1 end)`.as(
+          "requiredEvidencePending"
+        ),
     })
     .from(leadContacts)
     .innerJoin(
@@ -2371,7 +2377,7 @@ function createLeadReportFacts(
     .select({
       partnerId: leadConversions.partnerId,
       leadId: leadConversions.leadId,
-      conversionAt: min(leadConversions.occurredAt),
+      conversionAt: min(leadConversions.occurredAt).as("conversionAt"),
     })
     .from(leadConversions)
     .innerJoin(
@@ -2403,7 +2409,7 @@ function createAvailableEvidenceByEvent(
       partnerId: leadEvidences.partnerId,
       leadId: leadEvidences.leadId,
       timelineEventId: leadEvidences.timelineEventId,
-      evidenceCount: count(),
+      evidenceCount: count().as("evidenceCount"),
     })
     .from(leadEvidences)
     .where(
@@ -2432,7 +2438,7 @@ function createFollowUpsByOriginEvent(
       partnerId: followUps.partnerId,
       leadId: followUps.leadId,
       timelineEventId: followUps.originTimelineEventId,
-      followUpCount: count(),
+      followUpCount: count().as("followUpCount"),
     })
     .from(followUps)
     .where(
@@ -2458,7 +2464,9 @@ function createLastOperationalInteractionByLead(
     .select({
       partnerId: leadTimelineEvents.partnerId,
       leadId: leadTimelineEvents.leadId,
-      lastInteractionAt: max(leadTimelineEvents.occurredAt),
+      lastInteractionAt: max(leadTimelineEvents.occurredAt).as(
+        "lastInteractionAt"
+      ),
     })
     .from(leadTimelineEvents)
     .where(
@@ -2484,7 +2492,10 @@ function createReopenedConversionFacts(
     .select({
       partnerId: leadConversions.partnerId,
       conversionId: leadConversions.id,
-      reopened: sql<number>`max(case when ${reopenedEvent.id} is null then 0 else 1 end)`,
+      reopened:
+        sql<number>`max(case when ${reopenedEvent.id} is null then 0 else 1 end)`.as(
+          "reopened"
+        ),
     })
     .from(leadConversions)
     .leftJoin(
@@ -3580,41 +3591,87 @@ export async function listAnalyticsReport(
     (input.type === "imports" || input.type === "distributions")
   )
     throw new Error("Este relatório é destinado à gestão do parceiro");
-  const analytics = await createAnalyticsContext(context, input);
-  const maximum = options.maximum ?? REPORT_PAGE_MAX;
-  const result =
-    input.type === "leads"
-      ? await listLeadsReport(analytics, context, input, maximum)
-      : input.type === "attempts"
-        ? await listAttemptReport(analytics, context, input, maximum)
-        : input.type === "treatments"
-          ? await listTreatmentReport(analytics, context, input, maximum)
-          : input.type === "conversions"
-            ? await listConversionReport(analytics, context, input, maximum)
-            : input.type === "follow_ups"
-              ? await listFollowUpReport(analytics, context, input, maximum)
-              : input.type === "imports"
-                ? await listImportReport(analytics, context, input, maximum)
-                : await listDistributionReport(
-                    analytics,
-                    context,
-                    input,
-                    maximum
-                  );
-  return {
-    type: input.type,
-    columns: result.columns,
-    rows: result.rows,
-    total: result.total,
-    page: result.page,
-    pageSize: result.pageSize,
-    period: {
-      start: analytics.period.start,
-      end: analytics.period.end,
-      timeZone: analytics.period.timeZone,
-      label: analytics.period.label,
-    },
-  };
+  try {
+    const analytics = await createAnalyticsContext(context, input);
+    const maximum = options.maximum ?? REPORT_PAGE_MAX;
+    const result =
+      input.type === "leads"
+        ? await listLeadsReport(analytics, context, input, maximum)
+        : input.type === "attempts"
+          ? await listAttemptReport(analytics, context, input, maximum)
+          : input.type === "treatments"
+            ? await listTreatmentReport(analytics, context, input, maximum)
+            : input.type === "conversions"
+              ? await listConversionReport(analytics, context, input, maximum)
+              : input.type === "follow_ups"
+                ? await listFollowUpReport(analytics, context, input, maximum)
+                : input.type === "imports"
+                  ? await listImportReport(analytics, context, input, maximum)
+                  : await listDistributionReport(
+                      analytics,
+                      context,
+                      input,
+                      maximum
+                    );
+    return {
+      type: input.type,
+      columns: result.columns,
+      rows: result.rows,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      period: {
+        start: analytics.period.start,
+        end: analytics.period.end,
+        timeZone: analytics.period.timeZone,
+        label: analytics.period.label,
+      },
+    };
+  } catch (error) {
+    let diagnosticError = error;
+    const visited = new Set<unknown>();
+    while (
+      diagnosticError &&
+      typeof diagnosticError === "object" &&
+      "cause" in diagnosticError &&
+      !visited.has(diagnosticError)
+    ) {
+      visited.add(diagnosticError);
+      const cause = (diagnosticError as { cause?: unknown }).cause;
+      if (!cause || typeof cause !== "object") break;
+      diagnosticError = cause;
+    }
+    const details =
+      diagnosticError && typeof diagnosticError === "object"
+        ? (diagnosticError as {
+            code?: unknown;
+            errno?: unknown;
+            sqlState?: unknown;
+          })
+        : {};
+    console.error("[analytics.reports] list failed", {
+      reportType: input.type,
+      partnerId: context.partnerId,
+      role: context.role,
+      pdvScopeMode: context.pdvScopeMode,
+      hasCampaignFilter: Boolean(input.campaignId),
+      hasPdvFilter: Boolean(input.pdvId),
+      hasSellerFilter: Boolean(input.sellerMembershipId),
+      periodPreset: input.preset ?? "this_month",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorCauseName:
+        diagnosticError instanceof Error ? diagnosticError.name : undefined,
+      errorCode: typeof details.code === "string" ? details.code : undefined,
+      errorErrno: typeof details.errno === "number" ? details.errno : undefined,
+      errorSqlState:
+        typeof details.sqlState === "string" ? details.sqlState : undefined,
+      errorMessage:
+        diagnosticError instanceof Error
+          ? diagnosticError.message
+          : "Unknown error",
+    });
+    throw error;
+  }
 }
 
 function csvCell(value: string | number | null | undefined) {
