@@ -294,7 +294,7 @@ export default function V2Reports() {
         <V2LoadingState label="Consultando relatório no banco" />
       ) : report.isError ? (
         <V2ErrorState
-          message="Não foi possível carregar este relatório no seu escopo."
+          message="Ocorreu um erro ao carregar o relatório. Tente novamente."
           onRetry={() => report.refetch()}
         />
       ) : report.data ? (

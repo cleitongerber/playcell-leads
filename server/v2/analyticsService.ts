@@ -5,12 +5,14 @@ import {
   countDistinct,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNotNull,
   isNull,
   lt,
   max,
+  min,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -2222,6 +2224,283 @@ function leadReportColumns(
   ];
 }
 
+/**
+ * TiDB does not plan the correlated aggregate subqueries that used to enrich
+ * each lead row reliably. Keep the facts SQL-side, but aggregate them once per
+ * scoped lead and join those derived facts into the paginated report.
+ *
+ * The report cohort is deliberately repeated inside every derived query. This
+ * preserves the resolved tenant, PDV and seller scope instead of materialising
+ * unrestricted partner facts in the application process.
+ */
+function createLeadReportFacts(
+  db: V2Database,
+  context: PartnerContext,
+  scope: AnalyticsScope,
+  input: AnalyticsReportInput,
+  period: Pick<AnalyticsPeriod, "start" | "end">
+) {
+  const reportLeadConditions = [
+    ...scopeLeadConditions(context, scope, input),
+    gte(leads.receivedAt, period.start),
+    lt(leads.receivedAt, period.end),
+  ];
+  const availableEvidenceByEvent = db
+    .select({
+      partnerId: leadEvidences.partnerId,
+      leadId: leadEvidences.leadId,
+      timelineEventId: leadEvidences.timelineEventId,
+      evidenceCount: count(),
+    })
+    .from(leadEvidences)
+    .innerJoin(
+      leads,
+      and(
+        eq(leads.id, leadEvidences.leadId),
+        eq(leads.partnerId, leadEvidences.partnerId)
+      )
+    )
+    .where(
+      and(
+        ...reportLeadConditions,
+        eq(leadEvidences.partnerId, context.partnerId),
+        isNull(leadEvidences.deletedAt),
+        eq(leadEvidences.storageStatus, "available")
+      )
+    )
+    .groupBy(
+      leadEvidences.partnerId,
+      leadEvidences.leadId,
+      leadEvidences.timelineEventId
+    )
+    .as("report_lead_available_evidence_by_event");
+  const evidenceByLead = db
+    .select({
+      partnerId: leadEvidences.partnerId,
+      leadId: leadEvidences.leadId,
+      evidenceCount: count(),
+    })
+    .from(leadEvidences)
+    .innerJoin(
+      leads,
+      and(
+        eq(leads.id, leadEvidences.leadId),
+        eq(leads.partnerId, leadEvidences.partnerId)
+      )
+    )
+    .where(
+      and(
+        ...reportLeadConditions,
+        eq(leadEvidences.partnerId, context.partnerId),
+        isNull(leadEvidences.deletedAt),
+        eq(leadEvidences.storageStatus, "available")
+      )
+    )
+    .groupBy(leadEvidences.partnerId, leadEvidences.leadId)
+    .as("report_lead_available_evidence");
+  const attempts = db
+    .select({
+      partnerId: leadContactAttempts.partnerId,
+      leadId: leadContactAttempts.leadId,
+      attempts: count(),
+    })
+    .from(leadContactAttempts)
+    .innerJoin(
+      leads,
+      and(
+        eq(leads.id, leadContactAttempts.leadId),
+        eq(leads.partnerId, leadContactAttempts.partnerId)
+      )
+    )
+    .where(
+      and(
+        ...reportLeadConditions,
+        eq(leadContactAttempts.partnerId, context.partnerId)
+      )
+    )
+    .groupBy(leadContactAttempts.partnerId, leadContactAttempts.leadId)
+    .as("report_lead_attempt_stats");
+  const treatments = db
+    .select({
+      partnerId: leadContacts.partnerId,
+      leadId: leadContacts.leadId,
+      eligibleTreatments: count(),
+      treatmentsWithEvidence: sql<number>`count(case when ${availableEvidenceByEvent.timelineEventId} is not null then 1 end)`,
+      requiredEvidencePending: sql<number>`count(case when coalesce(json_extract(${leadTreatmentGovernance.appliedRuleJson}, '$.evidenceRequired'), false) and ${availableEvidenceByEvent.timelineEventId} is null then 1 end)`,
+    })
+    .from(leadContacts)
+    .innerJoin(
+      leads,
+      and(
+        eq(leads.id, leadContacts.leadId),
+        eq(leads.partnerId, leadContacts.partnerId)
+      )
+    )
+    .leftJoin(
+      leadTreatmentGovernance,
+      and(
+        eq(leadTreatmentGovernance.partnerId, leadContacts.partnerId),
+        eq(leadTreatmentGovernance.leadId, leadContacts.leadId),
+        eq(
+          leadTreatmentGovernance.timelineEventId,
+          leadContacts.timelineEventId
+        )
+      )
+    )
+    .leftJoin(
+      availableEvidenceByEvent,
+      and(
+        eq(availableEvidenceByEvent.partnerId, leadContacts.partnerId),
+        eq(availableEvidenceByEvent.leadId, leadContacts.leadId),
+        eq(
+          availableEvidenceByEvent.timelineEventId,
+          leadContacts.timelineEventId
+        )
+      )
+    )
+    .where(
+      and(
+        ...reportLeadConditions,
+        eq(leadContacts.partnerId, context.partnerId),
+        eq(leadContacts.recordKind, "effective_contact")
+      )
+    )
+    .groupBy(leadContacts.partnerId, leadContacts.leadId)
+    .as("report_lead_treatment_stats");
+  const conversions = db
+    .select({
+      partnerId: leadConversions.partnerId,
+      leadId: leadConversions.leadId,
+      conversionAt: min(leadConversions.occurredAt),
+    })
+    .from(leadConversions)
+    .innerJoin(
+      leads,
+      and(
+        eq(leads.id, leadConversions.leadId),
+        eq(leads.partnerId, leadConversions.partnerId)
+      )
+    )
+    .where(
+      and(
+        ...reportLeadConditions,
+        eq(leadConversions.partnerId, context.partnerId)
+      )
+    )
+    .groupBy(leadConversions.partnerId, leadConversions.leadId)
+    .as("report_lead_conversion_stats");
+  return { attempts, conversions, evidenceByLead, treatments };
+}
+
+/** Aggregate attachment facts before joining operational event reports. */
+function createAvailableEvidenceByEvent(
+  db: V2Database,
+  context: PartnerContext,
+  name: string
+) {
+  return db
+    .select({
+      partnerId: leadEvidences.partnerId,
+      leadId: leadEvidences.leadId,
+      timelineEventId: leadEvidences.timelineEventId,
+      evidenceCount: count(),
+    })
+    .from(leadEvidences)
+    .where(
+      and(
+        eq(leadEvidences.partnerId, context.partnerId),
+        isNull(leadEvidences.deletedAt),
+        eq(leadEvidences.storageStatus, "available")
+      )
+    )
+    .groupBy(
+      leadEvidences.partnerId,
+      leadEvidences.leadId,
+      leadEvidences.timelineEventId
+    )
+    .as(name);
+}
+
+/** A follow-up can be attached to an attempt or treatment timeline event. */
+function createFollowUpsByOriginEvent(
+  db: V2Database,
+  context: PartnerContext,
+  name: string
+) {
+  return db
+    .select({
+      partnerId: followUps.partnerId,
+      leadId: followUps.leadId,
+      timelineEventId: followUps.originTimelineEventId,
+      followUpCount: count(),
+    })
+    .from(followUps)
+    .where(
+      and(
+        eq(followUps.partnerId, context.partnerId),
+        isNotNull(followUps.originTimelineEventId)
+      )
+    )
+    .groupBy(
+      followUps.partnerId,
+      followUps.leadId,
+      followUps.originTimelineEventId
+    )
+    .as(name);
+}
+
+/** Last operational interaction is an aggregate fact, never a row-by-row lookup. */
+function createLastOperationalInteractionByLead(
+  db: V2Database,
+  context: PartnerContext
+) {
+  return db
+    .select({
+      partnerId: leadTimelineEvents.partnerId,
+      leadId: leadTimelineEvents.leadId,
+      lastInteractionAt: max(leadTimelineEvents.occurredAt),
+    })
+    .from(leadTimelineEvents)
+    .where(
+      and(
+        eq(leadTimelineEvents.partnerId, context.partnerId),
+        inArray(leadTimelineEvents.type, [...OPERATION_EVENT_TYPES])
+      )
+    )
+    .groupBy(leadTimelineEvents.partnerId, leadTimelineEvents.leadId)
+    .as("report_last_operational_interaction");
+}
+
+/** Preserve the per-conversion reopen semantics without a correlated EXISTS. */
+function createReopenedConversionFacts(
+  db: V2Database,
+  context: PartnerContext
+) {
+  const reopenedEvent = alias(
+    leadTimelineEvents,
+    "report_conversion_reopened_event"
+  );
+  return db
+    .select({
+      partnerId: leadConversions.partnerId,
+      conversionId: leadConversions.id,
+      reopened: sql<number>`max(case when ${reopenedEvent.id} is null then 0 else 1 end)`,
+    })
+    .from(leadConversions)
+    .leftJoin(
+      reopenedEvent,
+      and(
+        eq(reopenedEvent.partnerId, leadConversions.partnerId),
+        eq(reopenedEvent.leadId, leadConversions.leadId),
+        eq(reopenedEvent.type, "lead_reopened"),
+        gt(reopenedEvent.occurredAt, leadConversions.occurredAt)
+      )
+    )
+    .where(eq(leadConversions.partnerId, context.partnerId))
+    .groupBy(leadConversions.partnerId, leadConversions.id)
+    .as("report_conversion_reopened");
+}
+
 async function listLeadsReport(
   analytics: AnalyticsContext,
   context: PartnerContext,
@@ -2230,10 +2509,11 @@ async function listLeadsReport(
 ) {
   const { db, scope, period } = analytics;
   const pagination = reportPagination(input, maximum);
-  const evidenceCount = sql<number>`(select count(*) from ${leadEvidences} where ${leadEvidences.partnerId} = ${leads.partnerId} and ${leadEvidences.leadId} = ${leads.id} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available')`;
-  const eligibleTreatments = sql<number>`(select count(*) from ${leadContacts} where ${leadContacts.partnerId} = ${leads.partnerId} and ${leadContacts.leadId} = ${leads.id} and ${leadContacts.recordKind} = 'effective_contact')`;
-  const treatmentsWithEvidence = sql<number>`(select count(*) from ${leadContacts} where ${leadContacts.partnerId} = ${leads.partnerId} and ${leadContacts.leadId} = ${leads.id} and ${leadContacts.recordKind} = 'effective_contact' and exists (select 1 from ${leadEvidences} where ${leadEvidences.partnerId} = ${leadContacts.partnerId} and ${leadEvidences.leadId} = ${leadContacts.leadId} and ${leadEvidences.timelineEventId} = ${leadContacts.timelineEventId} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available'))`;
-  const requiredEvidencePending = sql<number>`(select count(*) from ${leadContacts} inner join ${leadTreatmentGovernance} on ${leadTreatmentGovernance.partnerId} = ${leadContacts.partnerId} and ${leadTreatmentGovernance.leadId} = ${leadContacts.leadId} and ${leadTreatmentGovernance.timelineEventId} = ${leadContacts.timelineEventId} where ${leadContacts.partnerId} = ${leads.partnerId} and ${leadContacts.leadId} = ${leads.id} and ${leadContacts.recordKind} = 'effective_contact' and coalesce(json_extract(${leadTreatmentGovernance.appliedRuleJson}, '$.evidenceRequired'), false) and not exists (select 1 from ${leadEvidences} where ${leadEvidences.partnerId} = ${leadContacts.partnerId} and ${leadEvidences.leadId} = ${leadContacts.leadId} and ${leadEvidences.timelineEventId} = ${leadContacts.timelineEventId} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available'))`;
+  const facts = createLeadReportFacts(db, context, scope, input, period);
+  const evidenceCount = sql<number>`coalesce(${facts.evidenceByLead.evidenceCount}, 0)`;
+  const eligibleTreatments = sql<number>`coalesce(${facts.treatments.eligibleTreatments}, 0)`;
+  const treatmentsWithEvidence = sql<number>`coalesce(${facts.treatments.treatmentsWithEvidence}, 0)`;
+  const requiredEvidencePending = sql<number>`coalesce(${facts.treatments.requiredEvidencePending}, 0)`;
   const conditions: SQL[] = [
     ...scopeLeadConditions(context, scope, input),
     gte(leads.receivedAt, period.start),
@@ -2285,13 +2565,13 @@ async function listLeadsReport(
         firstEffectiveContactAt: leads.firstEffectiveContactAt,
         nextFollowUpAt: leads.nextFollowUpAt,
         customData: leads.customData,
-        attempts: sql<number>`(select count(*) from ${leadContactAttempts} where ${leadContactAttempts.partnerId} = ${leads.partnerId} and ${leadContactAttempts.leadId} = ${leads.id})`,
-        effectiveContacts: sql<number>`(select count(*) from ${leadContacts} where ${leadContacts.partnerId} = ${leads.partnerId} and ${leadContacts.leadId} = ${leads.id} and ${leadContacts.recordKind} = 'effective_contact')`,
+        attempts: sql<number>`coalesce(${facts.attempts.attempts}, 0)`,
+        effectiveContacts: eligibleTreatments,
         evidenceCount,
         eligibleTreatments,
         treatmentsWithEvidence,
         requiredEvidencePending,
-        conversionAt: sql<Date | null>`(select min(${leadConversions.occurredAt}) from ${leadConversions} where ${leadConversions.partnerId} = ${leads.partnerId} and ${leadConversions.leadId} = ${leads.id})`,
+        conversionAt: facts.conversions.conversionAt,
       })
       .from(leads)
       .innerJoin(
@@ -2323,6 +2603,34 @@ async function listLeadsReport(
         responsibleUser,
         eq(responsibleUser.id, responsibleMembership.userId)
       )
+      .leftJoin(
+        facts.attempts,
+        and(
+          eq(facts.attempts.partnerId, leads.partnerId),
+          eq(facts.attempts.leadId, leads.id)
+        )
+      )
+      .leftJoin(
+        facts.treatments,
+        and(
+          eq(facts.treatments.partnerId, leads.partnerId),
+          eq(facts.treatments.leadId, leads.id)
+        )
+      )
+      .leftJoin(
+        facts.evidenceByLead,
+        and(
+          eq(facts.evidenceByLead.partnerId, leads.partnerId),
+          eq(facts.evidenceByLead.leadId, leads.id)
+        )
+      )
+      .leftJoin(
+        facts.conversions,
+        and(
+          eq(facts.conversions.partnerId, leads.partnerId),
+          eq(facts.conversions.leadId, leads.id)
+        )
+      )
       .where(and(...conditions))
       .orderBy(desc(leads.receivedAt), desc(leads.id))
       .limit(pagination.pageSize)
@@ -2330,6 +2638,20 @@ async function listLeadsReport(
     db
       .select({ total: count() })
       .from(leads)
+      .leftJoin(
+        facts.treatments,
+        and(
+          eq(facts.treatments.partnerId, leads.partnerId),
+          eq(facts.treatments.leadId, leads.id)
+        )
+      )
+      .leftJoin(
+        facts.evidenceByLead,
+        and(
+          eq(facts.evidenceByLead.partnerId, leads.partnerId),
+          eq(facts.evidenceByLead.leadId, leads.id)
+        )
+      )
       .where(and(...conditions)),
   ]);
   return {
@@ -2437,8 +2759,18 @@ async function listAttemptReport(
     leadTreatmentGovernance,
     "report_attempt_governance"
   );
-  const evidence = alias(leadEvidences, "report_attempt_evidence");
-  const evidenceCount = sql<number>`(select count(*) from ${evidence} where ${evidence.partnerId} = ${leadContactAttempts.partnerId} and ${evidence.leadId} = ${leadContactAttempts.leadId} and ${evidence.timelineEventId} = ${leadContactAttempts.timelineEventId} and ${evidence.deletedAt} is null and ${evidence.storageStatus} = 'available')`;
+  const evidence = createAvailableEvidenceByEvent(
+    db,
+    context,
+    "report_attempt_available_evidence"
+  );
+  const followUp = createFollowUpsByOriginEvent(
+    db,
+    context,
+    "report_attempt_follow_up"
+  );
+  const evidenceCount = sql<number>`coalesce(${evidence.evidenceCount}, 0)`;
+  const followUpCount = sql<number>`coalesce(${followUp.followUpCount}, 0)`;
   const requiredEvidence = sql<number>`coalesce(json_extract(${governance.appliedRuleJson}, '$.evidenceRequired'), false)`;
   if (input.evidenceFilter === "with_evidence")
     conditions.push(sql`${evidenceCount} > 0`);
@@ -2460,7 +2792,7 @@ async function listAttemptReport(
         summary: leadContactAttempts.summary,
         rule: governance.appliedRuleJson,
         complete: governance.isComplete,
-        followUp: sql<number>`case when exists (select 1 from ${followUps} where ${followUps.partnerId} = ${leadContactAttempts.partnerId} and ${followUps.leadId} = ${leadContactAttempts.leadId} and ${followUps.originTimelineEventId} = ${leadContactAttempts.timelineEventId}) then 1 else 0 end`,
+        followUp: followUpCount,
         evidenceCount,
       })
       .from(leadContactAttempts)
@@ -2498,6 +2830,22 @@ async function listAttemptReport(
           eq(governance.leadId, leadContactAttempts.leadId)
         )
       )
+      .leftJoin(
+        evidence,
+        and(
+          eq(evidence.partnerId, leadContactAttempts.partnerId),
+          eq(evidence.leadId, leadContactAttempts.leadId),
+          eq(evidence.timelineEventId, leadContactAttempts.timelineEventId)
+        )
+      )
+      .leftJoin(
+        followUp,
+        and(
+          eq(followUp.partnerId, leadContactAttempts.partnerId),
+          eq(followUp.leadId, leadContactAttempts.leadId),
+          eq(followUp.timelineEventId, leadContactAttempts.timelineEventId)
+        )
+      )
       .where(and(...conditions))
       .orderBy(
         desc(leadContactAttempts.occurredAt),
@@ -2521,6 +2869,14 @@ async function listAttemptReport(
           eq(governance.timelineEventId, leadContactAttempts.timelineEventId),
           eq(governance.partnerId, leadContactAttempts.partnerId),
           eq(governance.leadId, leadContactAttempts.leadId)
+        )
+      )
+      .leftJoin(
+        evidence,
+        and(
+          eq(evidence.partnerId, leadContactAttempts.partnerId),
+          eq(evidence.leadId, leadContactAttempts.leadId),
+          eq(evidence.timelineEventId, leadContactAttempts.timelineEventId)
         )
       )
       .where(and(...conditions)),
@@ -2564,6 +2920,29 @@ async function listTreatmentReport(
 ) {
   const { db, scope, period } = analytics;
   const pagination = reportPagination(input, maximum);
+  const actor = alias(userPartners, "report_treatment_actor");
+  const actorUser = alias(users, "report_treatment_user");
+  const governance = alias(
+    leadTreatmentGovernance,
+    "report_treatment_governance"
+  );
+  const resultingStatus = alias(
+    leadStatuses,
+    "report_treatment_resulting_status"
+  );
+  const evidence = createAvailableEvidenceByEvent(
+    db,
+    context,
+    "report_treatment_available_evidence"
+  );
+  const followUp = createFollowUpsByOriginEvent(
+    db,
+    context,
+    "report_treatment_follow_up"
+  );
+  const evidenceCount = sql<number>`coalesce(${evidence.evidenceCount}, 0)`;
+  const followUpCount = sql<number>`coalesce(${followUp.followUpCount}, 0)`;
+  const requiredEvidence = sql<number>`coalesce(json_extract(${governance.appliedRuleJson}, '$.evidenceRequired'), false)`;
   const conditions = [
     ...scopeLeadConditions(context, scope, input),
     eq(leadContacts.partnerId, context.partnerId),
@@ -2571,22 +2950,12 @@ async function listTreatmentReport(
     gte(leadContacts.occurredAt, period.start),
     lt(leadContacts.occurredAt, period.end),
   ];
-  const treatmentHasEvidence = sql`exists (select 1 from ${leadEvidences} where ${leadEvidences.partnerId} = ${leadContacts.partnerId} and ${leadEvidences.leadId} = ${leadContacts.leadId} and ${leadEvidences.timelineEventId} = ${leadContacts.timelineEventId} and ${leadEvidences.deletedAt} is null and ${leadEvidences.storageStatus} = 'available')`;
   if (input.evidenceFilter === "with_evidence")
-    conditions.push(treatmentHasEvidence);
+    conditions.push(sql`${evidenceCount} > 0`);
   if (input.evidenceFilter === "without_evidence")
-    conditions.push(sql`not ${treatmentHasEvidence}`);
+    conditions.push(sql`${evidenceCount} = 0`);
   if (input.evidenceFilter === "required_pending")
-    conditions.push(
-      sql`exists (select 1 from ${leadTreatmentGovernance} where ${leadTreatmentGovernance.partnerId} = ${leadContacts.partnerId} and ${leadTreatmentGovernance.leadId} = ${leadContacts.leadId} and ${leadTreatmentGovernance.timelineEventId} = ${leadContacts.timelineEventId} and coalesce(json_extract(${leadTreatmentGovernance.appliedRuleJson}, '$.evidenceRequired'), false) and not ${treatmentHasEvidence})`
-    );
-  const actor = alias(userPartners, "report_treatment_actor");
-  const actorUser = alias(users, "report_treatment_user");
-  const governance = alias(
-    leadTreatmentGovernance,
-    "report_treatment_governance"
-  );
-  const evidence = alias(leadEvidences, "report_treatment_evidence");
+    conditions.push(sql`${requiredEvidence} and ${evidenceCount} = 0`);
   const [records, totals] = await Promise.all([
     db
       .select({
@@ -2601,12 +2970,10 @@ async function listTreatmentReport(
         summary: leadContacts.summary,
         rule: governance.appliedRuleJson,
         complete: governance.isComplete,
-        resultingStatus: sql<
-          string | null
-        >`(select ${leadStatuses.label} from ${leadStatuses} where ${leadStatuses.partnerId} = ${leadContacts.partnerId} and ${leadStatuses.id} = cast(json_unquote(json_extract(${leadTimelineEvents.payloadJson}, '$.finalStatusId')) as unsigned) limit 1)`,
-        followUp: sql<number>`case when exists (select 1 from ${followUps} where ${followUps.partnerId} = ${leadContacts.partnerId} and ${followUps.leadId} = ${leadContacts.leadId} and ${followUps.originTimelineEventId} = ${leadContacts.timelineEventId}) then 1 else 0 end`,
-        hasEvidence: sql<number>`case when exists (select 1 from ${evidence} where ${evidence.partnerId} = ${leadContacts.partnerId} and ${evidence.leadId} = ${leadContacts.leadId} and ${evidence.timelineEventId} = ${leadContacts.timelineEventId} and ${evidence.deletedAt} is null and ${evidence.storageStatus} = 'available') then 1 else 0 end`,
-        evidenceCount: sql<number>`(select count(*) from ${evidence} where ${evidence.partnerId} = ${leadContacts.partnerId} and ${evidence.leadId} = ${leadContacts.leadId} and ${evidence.timelineEventId} = ${leadContacts.timelineEventId} and ${evidence.deletedAt} is null and ${evidence.storageStatus} = 'available')`,
+        resultingStatus: resultingStatus.label,
+        followUp: followUpCount,
+        hasEvidence: sql<number>`case when ${evidenceCount} > 0 then 1 else 0 end`,
+        evidenceCount,
         conversionAt: leadConversions.occurredAt,
       })
       .from(leadContacts)
@@ -2645,11 +3012,34 @@ async function listTreatmentReport(
         )
       )
       .leftJoin(
+        resultingStatus,
+        and(
+          eq(resultingStatus.partnerId, leadContacts.partnerId),
+          sql`${resultingStatus.id} = cast(json_unquote(json_extract(${leadTimelineEvents.payloadJson}, '$.finalStatusId')) as unsigned)`
+        )
+      )
+      .leftJoin(
         governance,
         and(
           eq(governance.timelineEventId, leadContacts.timelineEventId),
           eq(governance.partnerId, leadContacts.partnerId),
           eq(governance.leadId, leadContacts.leadId)
+        )
+      )
+      .leftJoin(
+        evidence,
+        and(
+          eq(evidence.partnerId, leadContacts.partnerId),
+          eq(evidence.leadId, leadContacts.leadId),
+          eq(evidence.timelineEventId, leadContacts.timelineEventId)
+        )
+      )
+      .leftJoin(
+        followUp,
+        and(
+          eq(followUp.partnerId, leadContacts.partnerId),
+          eq(followUp.leadId, leadContacts.leadId),
+          eq(followUp.timelineEventId, leadContacts.timelineEventId)
         )
       )
       .leftJoin(
@@ -2671,6 +3061,22 @@ async function listTreatmentReport(
         and(
           eq(leads.id, leadContacts.leadId),
           eq(leads.partnerId, leadContacts.partnerId)
+        )
+      )
+      .leftJoin(
+        governance,
+        and(
+          eq(governance.timelineEventId, leadContacts.timelineEventId),
+          eq(governance.partnerId, leadContacts.partnerId),
+          eq(governance.leadId, leadContacts.leadId)
+        )
+      )
+      .leftJoin(
+        evidence,
+        and(
+          eq(evidence.partnerId, leadContacts.partnerId),
+          eq(evidence.leadId, leadContacts.leadId),
+          eq(evidence.timelineEventId, leadContacts.timelineEventId)
         )
       )
       .where(and(...conditions)),
@@ -2722,6 +3128,7 @@ async function listConversionReport(
   const actorUser = alias(users, "report_conversion_user");
   const convertedStatus = alias(leadStatuses, "report_conversion_status");
   const currentStatus = alias(leadStatuses, "report_conversion_current_status");
+  const reopened = createReopenedConversionFacts(db, context);
   const [records, totals] = await Promise.all([
     db
       .select({
@@ -2733,7 +3140,7 @@ async function listConversionReport(
         result: leadContacts.resultLabel,
         conversionStatus: convertedStatus.label,
         currentStatus: currentStatus.label,
-        reopened: sql<number>`case when exists (select 1 from ${leadTimelineEvents} where ${leadTimelineEvents.partnerId} = ${leadConversions.partnerId} and ${leadTimelineEvents.leadId} = ${leadConversions.leadId} and ${leadTimelineEvents.type} = 'lead_reopened' and ${leadTimelineEvents.occurredAt} > ${leadConversions.occurredAt}) then 1 else 0 end`,
+        reopened: sql<number>`coalesce(${reopened.reopened}, 0)`,
       })
       .from(leadConversions)
       .innerJoin(
@@ -2782,6 +3189,13 @@ async function listConversionReport(
         and(
           eq(currentStatus.id, leads.statusId),
           eq(currentStatus.partnerId, leads.partnerId)
+        )
+      )
+      .leftJoin(
+        reopened,
+        and(
+          eq(reopened.partnerId, leadConversions.partnerId),
+          eq(reopened.conversionId, leadConversions.id)
         )
       )
       .where(and(...conditions))
@@ -2870,6 +3284,7 @@ async function listFollowUpReport(
   const owner = alias(userPartners, "report_follow_up_owner");
   const ownerUser = alias(users, "report_follow_up_owner_user");
   const origin = alias(leadTimelineEvents, "report_follow_up_origin");
+  const lastInteraction = createLastOperationalInteractionByLead(db, context);
   const [records, totals] = await Promise.all([
     db
       .select({
@@ -2885,7 +3300,7 @@ async function listFollowUpReport(
         note: followUps.note,
         rescheduledFromId: followUps.rescheduledFromId,
         originType: origin.type,
-        lastInteractionAt: sql<Date | null>`(select max(${leadTimelineEvents.occurredAt}) from ${leadTimelineEvents} where ${leadTimelineEvents.partnerId} = ${followUps.partnerId} and ${leadTimelineEvents.leadId} = ${followUps.leadId} and ${leadTimelineEvents.type} in ('contact_attempted', 'effective_contact_recorded'))`,
+        lastInteractionAt: lastInteraction.lastInteractionAt,
       })
       .from(followUps)
       .innerJoin(
@@ -2920,6 +3335,13 @@ async function listFollowUpReport(
           eq(origin.id, followUps.originTimelineEventId),
           eq(origin.partnerId, followUps.partnerId),
           eq(origin.leadId, followUps.leadId)
+        )
+      )
+      .leftJoin(
+        lastInteraction,
+        and(
+          eq(lastInteraction.partnerId, followUps.partnerId),
+          eq(lastInteraction.leadId, followUps.leadId)
         )
       )
       .where(and(...conditions))

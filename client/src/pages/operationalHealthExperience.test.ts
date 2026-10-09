@@ -29,6 +29,7 @@ describe("operational health experience contract", () => {
     expect(reports).toContain("Exportar CSV");
     expect(analytics).toContain("documentaryStatus");
     expect(analytics).toContain("lastInteractionAt");
-    expect(analytics).toContain("report_attempt_evidence");
+    expect(analytics).toContain("createAvailableEvidenceByEvent");
+    expect(analytics).toContain("report_attempt_available_evidence");
   });
 });
