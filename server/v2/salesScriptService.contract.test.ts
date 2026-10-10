@@ -6,6 +6,7 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 const service = read("server/v2/salesScriptService.ts");
 const schema = read("drizzle-v2/schema.ts");
 const migration = read("drizzle-v2/0016_v2_sales_scripts.sql");
+const categoryMigration = read("drizzle-v2/0017_v2_sales_script_introduction_category.sql");
 const router = read("server/v2/router.ts");
 
 describe("sales scripts contract", () => {
@@ -19,10 +20,11 @@ describe("sales scripts contract", () => {
   });
 
   it("uses closed category and scope values and validates campaign scope", () => {
-    for (const value of ["opening", "discovery", "offer", "objections", "closing", "follow_up"]) {
+    for (const value of ["opening", "introduction", "discovery", "offer", "objections", "closing", "follow_up"]) {
       expect(service).toContain(`"${value}"`);
     }
     expect(router).toContain('z.enum(["all_campaigns", "specific_campaigns"])');
+    expect(router).toContain('"introduction"');
     expect(service).toContain("Selecione ao menos uma campanha para este script");
     expect(service).toContain("Uma ou mais campanhas não pertencem ao parceiro atual");
   });
@@ -46,8 +48,38 @@ describe("sales scripts contract", () => {
     expect(service).toContain("writeV2Audit");
   });
 
-  it("contains the explicit fifteen-script suggested library and no implicit migration seed", () => {
-    expect((service.match(/title: "/g) ?? []).length).toBe(15);
+  it("contains the approved twenty-three-script library in the intended category distribution and order", () => {
+    const suggested = service.slice(service.indexOf("const suggestedScripts"), service.indexOf("function cleanText"));
+    expect((suggested.match(/title: "/g) ?? []).length).toBe(23);
+    expect((suggested.match(/category: "opening"/g) ?? []).length).toBe(2);
+    expect((suggested.match(/category: "introduction"/g) ?? []).length).toBe(2);
+    expect((suggested.match(/category: "discovery"/g) ?? []).length).toBe(5);
+    expect((suggested.match(/category: "offer"/g) ?? []).length).toBe(3);
+    expect((suggested.match(/category: "objections"/g) ?? []).length).toBe(5);
+    expect((suggested.match(/category: "closing"/g) ?? []).length).toBe(3);
+    expect((suggested.match(/category: "follow_up"/g) ?? []).length).toBe(3);
+    expect(suggested.indexOf('title: "Primeiro contato"')).toBeLessThan(suggested.indexOf('title: "Apresentação direta"'));
+    expect(suggested.indexOf('title: "Apresentação direta"')).toBeLessThan(suggested.indexOf('title: "Operadora atual"'));
+    expect(suggested.indexOf('title: "Operadora atual"')).toBeLessThan(suggested.indexOf('title: "Conectar à necessidade"'));
+    expect(suggested.indexOf('title: "Conectar à necessidade"')).toBeLessThan(suggested.indexOf('title: "Está caro"'));
+    expect(suggested.indexOf('title: "Está caro"')).toBeLessThan(suggested.indexOf('title: "Avançar"'));
+    expect(suggested.indexOf('title: "Avançar"')).toBeLessThan(suggested.indexOf('title: "Primeira retomada"'));
+  });
+
+  it("keeps bracketed fields literal and only materializes the library through the existing idempotent marker", () => {
+    expect(service).toContain("[SEU NOME]");
+    expect(service).toContain("[NECESSIDADE DO CLIENTE]");
+    expect(service).toContain("[ASSUNTO]");
+    expect(service).toContain('const SUGGESTED_LIBRARY_VERSION = "v2"');
+    expect(service).toContain("if (existing) return { created: false, count: 0 }");
+    expect(service).toContain("if (alreadySeeded) return { created: false, count: 0 }");
     expect(migration).not.toContain("INSERT INTO `sales_scripts`");
+  });
+
+  it("extends the persisted enum with an additive migration without touching the CODEX 027 migration", () => {
+    expect(categoryMigration).toContain("ALTER TABLE `sales_scripts` MODIFY COLUMN `category`");
+    expect(categoryMigration).toContain("'introduction'");
+    expect(categoryMigration).not.toMatch(/INSERT|UPDATE|DELETE|DROP/i);
+    expect(migration).not.toContain("introduction");
   });
 });

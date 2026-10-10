@@ -97,6 +97,7 @@ export const evidenceStorageStatus = [
 ] as const;
 export const salesScriptCategory = [
   "opening",
+  "introduction",
   "discovery",
   "offer",
   "objections",

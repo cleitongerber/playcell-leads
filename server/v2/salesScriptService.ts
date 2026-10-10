@@ -29,28 +29,36 @@ export type SalesScriptInput = {
 };
 
 const MAX_CONTENT_LENGTH = 5_000;
-const SUGGESTED_LIBRARY_VERSION = "v1";
+const SUGGESTED_LIBRARY_VERSION = "v2";
 
 const suggestedScripts: Array<
   Pick<SalesScriptInput, "title" | "category" | "content" | "scope"> & {
     sortOrder: number;
   }
 > = [
-  { title: "Apresentação inicial", category: "opening", content: "Olá! Sou da equipe responsável pelo seu atendimento. Posso entender rapidamente o que você procura?", scope: "all_campaigns", sortOrder: 10 },
-  { title: "Permissão para conversar", category: "opening", content: "Este é um bom momento para falarmos por alguns minutos sobre sua necessidade?", scope: "all_campaigns", sortOrder: 20 },
-  { title: "Objetivo principal", category: "discovery", content: "Para eu orientar melhor, qual resultado você espera alcançar neste momento?", scope: "all_campaigns", sortOrder: 10 },
-  { title: "Contexto atual", category: "discovery", content: "Como vocês resolvem isso hoje? O que funciona bem e o que ainda gera dificuldade?", scope: "all_campaigns", sortOrder: 20 },
-  { title: "Prioridade", category: "discovery", content: "Qual é a prioridade desse tema para você agora?", scope: "all_campaigns", sortOrder: 30 },
-  { title: "Critério de decisão", category: "discovery", content: "O que será mais importante para você ao avaliar uma solução?", scope: "all_campaigns", sortOrder: 40 },
-  { title: "Conexão com a necessidade", category: "offer", content: "Pelo que você comentou, acredito que esta alternativa pode ajudar principalmente em [benefício relevante].", scope: "all_campaigns", sortOrder: 10 },
-  { title: "Próximo passo da proposta", category: "offer", content: "Posso apresentar uma opção alinhada ao que você precisa e tirar suas dúvidas?", scope: "all_campaigns", sortOrder: 20 },
-  { title: "Objeção de tempo", category: "objections", content: "Entendo. O que precisaria acontecer para que esse assunto fizesse sentido em outro momento?", scope: "all_campaigns", sortOrder: 10 },
-  { title: "Objeção de comparação", category: "objections", content: "Faz sentido comparar. Quais critérios você quer usar para decidir com segurança?", scope: "all_campaigns", sortOrder: 20 },
-  { title: "Objeção de valor", category: "objections", content: "Além do investimento, qual impacto ou resultado você precisa considerar nessa decisão?", scope: "all_campaigns", sortOrder: 30 },
-  { title: "Confirmação de interesse", category: "closing", content: "Pelo que conversamos, esta opção atende ao que você buscava?", scope: "all_campaigns", sortOrder: 10 },
-  { title: "Combinar próximo passo", category: "closing", content: "Qual é o melhor próximo passo para avançarmos com clareza?", scope: "all_campaigns", sortOrder: 20 },
-  { title: "Retomada cordial", category: "follow_up", content: "Olá! Retomando nossa conversa para saber se ainda faz sentido seguirmos com este assunto.", scope: "all_campaigns", sortOrder: 10 },
-  { title: "Retomada com contexto", category: "follow_up", content: "Ficou alguma dúvida ou ponto pendente da nossa última conversa que eu possa ajudar a esclarecer?", scope: "all_campaigns", sortOrder: 20 },
+  { title: "Primeiro contato", category: "opening", content: "Oi! Tudo bem? Posso falar com você rapidinho?", scope: "all_campaigns", sortOrder: 10 },
+  { title: "Iniciar conversa", category: "opening", content: "Olá! Tudo certo? Queria conversar rapidinho com você. Pode ser?", scope: "all_campaigns", sortOrder: 20 },
+  { title: "Apresentação direta", category: "introduction", content: "Prazer! Meu nome é [SEU NOME], sou consultor(a) da Claro. Posso te fazer algumas perguntas rápidas para entender melhor o que você utiliza hoje?", scope: "all_campaigns", sortOrder: 10 },
+  { title: "Apresentação contextual", category: "introduction", content: "Que bom falar com você! Eu sou [SEU NOME], consultor(a) da Claro. Quero entender como estão seus serviços hoje e verificar se temos alguma opção que faça sentido para você.", scope: "all_campaigns", sortOrder: 20 },
+  { title: "Operadora atual", category: "discovery", content: "Hoje você utiliza qual operadora?", scope: "all_campaigns", sortOrder: 10 },
+  { title: "Satisfação", category: "discovery", content: "E como está sua experiência com ela? Está atendendo bem ou tem algo que te incomoda?", scope: "all_campaigns", sortOrder: 20 },
+  { title: "Qualidade", category: "discovery", content: "No dia a dia, você percebe lentidão, quedas ou alguma dificuldade com o serviço?", scope: "all_campaigns", sortOrder: 30 },
+  { title: "Valor atual", category: "discovery", content: "E em relação ao que você paga hoje, acha que está valendo a pena pelo que recebe?", scope: "all_campaigns", sortOrder: 40 },
+  { title: "O que mais importa", category: "discovery", content: "Pensando no seu uso, o que é mais importante para você hoje: qualidade, estabilidade, benefícios ou economia?", scope: "all_campaigns", sortOrder: 50 },
+  { title: "Conectar à necessidade", category: "offer", content: "Entendi. Pelo que você me contou, acredito que temos uma opção que pode fazer sentido para você. Posso te explicar?", scope: "all_campaigns", sortOrder: 10 },
+  { title: "Apresentar proposta", category: "offer", content: "Tenho uma opção que atende bem ao que você comentou. Posso te passar os detalhes?", scope: "all_campaigns", sortOrder: 20 },
+  { title: "Validar proposta", category: "offer", content: "Pensando no que você me contou, essa opção resolve principalmente [NECESSIDADE DO CLIENTE]. Faz sentido para você?", scope: "all_campaigns", sortOrder: 30 },
+  { title: "Está caro", category: "objections", content: "Entendo. Podemos comparar o que você tem hoje com o que está incluído nessa opção para ver se o custo-benefício faz sentido?", scope: "all_campaigns", sortOrder: 10 },
+  { title: "Vou pensar", category: "objections", content: "Claro. Tem algum ponto específico que você gostaria de avaliar melhor? Talvez eu consiga te ajudar antes de você decidir.", scope: "all_campaigns", sortOrder: 20 },
+  { title: "Já estou satisfeito", category: "objections", content: "Que bom! O mais importante é estar bem atendido. Posso só te mostrar uma alternativa para você comparar com o que já tem hoje?", scope: "all_campaigns", sortOrder: 30 },
+  { title: "Não tenho interesse", category: "objections", content: "Sem problema. Só para eu não insistir em algo que não faça sentido: hoje é mais uma questão de momento ou a oferta realmente não atende ao que você precisa?", scope: "all_campaigns", sortOrder: 40 },
+  { title: "Preciso falar com alguém", category: "objections", content: "Claro. Quer que eu deixe as principais informações organizadas para você conversar com essa pessoa?", scope: "all_campaigns", sortOrder: 50 },
+  { title: "Avançar", category: "closing", content: "Perfeito. Se fizer sentido para você, posso verificar agora as condições para avançarmos.", scope: "all_campaigns", sortOrder: 10 },
+  { title: "Confirmar interesse", category: "closing", content: "Gostou da opção? Posso seguir com a próxima etapa para você?", scope: "all_campaigns", sortOrder: 20 },
+  { title: "Próximo passo", category: "closing", content: "Ótimo. Então vamos avançar. Vou te orientar sobre o que precisamos para seguir.", scope: "all_campaigns", sortOrder: 30 },
+  { title: "Primeira retomada", category: "follow_up", content: "Oi! Passando para retomar nossa conversa. Conseguiu avaliar o que falamos?", scope: "all_campaigns", sortOrder: 10 },
+  { title: "Retomada com contexto", category: "follow_up", content: "Oi! Lembrei da nossa conversa sobre [ASSUNTO]. Ficou alguma dúvida em que eu possa te ajudar?", scope: "all_campaigns", sortOrder: 20 },
+  { title: "Última tentativa", category: "follow_up", content: "Oi! Estou passando mais uma vez para saber se ainda faz sentido continuarmos nossa conversa. Se quiser retomar depois, fico à disposição.", scope: "all_campaigns", sortOrder: 30 },
 ];
 
 function cleanText(value: string, field: string, limit: number) {

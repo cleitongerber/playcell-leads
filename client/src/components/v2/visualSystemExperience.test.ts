@@ -66,12 +66,21 @@ describe("FLUXO visual system experience contracts", () => {
     expect(journey).toContain("v2trpc.salesScripts.forLead.useQuery");
     expect(journey).toContain("navigator.clipboard.writeText");
     expect(journey).toContain("Nenhum script disponível para esta campanha.");
+    expect(journey).toContain("Use como apoio à conversa. Revise antes de enviar e personalize os campos entre [colchetes].");
+    expect(journey).toContain('introduction: "Apresentação"');
+    expect(journey).toContain('<Badge variant="secondary">{salesScriptCategoryLabel[script.category]');
     expect(journey).not.toContain("salesScripts.copy.useMutation");
     expect(administration).toContain("Mensagem inicial do WhatsApp");
     expect(administration).toContain("Conteúdos de apoio disponíveis aos vendedores");
     expect(administration.indexOf("Mensagem inicial do WhatsApp")).toBeLessThan(
       administration.indexOf("Scripts de venda")
     );
+  });
+
+  it("keeps the new presentation category available to administration without changing WhatsApp configuration", () => {
+    expect(administration).toContain('introduction: "Apresentação"');
+    expect(administration).toContain('"opening" | "introduction" | "discovery"');
+    expect(administration).toContain("Mensagem inicial do WhatsApp");
   });
 
   it("keeps operational filters compact and separates administration by purpose", () => {

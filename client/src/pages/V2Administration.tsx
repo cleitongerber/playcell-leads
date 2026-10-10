@@ -34,10 +34,10 @@ import { ManagementUsersPanel } from "@/components/v2/ManagementUsersPanel";
 
 type Role = "partner_admin" | "manager" | "seller";
 type AdminSection = "users" | "access" | "pdvs" | "settings";
-type SalesScriptCategory = "opening" | "discovery" | "offer" | "objections" | "closing" | "follow_up";
+type SalesScriptCategory = "opening" | "introduction" | "discovery" | "offer" | "objections" | "closing" | "follow_up";
 type SalesScriptScope = "all_campaigns" | "specific_campaigns";
 const salesScriptCategoryLabel: Record<SalesScriptCategory, string> = {
-  opening: "Abertura", discovery: "Descoberta", offer: "Oferta",
+  opening: "Abertura", introduction: "Apresentação", discovery: "Descoberta", offer: "Oferta",
   objections: "Objeções", closing: "Fechamento", follow_up: "Retomada",
 };
 const roleLabel: Record<Role, string> = {

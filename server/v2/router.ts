@@ -447,6 +447,7 @@ export const v2FoundationRouter = v2Router({
             category: z
               .enum([
                 "opening",
+                "introduction",
                 "discovery",
                 "offer",
                 "objections",
@@ -468,6 +469,7 @@ export const v2FoundationRouter = v2Router({
           title: z.string().min(1).max(160),
           category: z.enum([
             "opening",
+            "introduction",
             "discovery",
             "offer",
             "objections",
@@ -488,6 +490,7 @@ export const v2FoundationRouter = v2Router({
           title: z.string().min(1).max(160),
           category: z.enum([
             "opening",
+            "introduction",
             "discovery",
             "offer",
             "objections",

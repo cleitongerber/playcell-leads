@@ -120,6 +120,13 @@
       "when": 1791741600000,
       "tag": "0016_v2_sales_scripts",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1791745200000,
+      "tag": "0017_v2_sales_script_introduction_category",
+      "breakpoints": true
     }
   ]
 }

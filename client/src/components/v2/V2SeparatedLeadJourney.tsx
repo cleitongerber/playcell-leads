@@ -75,6 +75,16 @@ import { toast } from "sonner";
 type ExternalContactChannel = "whatsapp" | "phone";
 type ExternalContactPrompt = ExternalContactChannel | "phone_outcome";
 
+const salesScriptCategoryLabel: Record<string, string> = {
+  opening: "Abertura",
+  introduction: "Apresentação",
+  discovery: "Descoberta",
+  offer: "Oferta",
+  objections: "Objeções",
+  closing: "Fechamento",
+  follow_up: "Retomada",
+};
+
 type AttemptForm = {
   channel: string;
   resultId: string;
@@ -1473,13 +1483,14 @@ export function V2SeparatedLeadJourney() {
               <DrawerHeader>
                 <DrawerTitle>Scripts de venda</DrawerTitle>
                 <DrawerDescription>Sugestões para apoiar sua conversa. Use e adapte conforme o atendimento.</DrawerDescription>
+                <p className="pt-1 text-xs text-muted-foreground">Use como apoio à conversa. Revise antes de enviar e personalize os campos entre [colchetes].</p>
               </DrawerHeader>
               <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6">
                 <Select value={salesScriptCategory} onValueChange={setSalesScriptCategory}>
                   <SelectTrigger aria-label="Filtrar scripts por categoria"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">Todas as categorias</SelectItem><SelectItem value="opening">Abertura</SelectItem><SelectItem value="discovery">Descoberta</SelectItem><SelectItem value="offer">Oferta</SelectItem><SelectItem value="objections">Objeções</SelectItem><SelectItem value="closing">Fechamento</SelectItem><SelectItem value="follow_up">Retomada</SelectItem></SelectContent>
+                  <SelectContent><SelectItem value="all">Todas as categorias</SelectItem><SelectItem value="opening">Abertura</SelectItem><SelectItem value="introduction">Apresentação</SelectItem><SelectItem value="discovery">Descoberta</SelectItem><SelectItem value="offer">Oferta</SelectItem><SelectItem value="objections">Objeções</SelectItem><SelectItem value="closing">Fechamento</SelectItem><SelectItem value="follow_up">Retomada</SelectItem></SelectContent>
                 </Select>
-                {salesScripts.isLoading ? <p className="text-sm text-muted-foreground">Carregando scripts…</p> : salesScripts.isError ? <p className="text-sm text-destructive">Não foi possível carregar os scripts disponíveis.</p> : salesScripts.data?.filter(script => salesScriptCategory === "all" || script.category === salesScriptCategory).map(script => <div key={script.id} className="rounded-md border p-4"><p className="font-medium">{script.title}</p><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{script.content}</p><Button type="button" size="sm" variant="outline" className="mt-3" onClick={async () => { try { await navigator.clipboard.writeText(script.content); toast.success("Copiado"); } catch { const field = document.createElement("textarea"); field.value = script.content; field.style.position = "fixed"; field.style.opacity = "0"; document.body.appendChild(field); field.select(); document.execCommand("copy"); field.remove(); toast.success("Copiado"); } }}><Copy className="mr-2 size-4" /> Copiar</Button></div>)}
+                {salesScripts.isLoading ? <p className="text-sm text-muted-foreground">Carregando scripts…</p> : salesScripts.isError ? <p className="text-sm text-destructive">Não foi possível carregar os scripts disponíveis.</p> : salesScripts.data?.filter(script => salesScriptCategory === "all" || script.category === salesScriptCategory).map(script => <div key={script.id} className="rounded-md border p-4"><Badge variant="secondary">{salesScriptCategoryLabel[script.category] ?? script.category}</Badge><p className="mt-2 font-medium">{script.title}</p><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{script.content}</p><Button type="button" size="sm" variant="outline" className="mt-3" onClick={async () => { try { await navigator.clipboard.writeText(script.content); toast.success("Copiado"); } catch { const field = document.createElement("textarea"); field.value = script.content; field.style.position = "fixed"; field.style.opacity = "0"; document.body.appendChild(field); field.select(); document.execCommand("copy"); field.remove(); toast.success("Copiado"); } }}><Copy className="mr-2 size-4" /> Copiar</Button></div>)}
                 {!salesScripts.isLoading && !salesScripts.isError && salesScripts.data?.filter(script => salesScriptCategory === "all" || script.category === salesScriptCategory).length === 0 && <p className="text-sm text-muted-foreground">Nenhum script disponível para esta campanha.</p>}
               </div>
             </DrawerContent>
