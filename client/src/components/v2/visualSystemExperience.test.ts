@@ -66,7 +66,10 @@ describe("FLUXO visual system experience contracts", () => {
     expect(journey).toContain("v2trpc.salesScripts.forLead.useQuery");
     expect(journey).toContain("navigator.clipboard.writeText");
     expect(journey).toContain("Nenhum script disponível para esta campanha.");
-    expect(journey).toContain("Use como apoio à conversa. Revise antes de enviar e personalize os campos entre [colchetes].");
+    expect(journey).toContain("Revise antes de enviar e personalize os campos entre [colchetes].");
+    expect(journey).not.toContain("Use como apoio à conversa. Revise antes de enviar e personalize os campos entre [colchetes].");
+    expect(journey).toContain('className="w-full sm:w-[220px]" aria-label="Filtrar scripts por categoria"');
+    expect(journey).toContain('className="mx-auto min-h-0 w-full max-w-2xl flex-1 overflow-y-auto px-4 pb-6"');
     expect(journey).toContain('introduction: "Apresentação"');
     expect(journey).toContain('<Badge variant="secondary">{salesScriptCategoryLabel[script.category]');
     expect(journey).not.toContain("salesScripts.copy.useMutation");
