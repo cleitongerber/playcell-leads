@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { followUpStatusLabel } from "@/lib/followUpPresentation";
 import {
   presentNextLeadAction,
@@ -64,6 +65,7 @@ import {
   RotateCcw,
   ShieldCheck,
   StickyNote,
+  Copy,
   UserRound,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -454,6 +456,8 @@ export function V2SeparatedLeadJourney() {
   );
 
   const [attemptOpen, setAttemptOpen] = useState(false);
+  const [salesScriptsOpen, setSalesScriptsOpen] = useState(false);
+  const [salesScriptCategory, setSalesScriptCategory] = useState("all");
   const [treatmentOpen, setTreatmentOpen] = useState(false);
   const [externalPrompt, setExternalPrompt] =
     useState<ExternalContactPrompt | null>(null);
@@ -520,6 +524,10 @@ export function V2SeparatedLeadJourney() {
         : undefined,
     },
     { enabled: Number.isInteger(id) && id > 0 && treatmentOpen }
+  );
+  const salesScripts = v2trpc.salesScripts.forLead.useQuery(
+    { leadId: Number(id) },
+    { enabled: salesScriptsOpen && Boolean(id) }
   );
   const treatmentResultItems = useMemo(() => {
     const requirements = treatmentRequirements.data as
@@ -1452,9 +1460,30 @@ export function V2SeparatedLeadJourney() {
                   </p>
                 </>
               )}
+              <div className="border-t border-border pt-3">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setSalesScriptsOpen(true)}>
+                  <Copy className="mr-2 size-4" /> Scripts de venda
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
+          <Drawer open={salesScriptsOpen} onOpenChange={setSalesScriptsOpen}>
+            <DrawerContent className="max-h-[88vh]">
+              <DrawerHeader>
+                <DrawerTitle>Scripts de venda</DrawerTitle>
+                <DrawerDescription>Sugestões para apoiar sua conversa. Use e adapte conforme o atendimento.</DrawerDescription>
+              </DrawerHeader>
+              <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6">
+                <Select value={salesScriptCategory} onValueChange={setSalesScriptCategory}>
+                  <SelectTrigger aria-label="Filtrar scripts por categoria"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">Todas as categorias</SelectItem><SelectItem value="opening">Abertura</SelectItem><SelectItem value="discovery">Descoberta</SelectItem><SelectItem value="offer">Oferta</SelectItem><SelectItem value="objections">Objeções</SelectItem><SelectItem value="closing">Fechamento</SelectItem><SelectItem value="follow_up">Retomada</SelectItem></SelectContent>
+                </Select>
+                {salesScripts.isLoading ? <p className="text-sm text-muted-foreground">Carregando scripts…</p> : salesScripts.isError ? <p className="text-sm text-destructive">Não foi possível carregar os scripts disponíveis.</p> : salesScripts.data?.filter(script => salesScriptCategory === "all" || script.category === salesScriptCategory).map(script => <div key={script.id} className="rounded-md border p-4"><p className="font-medium">{script.title}</p><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{script.content}</p><Button type="button" size="sm" variant="outline" className="mt-3" onClick={async () => { try { await navigator.clipboard.writeText(script.content); toast.success("Copiado"); } catch { const field = document.createElement("textarea"); field.value = script.content; field.style.position = "fixed"; field.style.opacity = "0"; document.body.appendChild(field); field.select(); document.execCommand("copy"); field.remove(); toast.success("Copiado"); } }}><Copy className="mr-2 size-4" /> Copiar</Button></div>)}
+                {!salesScripts.isLoading && !salesScripts.isError && salesScripts.data?.filter(script => salesScriptCategory === "all" || script.category === salesScriptCategory).length === 0 && <p className="text-sm text-muted-foreground">Nenhum script disponível para esta campanha.</p>}
+              </div>
+            </DrawerContent>
+          </Drawer>
           {pendingGovernance.length > 0 ||
           followUpNeedsAttention ||
           (isTerminal && pendingFollowUps.length > 0) ? (

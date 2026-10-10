@@ -95,6 +95,15 @@ export const evidenceStorageStatus = [
   "available",
   "failed",
 ] as const;
+export const salesScriptCategory = [
+  "opening",
+  "discovery",
+  "offer",
+  "objections",
+  "closing",
+  "follow_up",
+] as const;
+export const salesScriptScope = ["all_campaigns", "specific_campaigns"] as const;
 export const leadDistributionBatchType = [
   "assign",
   "reassign",
@@ -379,6 +388,91 @@ export const campaigns = mysqlTable(
       columns: [table.partnerId],
       foreignColumns: [partners.id],
       name: "campaigns_partner_fk",
+    }).onDelete("restrict"),
+  })
+);
+
+/** Partner-owned, optional conversation support. Scripts never represent an operational event. */
+export const salesScripts = mysqlTable(
+  "sales_scripts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    partnerId: int("partnerId").notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    category: mysqlEnum("category", salesScriptCategory).notNull(),
+    content: text("content").notNull(),
+    scope: mysqlEnum("scope", salesScriptScope).notNull().default("all_campaigns"),
+    sortOrder: int("sortOrder").notNull().default(0),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
+  },
+  table => ({
+    partnerCategoryOrderIdx: index("sales_scripts_partner_category_order_idx").on(
+      table.partnerId,
+      table.category,
+      table.sortOrder
+    ),
+    idPartnerUnique: uniqueIndex("sales_scripts_id_partner_unique").on(
+      table.id,
+      table.partnerId
+    ),
+    partnerReference: foreignKey({
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+      name: "sales_scripts_partner_fk",
+    }).onDelete("restrict"),
+  })
+);
+
+/** Specific-campaign applicability; global scripts intentionally have no rows here. */
+export const salesScriptCampaigns = mysqlTable(
+  "sales_script_campaigns",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    partnerId: int("partnerId").notNull(),
+    salesScriptId: int("salesScriptId").notNull(),
+    campaignId: int("campaignId").notNull(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  table => ({
+    scriptCampaignUnique: uniqueIndex("sales_script_campaigns_script_campaign_unique").on(
+      table.salesScriptId,
+      table.campaignId
+    ),
+    partnerCampaignIdx: index("sales_script_campaigns_partner_campaign_idx").on(
+      table.partnerId,
+      table.campaignId
+    ),
+    scriptTenantReference: foreignKey({
+      columns: [table.salesScriptId, table.partnerId],
+      foreignColumns: [salesScripts.id, salesScripts.partnerId],
+      name: "sales_script_campaigns_script_tenant_fk",
+    }).onDelete("restrict"),
+    campaignTenantReference: foreignKey({
+      columns: [table.campaignId, table.partnerId],
+      foreignColumns: [campaigns.id, campaigns.partnerId],
+      name: "sales_script_campaigns_campaign_tenant_fk",
+    }).onDelete("restrict"),
+  })
+);
+
+/** A tenant-level marker makes the explicit suggested-library action idempotent. */
+export const partnerSalesScriptLibraries = mysqlTable(
+  "partner_sales_script_libraries",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    partnerId: int("partnerId").notNull(),
+    seedVersion: varchar("seedVersion", { length: 32 }).notNull(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  table => ({
+    partnerUnique: uniqueIndex("partner_sales_script_libraries_partner_unique").on(
+      table.partnerId
+    ),
+    partnerReference: foreignKey({
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+      name: "partner_sales_script_libraries_partner_fk",
     }).onDelete("restrict"),
   })
 );

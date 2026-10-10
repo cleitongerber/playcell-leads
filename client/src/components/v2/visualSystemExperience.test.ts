@@ -61,6 +61,19 @@ describe("FLUXO visual system experience contracts", () => {
     expect(journey).toContain("onClick={openTelephone}");
   });
 
+  it("keeps sales scripts as a passive, contextual Lead aid", () => {
+    expect(journey).toContain("Scripts de venda");
+    expect(journey).toContain("v2trpc.salesScripts.forLead.useQuery");
+    expect(journey).toContain("navigator.clipboard.writeText");
+    expect(journey).toContain("Nenhum script disponível para esta campanha.");
+    expect(journey).not.toContain("salesScripts.copy.useMutation");
+    expect(administration).toContain("Mensagem inicial do WhatsApp");
+    expect(administration).toContain("Conteúdos de apoio disponíveis aos vendedores");
+    expect(administration.indexOf("Mensagem inicial do WhatsApp")).toBeLessThan(
+      administration.indexOf("Scripts de venda")
+    );
+  });
+
   it("keeps operational filters compact and separates administration by purpose", () => {
     expect(reports).toContain('<PageToolbar className="v2-reports-toolbar">');
     expect(reports).toContain("inline");

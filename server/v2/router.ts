@@ -85,6 +85,14 @@ import {
   updateWhatsAppInitialMessageTemplate,
 } from "./whatsappTemplateService";
 import {
+  createSalesScript,
+  deleteSalesScript,
+  listSalesScripts,
+  listSalesScriptsForLead,
+  materializeSuggestedSalesScripts,
+  updateSalesScript,
+} from "./salesScriptService";
+import {
   listInteractionResultConfiguration,
   deactivateInteractionResult,
   reorderInteractionResults,
@@ -430,6 +438,78 @@ export const v2FoundationRouter = v2Router({
       .mutation(({ ctx, input }) =>
         updateWhatsAppInitialMessageTemplate(ctx.partner, input.template)
       ),
+  }),
+  salesScripts: v2Router({
+    list: v2PartnerAdminProcedure
+      .input(
+        z
+          .object({
+            category: z
+              .enum([
+                "opening",
+                "discovery",
+                "offer",
+                "objections",
+                "closing",
+                "follow_up",
+              ])
+              .optional(),
+            campaignId: z.number().int().positive().optional(),
+          })
+          .optional()
+      )
+      .query(({ ctx, input }) => listSalesScripts(ctx.partner, input)),
+    forLead: v2PartnerProcedure
+      .input(z.object({ leadId: z.number().int().positive() }))
+      .query(({ ctx, input }) => listSalesScriptsForLead(ctx.partner, input.leadId)),
+    create: v2PartnerAdminProcedure
+      .input(
+        z.object({
+          title: z.string().min(1).max(160),
+          category: z.enum([
+            "opening",
+            "discovery",
+            "offer",
+            "objections",
+            "closing",
+            "follow_up",
+          ]),
+          content: z.string().min(1).max(5_000),
+          scope: z.enum(["all_campaigns", "specific_campaigns"]),
+          campaignIds: z.array(z.number().int().positive()).max(100).optional(),
+          sortOrder: z.number().int().min(0).max(100_000).optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => createSalesScript(ctx.partner, input)),
+    update: v2PartnerAdminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          title: z.string().min(1).max(160),
+          category: z.enum([
+            "opening",
+            "discovery",
+            "offer",
+            "objections",
+            "closing",
+            "follow_up",
+          ]),
+          content: z.string().min(1).max(5_000),
+          scope: z.enum(["all_campaigns", "specific_campaigns"]),
+          campaignIds: z.array(z.number().int().positive()).max(100).optional(),
+          sortOrder: z.number().int().min(0).max(100_000).optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => {
+        const { id, ...script } = input;
+        return updateSalesScript(ctx.partner, id, script);
+      }),
+    delete: v2PartnerAdminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => deleteSalesScript(ctx.partner, input.id)),
+    materializeSuggested: v2PartnerAdminProcedure.mutation(({ ctx }) =>
+      materializeSuggestedSalesScripts(ctx.partner)
+    ),
   }),
   pdvs: v2Router({
     list: v2PartnerProcedure

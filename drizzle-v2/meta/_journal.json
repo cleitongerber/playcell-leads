@@ -113,6 +113,13 @@
       "when": 1790866454000,
       "tag": "0015_v2_management_viewer_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1791741600000,
+      "tag": "0016_v2_sales_scripts",
+      "breakpoints": true
     }
   ]
 }

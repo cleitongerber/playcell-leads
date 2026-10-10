@@ -34,6 +34,12 @@ import { ManagementUsersPanel } from "@/components/v2/ManagementUsersPanel";
 
 type Role = "partner_admin" | "manager" | "seller";
 type AdminSection = "users" | "access" | "pdvs" | "settings";
+type SalesScriptCategory = "opening" | "discovery" | "offer" | "objections" | "closing" | "follow_up";
+type SalesScriptScope = "all_campaigns" | "specific_campaigns";
+const salesScriptCategoryLabel: Record<SalesScriptCategory, string> = {
+  opening: "Abertura", discovery: "Descoberta", offer: "Oferta",
+  objections: "Objeções", closing: "Fechamento", follow_up: "Retomada",
+};
 const roleLabel: Record<Role, string> = {
   partner_admin: "Administrador do parceiro",
   manager: "Gestor",
@@ -89,6 +95,14 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   } | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [whatsappTemplate, setWhatsappTemplate] = useState("");
+  const [scriptsOpen, setScriptsOpen] = useState(false);
+  const [scriptCategory, setScriptCategory] = useState<"all" | SalesScriptCategory>("all");
+  const [scriptCampaign, setScriptCampaign] = useState("all");
+  const [editingScript, setEditingScript] = useState<any>(null);
+  const [deleteScript, setDeleteScript] = useState<any>(null);
+  const [confirmSuggestedLibrary, setConfirmSuggestedLibrary] = useState(false);
+  const emptyScript = () => ({ category: "opening" as SalesScriptCategory, title: "", content: "", scope: "all_campaigns" as SalesScriptScope, campaignIds: [] as number[] });
+  const [scriptForm, setScriptForm] = useState(emptyScript);
   const whatsappTemplateInputRef = useRef<HTMLTextAreaElement>(null);
   const enabled = Boolean(partnerId);
   const selectablePartners = v2trpc.partners.available.useQuery();
@@ -106,10 +120,20 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     v2trpc.partnerSettings.whatsappTemplate.useQuery(undefined, {
       enabled: enabled && canAdminister,
     });
+  const campaigns = v2trpc.campaigns.list.useQuery(
+    { includeArchived: true }, { enabled: enabled && canAdminister }
+  );
+  const salesScripts = v2trpc.salesScripts.list.useQuery(
+    {
+      category: scriptCategory === "all" ? undefined : scriptCategory,
+      campaignId: scriptCampaign === "all" ? undefined : Number(scriptCampaign),
+    }, { enabled: enabled && canAdminister }
+  );
   const refresh = () => {
     utils.pdvs.list.invalidate();
     utils.users.list.invalidate();
   };
+  const refreshScripts = () => utils.salesScripts.list.invalidate();
   useEffect(() => {
     if (whatsappTemplateQuery.data?.template) {
       setWhatsappTemplate(whatsappTemplateQuery.data.template);
@@ -216,6 +240,22 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       },
       onError: error => toast.error(error.message),
     });
+  const createSalesScript = v2trpc.salesScripts.create.useMutation({
+    onSuccess: () => { setScriptsOpen(false); setScriptForm(emptyScript()); refreshScripts(); toast.success("Script criado"); },
+    onError: error => toast.error(error.message),
+  });
+  const updateSalesScript = v2trpc.salesScripts.update.useMutation({
+    onSuccess: () => { setScriptsOpen(false); setEditingScript(null); setScriptForm(emptyScript()); refreshScripts(); toast.success("Script atualizado"); },
+    onError: error => toast.error(error.message),
+  });
+  const deleteSalesScript = v2trpc.salesScripts.delete.useMutation({
+    onSuccess: () => { setDeleteScript(null); refreshScripts(); toast.success("Script excluído"); },
+    onError: error => toast.error(error.message),
+  });
+  const materializeSuggestedScripts = v2trpc.salesScripts.materializeSuggested.useMutation({
+    onSuccess: data => { setConfirmSuggestedLibrary(false); refreshScripts(); toast.success(data.created ? "Biblioteca sugerida adicionada" : "A biblioteca sugerida já foi adicionada"); },
+    onError: error => toast.error(error.message),
+  });
   const activePdvs = useMemo(
     () => (pdvs.data ?? []).filter(pdv => pdv.isActive),
     [pdvs.data]
@@ -514,6 +554,27 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                   ? "Salvando…"
                   : "Salvar mensagem inicial"}
               </Button>
+            </CardContent>
+          </Card>
+          <Card className="v2-section-card">
+            <CardHeader>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Scripts de venda</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">Conteúdos de apoio disponíveis aos vendedores durante o atendimento.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {!salesScripts.data?.suggestedLibraryAdded && <Button type="button" variant="outline" size="sm" onClick={() => setConfirmSuggestedLibrary(true)}>Adicionar biblioteca sugerida</Button>}
+                  <Button type="button" size="sm" onClick={() => { setEditingScript(null); setScriptForm(emptyScript()); setScriptsOpen(true); }}>+ Novo script</Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Select value={scriptCategory} onValueChange={value => setScriptCategory(value as "all" | SalesScriptCategory)}><SelectTrigger aria-label="Filtrar scripts por categoria"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as categorias</SelectItem>{Object.entries(salesScriptCategoryLabel).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
+                <Select value={scriptCampaign} onValueChange={setScriptCampaign}><SelectTrigger aria-label="Filtrar scripts por campanha"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas as campanhas</SelectItem>{(campaigns.data ?? []).map(campaign => <SelectItem key={campaign.id} value={String(campaign.id)}>{campaign.name}</SelectItem>)}</SelectContent></Select>
+              </div>
+              {salesScripts.isLoading ? <p className="text-sm text-muted-foreground">Carregando scripts…</p> : salesScripts.data?.scripts.length ? <div className="space-y-2">{salesScripts.data.scripts.map(script => <div key={script.id} className="rounded-md border p-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{script.title}</p><Badge variant="secondary">{salesScriptCategoryLabel[script.category as SalesScriptCategory]}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{script.content.length > 180 ? `${script.content.slice(0, 180)}…` : script.content}</p><p className="mt-2 text-xs text-muted-foreground">{script.scope === "all_campaigns" ? "Todas as campanhas" : "Campanhas selecionadas"}</p></div><div className="flex gap-2"><Button type="button" variant="ghost" size="sm" onClick={() => { setEditingScript(script); setScriptForm({ category: script.category, title: script.title, content: script.content, scope: script.scope, campaignIds: script.campaigns.map(campaign => campaign.id) }); setScriptsOpen(true); }}>Editar</Button><Button type="button" variant="ghost" size="sm" onClick={() => setDeleteScript(script)}>Excluir</Button></div></div></div>)}</div> : <div className="rounded-md border border-dashed p-5 text-sm text-muted-foreground"><p>Nenhum script cadastrado.</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={() => setConfirmSuggestedLibrary(true)}>Adicionar biblioteca sugerida</Button><Button type="button" size="sm" onClick={() => { setEditingScript(null); setScriptForm(emptyScript()); setScriptsOpen(true); }}>Novo script</Button></div></div>}
             </CardContent>
           </Card>
           </section>}
@@ -878,6 +939,11 @@ function V2AdministrationContent({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           </Dialog>
         </>
       )}
+      <Dialog open={scriptsOpen} onOpenChange={open => { setScriptsOpen(open); if (!open) { setEditingScript(null); setScriptForm(emptyScript()); } }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>{editingScript ? "Editar script" : "Novo script"}</DialogTitle><DialogDescription>Scripts são sugestões de apoio e não alteram o atendimento do Lead.</DialogDescription></DialogHeader><div className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1"><Label>Categoria *</Label><Select value={scriptForm.category} onValueChange={value => setScriptForm({ ...scriptForm, category: value as SalesScriptCategory })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(salesScriptCategoryLabel).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1"><Label htmlFor="sales-script-title">Título *</Label><Input id="sales-script-title" maxLength={160} value={scriptForm.title} onChange={event => setScriptForm({ ...scriptForm, title: event.target.value })} /></div></div><div className="space-y-1"><Label htmlFor="sales-script-content">Mensagem *</Label><Textarea id="sales-script-content" rows={7} maxLength={5000} value={scriptForm.content} onChange={event => setScriptForm({ ...scriptForm, content: event.target.value })} /></div><div className="space-y-2"><Label>Disponível em *</Label><div className="flex flex-wrap gap-3"><label className="flex items-center gap-2 text-sm"><input type="radio" checked={scriptForm.scope === "all_campaigns"} onChange={() => setScriptForm({ ...scriptForm, scope: "all_campaigns", campaignIds: [] })} /> Todas as campanhas</label><label className="flex items-center gap-2 text-sm"><input type="radio" checked={scriptForm.scope === "specific_campaigns"} onChange={() => setScriptForm({ ...scriptForm, scope: "specific_campaigns" })} /> Campanhas específicas</label></div>{scriptForm.scope === "specific_campaigns" && <div className="max-h-44 space-y-2 overflow-y-auto rounded-md border p-3">{(campaigns.data ?? []).map(campaign => <label key={campaign.id} className="flex items-center gap-2 text-sm"><Checkbox checked={scriptForm.campaignIds.includes(campaign.id)} onCheckedChange={() => setScriptForm({ ...scriptForm, campaignIds: scriptForm.campaignIds.includes(campaign.id) ? scriptForm.campaignIds.filter(id => id !== campaign.id) : [...scriptForm.campaignIds, campaign.id] })} /> {campaign.name}</label>)}</div>}</div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setScriptsOpen(false)}>Cancelar</Button><Button type="button" disabled={!scriptForm.title.trim() || !scriptForm.content.trim() || (scriptForm.scope === "specific_campaigns" && !scriptForm.campaignIds.length) || createSalesScript.isPending || updateSalesScript.isPending} onClick={() => editingScript ? updateSalesScript.mutate({ id: editingScript.id, ...scriptForm }) : createSalesScript.mutate(scriptForm)}>{editingScript ? "Salvar alterações" : "Criar script"}</Button></DialogFooter></DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(deleteScript)} onOpenChange={open => !open && setDeleteScript(null)}><DialogContent><DialogHeader><DialogTitle>Excluir script?</DialogTitle><DialogDescription>Esta ação remove o script da biblioteca do parceiro.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setDeleteScript(null)}>Cancelar</Button><Button variant="destructive" disabled={deleteSalesScript.isPending} onClick={() => deleteSalesScript.mutate({ id: deleteScript.id })}>Excluir</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={confirmSuggestedLibrary} onOpenChange={setConfirmSuggestedLibrary}><DialogContent><DialogHeader><DialogTitle>Adicionar biblioteca sugerida?</DialogTitle><DialogDescription>Os scripts serão copiados para este parceiro e poderão ser editados ou excluídos depois. A biblioteca só é adicionada uma vez.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setConfirmSuggestedLibrary(false)}>Cancelar</Button><Button disabled={materializeSuggestedScripts.isPending} onClick={() => materializeSuggestedScripts.mutate()}>Adicionar biblioteca</Button></DialogFooter></DialogContent></Dialog>
     </main>
   );
 }
