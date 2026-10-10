@@ -83,9 +83,12 @@ describe("FLUXO visual system experience contracts", () => {
     expect(summary).toBeGreaterThan(-1);
     expect(attention).toBeGreaterThan(summary);
     expect(journey).toBeGreaterThan(attention);
-    expect(quality).toBeGreaterThan(journey);
-    expect(overview).toBeGreaterThan(quality);
+    expect(overview).toBeGreaterThan(journey);
+    expect(quality).toBeGreaterThan(overview);
     expect(dashboard).toContain("Cobertura de trabalho");
+    expect(dashboard).toContain("Fatos da operação no período");
+    expect(dashboard).toContain("Leads trabalhados na operação");
+    expect(dashboard).toContain("entre os Leads recebidos no período");
     expect(dashboard).toContain("Leads com tentativa");
     expect(dashboard).toContain("Evidências nas tentativas");
     expect(dashboard).toContain('Base atual');
@@ -97,11 +100,12 @@ describe("FLUXO visual system experience contracts", () => {
     expect(dashboard).toContain('className="v2-metric-card-header"');
     expect(dashboard).toContain("v2-metric-icon");
     expect(dashboard).toContain("function compactDelta(");
-    expect(dashboard).toContain("return `↑ ${formatted}`;");
-    expect(dashboard).toContain("return `↓ ${formatted}`;");
+    expect(dashboard).toContain("return `↑ ${formatted} vs. anterior`;");
+    expect(dashboard).toContain("return `↓ ${formatted} vs. anterior`;");
     expect(styles).toContain(".v2-dashboard-summary-metrics");
     expect(styles).toContain(".v2-dashboard-journey-content");
     expect(styles).toContain(".v2-dashboard-quality-list");
+    expect(styles).toContain("grid-template-columns:repeat(5,minmax(0,1fr))");
   });
 
   it("keeps the dashboard filter action inline and scoped to the dashboard grid", () => {
@@ -121,11 +125,18 @@ describe("FLUXO visual system experience contracts", () => {
     expect(productivity).toContain("Tent. / Lead");
     expect(productivity).toContain("function ratio(");
     expect(productivity).toContain("SellerDrawer");
+    expect(productivity).toContain("compactPdvNames");
+    expect(productivity).toContain('title="Alcance"');
+    expect(productivity).toContain('title="Esforço"');
+    expect(productivity).toContain('title="Eficiência"');
+    expect(productivity).toContain('title="Velocidade"');
+    expect(productivity).toContain('title="Disciplina"');
     expect(productivity).toContain("Ver evolução individual");
     expect(productivity).toContain("SortableHead");
     expect(productivity).not.toContain("Atividade por vendedor");
     expect(styles).toContain(".v2-productivity-bars");
     expect(styles).toContain(".v2-productivity-daily");
+    expect(styles).toContain(".v2-productivity-drawer-group");
   });
 
   it("uses one responsive reports toolbar instead of independently wrapping filter groups", () => {

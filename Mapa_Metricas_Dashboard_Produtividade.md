@@ -69,14 +69,19 @@ Tentativas médias por Lead tentado = tentativas (eventos) / Leads distintos com
 | Cobertura de evidências | tratativas com evidência disponível / tratativas elegíveis | eventos no período | Saúde | qualidade, não atenção salvo pendência obrigatória |
 | Tentativas contato | tentativas com evidência disponível / tentativas elegíveis | eventos no período | Saúde | renomear para **Evidências nas tentativas** e mover a Qualidade dos registros |
 
-### Divergência já comprovada: 5 trabalhados x 4 na coorte
+### Divergência auditada e explicitada: 5 trabalhados na operação x 4 na coorte
 
 Não é duplicidade de cálculo. No recorte autenticado de outubro de 2026:
 
 - **Leads trabalhados = 5** conta Leads com evento operacional ocorrido no período, inclusive Leads recebidos antes dele.
 - A antiga coorte mostra **Trabalhados = 4** porque parte exclusivamente dos Leads recebidos no período e aceita fatos até o fim do período.
 
-Os dois números representam universos diferentes com nomes visualmente próximos. A nova tela não deve chamá-los de mesma etapa. A coorte/funil atual deve ser substituída por uma jornada explicitamente definida.
+Os dois números representam universos diferentes com nomes visualmente próximos. Não é um erro de tenant, timezone, filtros ou contagem duplicada:
+
+- **Cobertura de trabalho** e **Jornada da base** usam a coorte de Leads recebidos no período. Por isso mostram `4 de 194` e `Trabalhados 4`.
+- **Fatos da operação no período** e a **Visão operacional** usam fatos registrados no período em toda a base autorizada. Por isso mostram `5 Leads trabalhados na operação`, incluindo Lead recebido antes do intervalo.
+
+A interface passou a declarar ambos os universos no próprio bloco, sem alterar a regra de cálculo: a Jornada mantém o nome de coorte e os fatos operacionais deixam de se apresentar como a mesma métrica. Assim, `Leads trabalhados` continua significando Leads distintos com tentativa **ou** contato efetivo, sempre acompanhado do universo temporal correspondente.
 
 ### Visão operacional atual
 

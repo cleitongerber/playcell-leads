@@ -58,6 +58,14 @@ function duration(seconds: number | null | undefined) {
       : `${minutes}min`;
 }
 
+function compactPdvNames(names: string[]) {
+  const concise = names.map(name => {
+    const lastSegment = name.split(/\s+[—-]\s+/).at(-1) ?? name;
+    return lastSegment.replace(/^PDV\s+/i, "");
+  });
+  return concise.length > 1 ? `${concise[0]} +${concise.length - 1}` : concise[0] ?? "—";
+}
+
 type SellerRow = {
   membershipId: number;
   name: string;
@@ -517,9 +525,14 @@ function MetricSelect<T extends string>({
   options: Array<{ value: T; label: string }>;
   label: string;
 }) {
+  const selectedLabel = options.find(option => option.value === value)?.label;
   return (
     <Select value={value} onValueChange={value => onChange(value as T)}>
-      <SelectTrigger className="v2-productivity-select" aria-label={label}>
+      <SelectTrigger
+        className="v2-productivity-select"
+        aria-label={label}
+        title={selectedLabel}
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -641,7 +654,7 @@ function SellerMobileRow({
     >
       <div>
         <strong>{row.name}</strong>
-        <span>{row.pdvNames.join(", ")}</span>
+        <span title={row.pdvNames.join(", ")}>{compactPdvNames(row.pdvNames)}</span>
       </div>
       <div>
         <span>Cobertura</span>
@@ -672,7 +685,7 @@ function SellerTableRow({
           {row.name}
         </button>
       </td>
-      <td>{row.pdvNames.join(", ")}</td>
+      <td title={row.pdvNames.join(", ")}>{compactPdvNames(row.pdvNames)}</td>
       <td>{number(row.leadsInPortfolio)}</td>
       <td>{percent(row.workCoverage)}</td>
       <td>{number(row.leadsWorked)}</td>
@@ -744,48 +757,29 @@ function SellerDrawer({
         </DrawerHeader>
         {seller && (
           <div className="v2-productivity-drawer-content">
-            <div className="v2-productivity-drawer-grid">
-              <Detail
-                label="Carteira"
-                value={number(seller.leadsInPortfolio)}
-              />
+            <DrawerMetricGroup title="Alcance">
+              <Detail label="Carteira" value={number(seller.leadsInPortfolio)} />
               <Detail label="Cobertura" value={percent(seller.workCoverage)} />
               <Detail label="Trabalhados" value={number(seller.leadsWorked)} />
-              <Detail
-                label="Leads com tentativa"
-                value={number(seller.leadsWithAttempt)}
-              />
+            </DrawerMetricGroup>
+            <DrawerMetricGroup title="Esforço">
+              <Detail label="Leads com tentativa" value={number(seller.leadsWithAttempt)} />
               <Detail label="Tentativas" value={number(seller.attempts)} />
-              <Detail
-                label="Tent. / Lead"
-                value={ratio(seller.attemptsPerLead)}
-              />
-              <Detail
-                label="Contatos efetivos"
-                value={number(seller.effectiveContacts)}
-              />
-              <Detail
-                label="Tx. contato"
-                value={percent(seller.effectiveContactRate)}
-              />
+              <Detail label="Tent. / Lead" value={ratio(seller.attemptsPerLead)} />
+            </DrawerMetricGroup>
+            <DrawerMetricGroup title="Eficiência">
+              <Detail label="Contatos efetivos" value={number(seller.effectiveContacts)} />
+              <Detail label="Tx. contato" value={percent(seller.effectiveContactRate)} />
               <Detail label="Conversões" value={number(seller.conversions)} />
-              <Detail
-                label="Tx. conversão"
-                value={percent(seller.conversionRate)}
-              />
-              <Detail
-                label="1ª tentativa"
-                value={duration(seller.firstAttemptAverageSeconds)}
-              />
-              <Detail
-                label="1º contato"
-                value={duration(seller.firstEffectiveContactAverageSeconds)}
-              />
-              <Detail
-                label="Follow-ups vencidos"
-                value={number(seller.followUpsOverdue)}
-              />
-            </div>
+              <Detail label="Tx. conversão" value={percent(seller.conversionRate)} />
+            </DrawerMetricGroup>
+            <DrawerMetricGroup title="Velocidade">
+              <Detail label="1ª tentativa" value={duration(seller.firstAttemptAverageSeconds)} />
+              <Detail label="1º contato" value={duration(seller.firstEffectiveContactAverageSeconds)} />
+            </DrawerMetricGroup>
+            <DrawerMetricGroup title="Disciplina">
+              <Detail label="Follow-ups vencidos" value={number(seller.followUpsOverdue)} />
+            </DrawerMetricGroup>
             <div className="v2-productivity-drawer-actions">
               <Button type="button" onClick={onViewEvolution}>
                 Ver evolução individual
@@ -815,6 +809,14 @@ function SellerDrawer({
         )}
       </DrawerContent>
     </Drawer>
+  );
+}
+function DrawerMetricGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="v2-productivity-drawer-group">
+      <h3>{title}</h3>
+      <div className="v2-productivity-drawer-grid">{children}</div>
+    </section>
   );
 }
 function Detail({ label, value }: { label: string; value: string }) {

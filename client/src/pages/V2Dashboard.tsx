@@ -108,9 +108,25 @@ function compactDelta(value: number | null | undefined) {
     maximumFractionDigits: 1,
   }).format(Math.abs(value));
 
-  if (value > 0) return `↑ ${formatted}`;
-  if (value < 0) return `↓ ${formatted}`;
-  return formatted;
+  if (value > 0) return `↑ ${formatted} vs. anterior`;
+  if (value < 0) return `↓ ${formatted} vs. anterior`;
+  return `${formatted} vs. anterior`;
+}
+
+function CountFact({
+  value,
+  singular,
+  plural,
+}: {
+  value: number;
+  singular: string;
+  plural: string;
+}) {
+  return (
+    <span>
+      <strong>{number(value)}</strong> {value === 1 ? singular : plural}
+    </span>
+  );
 }
 
 function MetricCard({
@@ -287,7 +303,7 @@ export default function V2Dashboard() {
               />
               <MetricCard
                 title="Cobertura de trabalho"
-                tooltip="Leads recebidos no período que tiveram tentativa ou contato efetivo até o fim do período"
+                tooltip="Leads recebidos no período que tiveram tentativa ou contato efetivo até o fim do período. Acompanha a coorte de entrada, não toda a atividade da operação."
                 value={percent(
                   rate(
                     dashboard.data.funnel.worked,
@@ -322,12 +338,37 @@ export default function V2Dashboard() {
               />
             </div>
             <div className="v2-dashboard-fact-strip" aria-label="Fatos complementares do período">
-              <span><strong>{number(dashboard.data.cards.leadsWorked)}</strong> Leads trabalhados no período</span>
-              <span><strong>{number(dashboard.data.cards.leadsWithAttempt)}</strong> Leads com tentativa</span>
-              <span><strong>{number(dashboard.data.cards.attempts)}</strong> tentativas realizadas</span>
-              <span><strong>{number(dashboard.data.cards.effectiveContacts)}</strong> contatos efetivos</span>
-              <span><strong>{number(dashboard.data.cards.conversions)}</strong> conversões</span>
-              <span><strong>{number(dashboard.data.cards.interested)}</strong> interessados</span>
+              <span className="v2-dashboard-fact-context">Fatos da operação no período</span>
+              <CountFact
+                value={dashboard.data.cards.leadsWorked}
+                singular="Lead trabalhado na operação"
+                plural="Leads trabalhados na operação"
+              />
+              <CountFact
+                value={dashboard.data.cards.leadsWithAttempt}
+                singular="Lead com tentativa"
+                plural="Leads com tentativa"
+              />
+              <CountFact
+                value={dashboard.data.cards.attempts}
+                singular="tentativa realizada"
+                plural="tentativas realizadas"
+              />
+              <CountFact
+                value={dashboard.data.cards.effectiveContacts}
+                singular="contato efetivo"
+                plural="contatos efetivos"
+              />
+              <CountFact
+                value={dashboard.data.cards.conversions}
+                singular="conversão"
+                plural="conversões"
+              />
+              <CountFact
+                value={dashboard.data.cards.interested}
+                singular="interessado"
+                plural="interessados"
+              />
             </div>
           </section>
 
@@ -344,6 +385,13 @@ export default function V2Dashboard() {
                   label="Sem trabalho"
                   title="Leads atribuídos sem tentativa ou contato efetivo"
                   value={dashboard.data.health.assignedWithoutWork}
+                  detail={`${percent(
+                    rate(
+                      dashboard.data.health.assignedWithoutWork,
+                      dashboard.data.cards.leadsBase
+                    )
+                  )} da base atual`}
+                  priority
                   onClick={() => openHealthDetail("assigned_without_work")}
                 />
                 <HealthItem
@@ -385,7 +433,7 @@ export default function V2Dashboard() {
               <CardHeader>
                 <CardTitle id="dashboard-journey-title">Jornada da base</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Da entrada ao resultado no período selecionado.
+                  Da entrada ao resultado entre os Leads recebidos no período.
                 </p>
               </CardHeader>
               <CardContent className="v2-dashboard-journey-content">
@@ -415,44 +463,16 @@ export default function V2Dashboard() {
             </Card>
           </section>
 
-          {dashboard.data.health.evidenceCoverage.eligible > 0 ||
-          dashboard.data.health.evidenceCoverage.attemptCoverage.eligible > 0 ? (
-            <section className="v2-dashboard-quality-shell" aria-labelledby="dashboard-quality-title">
-              <Card className="v2-section-card v2-dashboard-quality">
-                <CardHeader>
-                  <CardTitle id="dashboard-quality-title">Qualidade dos registros</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    Cobertura de evidências elegíveis no período. Ausência opcional não é pendência.
-                  </p>
-                </CardHeader>
-                <CardContent className="v2-dashboard-quality-list">
-                  <HealthSummaryItem
-                    label="Evidências em contatos"
-                    title="Cobertura de evidências nas tratativas efetivas"
-                    value={percent(dashboard.data.health.evidenceCoverage.coverage)}
-                    detail={`${number(dashboard.data.health.evidenceCoverage.withEvidence)} de ${number(dashboard.data.health.evidenceCoverage.eligible)} elegíveis`}
-                    onClick={() => openHealthDetail("evidence_eligible")}
-                  />
-                  <HealthSummaryItem
-                    label="Evidências nas tentativas"
-                    title="Cobertura de evidências nas tentativas de contato"
-                    value={percent(
-                      dashboard.data.health.evidenceCoverage.attemptCoverage
-                        .coverage
-                    )}
-                    detail={`${number(dashboard.data.health.evidenceCoverage.attemptCoverage.withEvidence)} de ${number(dashboard.data.health.evidenceCoverage.attemptCoverage.eligible)} elegíveis`}
-                    onClick={() => openHealthDetail("attempt_evidence_eligible")}
-                  />
-                </CardContent>
-              </Card>
-            </section>
-          ) : null}
-
           <section className="v2-dashboard-overview-shell">
             <Card className="v2-section-card v2-dashboard-overview-panel">
               <CardHeader className="v2-dashboard-overview-heading">
                 <div className="flex items-center justify-between gap-3">
-                  <CardTitle>Visão operacional</CardTitle>
+                  <div>
+                    <CardTitle>Visão operacional</CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      Atividade registrada no período, por campanha ou PDV.
+                    </p>
+                  </div>
                   {overviewTab === "campaigns" && (
                     <Link
                       href="/v2/campaigns"
@@ -499,6 +519,38 @@ export default function V2Dashboard() {
               </div>
             </Card>
           </section>
+          {dashboard.data.health.evidenceCoverage.eligible > 0 ||
+          dashboard.data.health.evidenceCoverage.attemptCoverage.eligible > 0 ? (
+            <section className="v2-dashboard-quality-shell" aria-labelledby="dashboard-quality-title">
+              <Card className="v2-section-card v2-dashboard-quality">
+                <CardHeader>
+                  <CardTitle id="dashboard-quality-title">Qualidade dos registros</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Cobertura de evidências elegíveis no período. Ausência opcional não é pendência.
+                  </p>
+                </CardHeader>
+                <CardContent className="v2-dashboard-quality-list">
+                  <HealthSummaryItem
+                    label="Evidências em contatos"
+                    title="Cobertura de evidências nas tratativas efetivas"
+                    value={percent(dashboard.data.health.evidenceCoverage.coverage)}
+                    detail={`${number(dashboard.data.health.evidenceCoverage.withEvidence)} de ${number(dashboard.data.health.evidenceCoverage.eligible)} elegíveis`}
+                    onClick={() => openHealthDetail("evidence_eligible")}
+                  />
+                  <HealthSummaryItem
+                    label="Evidências nas tentativas"
+                    title="Cobertura de evidências nas tentativas de contato"
+                    value={percent(
+                      dashboard.data.health.evidenceCoverage.attemptCoverage
+                        .coverage
+                    )}
+                    detail={`${number(dashboard.data.health.evidenceCoverage.attemptCoverage.withEvidence)} de ${number(dashboard.data.health.evidenceCoverage.attemptCoverage.eligible)} elegíveis`}
+                    onClick={() => openHealthDetail("attempt_evidence_eligible")}
+                  />
+                </CardContent>
+              </Card>
+            </section>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             Período:{" "}
             {new Date(dashboard.data.period.start).toLocaleString("pt-BR")} até{" "}
@@ -629,11 +681,15 @@ function HealthItem({
   label,
   title,
   value,
+  detail,
+  priority = false,
   onClick,
 }: {
   label: string;
   title?: string;
   value: number;
+  detail?: string;
+  priority?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -641,10 +697,11 @@ function HealthItem({
       type="button"
       onClick={onClick}
       title={title ?? label}
-      className="v2-health-item block w-full rounded-md border p-3 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={`v2-health-item ${priority ? "v2-health-item--priority" : ""} block w-full rounded-md border p-3 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
     >
       <p className="text-sm">{label}</p>
       <strong>{number(value)}</strong>
+      {detail ? <span>{detail}</span> : null}
     </button>
   );
 }
