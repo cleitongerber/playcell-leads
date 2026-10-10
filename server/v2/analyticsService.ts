@@ -41,6 +41,7 @@ import {
 import type { PartnerContext } from "./access";
 import {
   analyticsMetricDefinitions,
+  dateForAnalyticsInput,
   percentageChange,
   resolveAnalyticsPeriod,
   safeRate,
@@ -887,7 +888,7 @@ async function queryOverviewDimension(
   const attemptGroup = dimension === "campaign" ? campaigns : pdvs;
   const contactGroup = dimension === "campaign" ? campaigns : pdvs;
   const conversionGroup = dimension === "campaign" ? campaigns : pdvs;
-  const [leadRows, attemptRows, contactRows, conversionRows, overdueRows] =
+  const [leadRows, workedRows, attemptRows, contactRows, conversionRows, overdueRows] =
     await Promise.all([
       db
         .select({
@@ -899,6 +900,30 @@ async function queryOverviewDimension(
         .innerJoin(group, dimensionJoin)
         .where(and(...base))
         .groupBy(dimensionId, dimensionName),
+      db
+        .select({
+          id: dimensionId,
+          worked: countDistinct(leadTimelineEvents.leadId),
+        })
+        .from(leadTimelineEvents)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadTimelineEvents.leadId),
+            eq(leads.partnerId, leadTimelineEvents.partnerId)
+          )
+        )
+        .innerJoin(group, dimensionJoin)
+        .where(
+          and(
+            ...base,
+            eq(leadTimelineEvents.partnerId, context.partnerId),
+            inArray(leadTimelineEvents.type, [...OPERATION_EVENT_TYPES]),
+            gte(leadTimelineEvents.occurredAt, period.start),
+            lt(leadTimelineEvents.occurredAt, period.end)
+          )
+        )
+        .groupBy(dimensionId),
       db
         .select({
           id: dimensionId,
@@ -995,21 +1020,29 @@ async function queryOverviewDimension(
         .groupBy(dimensionId),
     ]);
   const attempts = new Map(attemptRows.map(row => [row.id, row]));
+  const worked = new Map(workedRows.map(row => [row.id, row]));
   const contacts = new Map(contactRows.map(row => [row.id, row]));
   const conversions = new Map(conversionRows.map(row => [row.id, row]));
   const overdue = new Map(overdueRows.map(row => [row.id, row]));
   return leadRows.map(row => {
     const attempt = attempts.get(row.id);
+    const work = worked.get(row.id);
     const contact = contacts.get(row.id);
     const conversion = conversions.get(row.id);
     return {
       id: row.id,
       name: row.name,
       leads: numberOf(row.leads),
+      leadsWorked: numberOf(work?.worked),
+      workCoverage: safeRate(numberOf(work?.worked), numberOf(row.leads)),
       attempts: numberOf(attempt?.attempts),
       leadsWithAttempt: numberOf(attempt?.attempted),
       effectiveContacts: numberOf(contact?.contacts),
       leadsWithEffectiveContact: numberOf(contact?.contacted),
+      effectiveContactRate: safeRate(
+        numberOf(contact?.contacted),
+        numberOf(work?.worked)
+      ),
       interested: numberOf(contact?.interested),
       conversions: numberOf(conversion?.conversions),
       leadsConverted: numberOf(conversion?.converted),
@@ -1650,6 +1683,7 @@ type ProductivityRow = {
   leadsWithEffectiveContact: number;
   interested: number;
   conversions: number;
+  leadsConverted: number;
   followUpsCreated: number;
   followUpsCompleted: number;
   followUpsOverdue: number;
@@ -1664,6 +1698,9 @@ type ProductivityRow = {
   governancePending: number;
   lastActivityAt: Date | null;
   effectiveContactRate: number | null;
+  conversionRate: number | null;
+  workCoverage: number | null;
+  attemptsPerLead: number | null;
   followUpCompletionRate: number | null;
 };
 
@@ -1679,6 +1716,7 @@ function blankProductivityRow(seller: AnalyticsSeller): ProductivityRow {
     leadsWithEffectiveContact: 0,
     interested: 0,
     conversions: 0,
+    leadsConverted: 0,
     followUpsCreated: 0,
     followUpsCompleted: 0,
     followUpsOverdue: 0,
@@ -1693,6 +1731,9 @@ function blankProductivityRow(seller: AnalyticsSeller): ProductivityRow {
     governancePending: 0,
     lastActivityAt: null,
     effectiveContactRate: null,
+    conversionRate: null,
+    workCoverage: null,
+    attemptsPerLead: null,
     followUpCompletionRate: null,
   };
 }
@@ -1706,6 +1747,270 @@ function mutateRows<T extends { membershipId: number }>(
     const row = target.get(source.membershipId);
     if (row) apply(row, source);
   }
+}
+
+type ProductivityDailyPoint = {
+  date: string;
+  leadsWorked: number;
+  leadsWithAttempt: number;
+  attempts: number;
+  effectiveContacts: number;
+  conversions: number;
+  followUpsCompleted: number;
+};
+
+function averageSeconds(
+  rows: Array<{ receivedAt: Date; occurredAt: Date }>
+) {
+  if (!rows.length) return null;
+  return (
+    rows.reduce(
+      (total, row) =>
+        total + (row.occurredAt.getTime() - row.receivedAt.getTime()) / 1_000,
+      0
+    ) / rows.length
+  );
+}
+
+function partnerDateRange(period: AnalyticsPeriod, timeZone: string) {
+  const first = dateForAnalyticsInput(period.start, timeZone);
+  const last = dateForAnalyticsInput(
+    new Date(period.end.getTime() - 1),
+    timeZone
+  );
+  const cursor = new Date(`${first}T00:00:00.000Z`);
+  const end = new Date(`${last}T00:00:00.000Z`);
+  const dates: string[] = [];
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+/**
+ * Team-level productivity facts remain event-scoped to the visible sellers,
+ * while Lead quantities are deduplicated across that team. This prevents the
+ * summary from reporting a Lead twice when more than one seller worked it.
+ */
+async function queryProductivityTeamFacts(
+  db: V2Database,
+  context: PartnerContext,
+  scope: AnalyticsScope,
+  filters: AnalyticsFilters,
+  period: AnalyticsPeriod,
+  sellerIds: number[]
+) {
+  const leadConditions = scopeLeadConditions(context, scope, filters, {
+    includeOwner: false,
+  });
+  const [attempts, contacts, conversions, completedFollowUps, firstAttempts, firstContacts] =
+    await Promise.all([
+      db
+        .select({
+          leadId: leadContactAttempts.leadId,
+          occurredAt: leadContactAttempts.occurredAt,
+        })
+        .from(leadContactAttempts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContactAttempts.leadId),
+            eq(leads.partnerId, leadContactAttempts.partnerId)
+          )
+        )
+        .where(
+          and(
+            ...leadConditions,
+            eq(leadContactAttempts.partnerId, context.partnerId),
+            inArray(leadContactAttempts.actorMembershipId, sellerIds),
+            gte(leadContactAttempts.occurredAt, period.start),
+            lt(leadContactAttempts.occurredAt, period.end)
+          )
+        ),
+      db
+        .select({
+          leadId: leadContacts.leadId,
+          occurredAt: leadContacts.occurredAt,
+        })
+        .from(leadContacts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContacts.leadId),
+            eq(leads.partnerId, leadContacts.partnerId)
+          )
+        )
+        .where(
+          and(
+            ...leadConditions,
+            eq(leadContacts.partnerId, context.partnerId),
+            inArray(leadContacts.actorMembershipId, sellerIds),
+            eq(leadContacts.recordKind, "effective_contact"),
+            gte(leadContacts.occurredAt, period.start),
+            lt(leadContacts.occurredAt, period.end)
+          )
+        ),
+      db
+        .select({
+          leadId: leadConversions.leadId,
+          occurredAt: leadConversions.occurredAt,
+        })
+        .from(leadConversions)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadConversions.leadId),
+            eq(leads.partnerId, leadConversions.partnerId)
+          )
+        )
+        .where(
+          and(
+            ...leadConditions,
+            eq(leadConversions.partnerId, context.partnerId),
+            inArray(leadConversions.actorMembershipId, sellerIds),
+            gte(leadConversions.occurredAt, period.start),
+            lt(leadConversions.occurredAt, period.end)
+          )
+        ),
+      db
+        .select({ completedAt: followUps.completedAt })
+        .from(followUps)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, followUps.leadId),
+            eq(leads.partnerId, followUps.partnerId)
+          )
+        )
+        .where(
+          and(
+            ...leadConditions,
+            eq(followUps.partnerId, context.partnerId),
+            inArray(followUps.ownerMembershipId, sellerIds),
+            isNotNull(followUps.completedAt),
+            gte(followUps.completedAt, period.start),
+            lt(followUps.completedAt, period.end)
+          )
+        ),
+      db
+        .select({
+          receivedAt: leads.receivedAt,
+          occurredAt: leadContactAttempts.occurredAt,
+        })
+        .from(leadContactAttempts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContactAttempts.leadId),
+            eq(leads.partnerId, leadContactAttempts.partnerId)
+          )
+        )
+        .where(
+          and(
+            ...leadConditions,
+            eq(leadContactAttempts.partnerId, context.partnerId),
+            inArray(leadContactAttempts.actorMembershipId, sellerIds),
+            eq(leadContactAttempts.occurredAt, leads.firstAttemptAt),
+            gte(leadContactAttempts.occurredAt, period.start),
+            lt(leadContactAttempts.occurredAt, period.end)
+          )
+        ),
+      db
+        .select({
+          receivedAt: leads.receivedAt,
+          occurredAt: leadContacts.occurredAt,
+        })
+        .from(leadContacts)
+        .innerJoin(
+          leads,
+          and(
+            eq(leads.id, leadContacts.leadId),
+            eq(leads.partnerId, leadContacts.partnerId)
+          )
+        )
+        .where(
+          and(
+            ...leadConditions,
+            eq(leadContacts.partnerId, context.partnerId),
+            inArray(leadContacts.actorMembershipId, sellerIds),
+            eq(leadContacts.recordKind, "effective_contact"),
+            eq(leadContacts.occurredAt, leads.firstEffectiveContactAt),
+            gte(leadContacts.occurredAt, period.start),
+            lt(leadContacts.occurredAt, period.end)
+          )
+        ),
+    ]);
+
+  const points = new Map<string, ProductivityDailyPoint>();
+  for (const date of partnerDateRange(period, period.timeZone)) {
+    points.set(date, {
+      date,
+      leadsWorked: 0,
+      leadsWithAttempt: 0,
+      attempts: 0,
+      effectiveContacts: 0,
+      conversions: 0,
+      followUpsCompleted: 0,
+    });
+  }
+  const attemptedByDay = new Map<string, Set<number>>();
+  const workedByDay = new Map<string, Set<number>>();
+  const pointFor = (occurredAt: Date) =>
+    points.get(dateForAnalyticsInput(occurredAt, period.timeZone));
+  const addLead = (index: Map<string, Set<number>>, date: string, leadId: number) => {
+    const leadsForDate = index.get(date) ?? new Set<number>();
+    leadsForDate.add(leadId);
+    index.set(date, leadsForDate);
+  };
+  for (const row of attempts) {
+    const date = dateForAnalyticsInput(row.occurredAt, period.timeZone);
+    const point = pointFor(row.occurredAt);
+    if (!point) continue;
+    point.attempts += 1;
+    addLead(attemptedByDay, date, Number(row.leadId));
+    addLead(workedByDay, date, Number(row.leadId));
+  }
+  for (const row of contacts) {
+    const date = dateForAnalyticsInput(row.occurredAt, period.timeZone);
+    const point = pointFor(row.occurredAt);
+    if (!point) continue;
+    point.effectiveContacts += 1;
+    addLead(workedByDay, date, Number(row.leadId));
+  }
+  for (const row of conversions) {
+    const point = pointFor(row.occurredAt);
+    if (point) point.conversions += 1;
+  }
+  for (const row of completedFollowUps) {
+    const point = row.completedAt ? pointFor(row.completedAt) : undefined;
+    if (point) point.followUpsCompleted += 1;
+  }
+  for (const [date, point] of Array.from(points.entries())) {
+    point.leadsWithAttempt = attemptedByDay.get(date)?.size ?? 0;
+    point.leadsWorked = workedByDay.get(date)?.size ?? 0;
+  }
+
+  const attemptedLeadIds = new Set(attempts.map(row => Number(row.leadId)));
+  const contactedLeadIds = new Set(contacts.map(row => Number(row.leadId)));
+  const convertedLeadIds = new Set(conversions.map(row => Number(row.leadId)));
+  const workedLeadIds = new Set([
+    ...Array.from(attemptedLeadIds),
+    ...Array.from(contactedLeadIds),
+  ]);
+  return {
+    daily: Array.from(points.values()),
+    leadsWorked: workedLeadIds.size,
+    leadsWithAttempt: attemptedLeadIds.size,
+    attempts: attempts.length,
+    leadsWithEffectiveContact: contactedLeadIds.size,
+    effectiveContacts: contacts.length,
+    leadsConverted: convertedLeadIds.size,
+    conversions: conversions.length,
+    followUpsCompleted: completedFollowUps.length,
+    firstAttemptAverageSeconds: averageSeconds(firstAttempts),
+    firstEffectiveContactAverageSeconds: averageSeconds(firstContacts),
+  };
 }
 
 /** Per-seller SQL aggregation for effort, quality and commercial outcome. */
@@ -1729,13 +2034,25 @@ export async function getProductivityAnalytics(
       },
       totals: {
         sellers: 0,
+        portfolio: 0,
         attempts: 0,
+        leadsWithAttempt: 0,
+        attemptsPerLead: null,
         effectiveContacts: 0,
+        leadsWithEffectiveContact: 0,
         worked: 0,
+        workCoverage: null,
+        effectiveContactRate: null,
         conversions: 0,
+        leadsConverted: 0,
+        conversionRate: null,
+        firstAttemptAverageSeconds: null,
+        firstEffectiveContactAverageSeconds: null,
         followUpsOverdue: 0,
+        followUpsCompleted: 0,
       },
       sellers: [] as ProductivityRow[],
+      daily: [] as ProductivityDailyPoint[],
     };
   }
   const sellerIds = sellers.map(seller => seller.membershipId);
@@ -1843,6 +2160,7 @@ export async function getProductivityAnalytics(
       .select({
         membershipId: leadConversions.actorMembershipId,
         conversions: count(),
+        leads: countDistinct(leadConversions.leadId),
       })
       .from(leadConversions)
       .innerJoin(
@@ -2039,6 +2357,7 @@ export async function getProductivityAnalytics(
   );
   mutateRows(conversionRows, bySeller, (target, row) => {
     target.conversions = numberOf(row.conversions);
+    target.leadsConverted = numberOf(row.leads);
   });
   mutateRows(followUpRows, bySeller, (target, row) => {
     target.followUpsCreated = numberOf(row.created);
@@ -2084,11 +2403,29 @@ export async function getProductivityAnalytics(
       row.leadsWithEffectiveContact,
       row.leadsWorked
     ),
+    conversionRate: safeRate(
+      row.leadsConverted,
+      row.leadsWithEffectiveContact
+    ),
+    workCoverage: safeRate(row.leadsWorked, row.leadsInPortfolio),
+    attemptsPerLead: safeRate(row.attempts, row.leadsWithAttempt),
     followUpCompletionRate: safeRate(
       row.followUpsCompleted,
       row.followUpsCompleted + row.followUpsPending
     ),
   }));
+  const teamFacts = await queryProductivityTeamFacts(
+    db,
+    context,
+    scope,
+    filters,
+    period,
+    sellerIds
+  );
+  const teamPortfolio = rows.reduce(
+    (total, row) => total + row.leadsInPortfolio,
+    0
+  );
   return {
     period: {
       start: period.start,
@@ -2098,19 +2435,35 @@ export async function getProductivityAnalytics(
     },
     totals: {
       sellers: rows.length,
-      attempts: rows.reduce((total, row) => total + row.attempts, 0),
-      effectiveContacts: rows.reduce(
-        (total, row) => total + row.effectiveContacts,
-        0
+      portfolio: teamPortfolio,
+      attempts: teamFacts.attempts,
+      leadsWithAttempt: teamFacts.leadsWithAttempt,
+      attemptsPerLead: safeRate(teamFacts.attempts, teamFacts.leadsWithAttempt),
+      effectiveContacts: teamFacts.effectiveContacts,
+      leadsWithEffectiveContact: teamFacts.leadsWithEffectiveContact,
+      worked: teamFacts.leadsWorked,
+      workCoverage: safeRate(teamFacts.leadsWorked, teamPortfolio),
+      effectiveContactRate: safeRate(
+        teamFacts.leadsWithEffectiveContact,
+        teamFacts.leadsWorked
       ),
-      worked: rows.reduce((total, row) => total + row.leadsWorked, 0),
-      conversions: rows.reduce((total, row) => total + row.conversions, 0),
+      conversions: teamFacts.conversions,
+      leadsConverted: teamFacts.leadsConverted,
+      conversionRate: safeRate(
+        teamFacts.leadsConverted,
+        teamFacts.leadsWithEffectiveContact
+      ),
+      firstAttemptAverageSeconds: teamFacts.firstAttemptAverageSeconds,
+      firstEffectiveContactAverageSeconds:
+        teamFacts.firstEffectiveContactAverageSeconds,
       followUpsOverdue: rows.reduce(
         (total, row) => total + row.followUpsOverdue,
         0
       ),
+      followUpsCompleted: teamFacts.followUpsCompleted,
     },
     sellers: rows,
+    daily: teamFacts.daily,
   };
 }
 

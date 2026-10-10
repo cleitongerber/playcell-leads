@@ -59,6 +59,13 @@ describe("V2 analytics domain", () => {
     expect(durationLabel(3_660)).toBe("1h 1min");
   });
 
+  it("keeps event effort distinct from distinct Lead reach", () => {
+    expect(safeRate(12, 7)).toBeCloseTo(12 / 7);
+    expect(safeRate(7, 194)).toBeCloseTo(7 / 194);
+    expect(safeRate(2, 5)).toBeCloseTo(2 / 5);
+    expect(safeRate(1, 2)).toBeCloseTo(1 / 2);
+  });
+
   it("calculates evidence coverage per eligible treatment, keeping optional absence out of mandatory pending", () => {
     expect(
       calculateEvidenceCoverage([

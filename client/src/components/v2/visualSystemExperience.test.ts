@@ -14,6 +14,7 @@ describe("FLUXO visual system experience contracts", () => {
     "client/src/pages/V2Administration.tsx"
   );
   const dashboard = readProjectFile("client/src/pages/V2Dashboard.tsx");
+  const productivity = readProjectFile("client/src/pages/V2Productivity.tsx");
   const reports = readProjectFile("client/src/pages/V2Reports.tsx");
   const journey = readProjectFile(
     "client/src/components/v2/V2SeparatedLeadJourney.tsx"
@@ -72,73 +73,35 @@ describe("FLUXO visual system experience contracts", () => {
     );
   });
 
-  it("keeps the operational dashboard in the approved KPI, funnel, health, and overview order", () => {
-    const firstKpi = dashboard.indexOf('title="Leads recebidos"');
-    const secondMetricBand = dashboard.indexOf(
-      "v2-dashboard-secondary-metrics"
-    );
-    const indicatorGroups = dashboard.indexOf("v2-dashboard-indicator-groups");
-    const funnelLayout = dashboard.indexOf("v2-dashboard-funnel-shell");
-    const healthLayout = dashboard.indexOf("v2-dashboard-health-shell");
-    const overviewLayout = dashboard.indexOf("v2-dashboard-overview-shell");
+  it("keeps the dashboard as a detection flow rather than a funnel of unrelated facts", () => {
+    const summary = dashboard.indexOf("Resumo da operação");
+    const attention = dashboard.indexOf("Pontos de atenção");
+    const journey = dashboard.indexOf("Jornada da base");
+    const quality = dashboard.indexOf("Qualidade dos registros");
+    const overview = dashboard.indexOf("Visão operacional");
 
-    expect(firstKpi).toBeGreaterThan(-1);
-    expect(indicatorGroups).toBeGreaterThan(-1);
-    expect(secondMetricBand).toBeGreaterThan(firstKpi);
-    expect(funnelLayout).toBeGreaterThan(secondMetricBand);
-    expect(healthLayout).toBeGreaterThan(funnelLayout);
-    expect(overviewLayout).toBeGreaterThan(healthLayout);
-    expect(dashboard).toContain("v2-dashboard-health");
-    expect(dashboard).toContain("HealthSummaryItem");
-    expect(dashboard).toContain("Cobertura evidências");
-    expect(dashboard).toContain("Tentativas contato");
-    expect(dashboard).toContain("Indicadores do período");
-    expect(dashboard).toContain("Indicadores de eficiência");
-    expect(dashboard).toContain("Tx. contato");
-    expect(dashboard).toMatch(/title="Tx\. contato"[\s\S]*?compact/);
-    const efficiencyMetrics = dashboard.slice(secondMetricBand, funnelLayout);
-    expect(efficiencyMetrics).not.toContain("icon={");
-    expect(dashboard).toContain("Funil da coorte do período");
-    expect(dashboard).toContain("Os indicadores acima mostram atividades realizadas no");
-    expect(dashboard).toContain("Visão operacional");
-    expect(dashboard).toContain("v2-dashboard-overview-tabs");
-    expect(dashboard).toContain("v2-dashboard-overview-content");
-    expect(dashboard).not.toContain('CardTitle>{title}</CardTitle>');
-    expect(styles).toContain(".v2-dashboard-primary-metrics { grid-template-columns:repeat(3");
-    expect(styles).toContain("height:6rem; min-height:6rem; padding:0; gap:0");
-    expect(styles).toContain("v2-metric-card--compact");
-    expect(styles).toContain("text-overflow:clip");
+    expect(summary).toBeGreaterThan(-1);
+    expect(attention).toBeGreaterThan(summary);
+    expect(journey).toBeGreaterThan(attention);
+    expect(quality).toBeGreaterThan(journey);
+    expect(overview).toBeGreaterThan(quality);
+    expect(dashboard).toContain("Cobertura de trabalho");
+    expect(dashboard).toContain("Leads com tentativa");
+    expect(dashboard).toContain("Evidências nas tentativas");
+    expect(dashboard).toContain('Base atual');
+    expect(dashboard).toContain('Tx. contato');
+    expect(dashboard).not.toContain("Funil da coorte do período");
+    expect(dashboard).toContain("JourneyStage");
+    expect(dashboard).toContain("openHealthDetail(\"assigned_without_work\")");
+    expect(dashboard).toContain("openHealthDetail(\"follow_ups_overdue\")");
     expect(dashboard).toContain('className="v2-metric-card-header"');
     expect(dashboard).toContain("v2-metric-icon");
-    expect(dashboard).toContain("{!compact && Icon ? (");
-    expect(dashboard).not.toContain("size-8 place-items-center");
-    expect(dashboard).toContain('<article\n      className={`v2-metric-card');
-    expect(dashboard).toContain('<div className="v2-metric-card-content">');
-    expect(dashboard).toContain('className="v2-metric-card-bottom-row"');
     expect(dashboard).toContain("function compactDelta(");
     expect(dashboard).toContain("return `↑ ${formatted}`;");
     expect(dashboard).toContain("return `↓ ${formatted}`;");
-    expect(dashboard).toContain("const comparisonDisplay = compact ? undefined : compactDelta(comparison);");
-    expect(dashboard).toContain("title={comparisonText ?? undefined}");
-    expect(dashboard).toContain("{comparisonDisplay && (");
-    expect(dashboard).toContain("aria-label={comparisonText}");
-    expect(dashboard).not.toContain('CardContent className="v2-metric-card-content p-4"');
-    expect(styles).toContain("grid-template-rows:auto auto");
-    expect(styles).not.toContain("grid-template-rows:auto minmax(0,1fr) auto");
-    expect(styles).toContain("grid-template-columns:minmax(0,11fr) minmax(0,9fr)");
-    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-icon { grid-column:2; grid-row:1; align-self:start; justify-self:end; width:1.5rem; height:1.5rem; }");
-    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-card-bottom-row { grid-column:1 / -1; grid-row:2; display:grid; min-width:0; grid-template-columns:max-content minmax(0,1fr); align-items:baseline; column-gap:.75rem; }");
-    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-card-bottom-row .v2-kpi-value { grid-column:1; grid-row:1; justify-self:start");
-    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-card-bottom-row .v2-metric-comparison { grid-column:2; grid-row:1; justify-self:end");
-    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-card-bottom-row .v2-metric-comparison--positive { color:var(--success); }");
-    expect(styles).toContain(".v2-dashboard-primary-metrics .v2-metric-card-bottom-row .v2-metric-comparison--negative { color:var(--danger); }");
-    expect(styles).toContain(".v2-dashboard-secondary-metrics .v2-metric-card--compact { box-sizing:border-box; height:5rem; min-height:5rem; padding:0; gap:0; }");
-    expect(styles).toContain(".v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-card-content { box-sizing:border-box; display:grid; height:100%; min-height:0; grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto;");
-    expect(styles).toContain(".v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-label { grid-column:1; grid-row:1");
-    expect(styles).toContain(".v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-kpi-value { grid-column:1; grid-row:2");
-    expect(styles).toContain(".v2-dashboard-secondary-metrics .v2-metric-card--compact .v2-metric-comparison { display:none; }");
-    expect(styles).toContain(".v2-health-list { grid-template-columns:repeat(4");
-    expect(styles).toContain(".v2-health-summary-item");
+    expect(styles).toContain(".v2-dashboard-summary-metrics");
+    expect(styles).toContain(".v2-dashboard-journey-content");
+    expect(styles).toContain(".v2-dashboard-quality-list");
   });
 
   it("keeps the dashboard filter action inline and scoped to the dashboard grid", () => {
@@ -147,6 +110,22 @@ describe("FLUXO visual system experience contracts", () => {
     );
     expect(styles).toContain("grid-column:5 !important");
     expect(styles).toContain("align-self:end");
+  });
+
+  it("keeps productivity focused on diagnosing people and execution cadence", () => {
+    expect(productivity).toContain("Desempenho por vendedor");
+    expect(productivity).toContain("Evolução da produtividade");
+    expect(productivity).toContain("Cobertura de trabalho");
+    expect(productivity).toContain("Tentativas médias por Lead");
+    expect(productivity).toContain("Leads com tentativa");
+    expect(productivity).toContain("Tent. / Lead");
+    expect(productivity).toContain("function ratio(");
+    expect(productivity).toContain("SellerDrawer");
+    expect(productivity).toContain("Ver evolução individual");
+    expect(productivity).toContain("SortableHead");
+    expect(productivity).not.toContain("Atividade por vendedor");
+    expect(styles).toContain(".v2-productivity-bars");
+    expect(styles).toContain(".v2-productivity-daily");
   });
 
   it("uses one responsive reports toolbar instead of independently wrapping filter groups", () => {

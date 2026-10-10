@@ -29,12 +29,11 @@ describe("mobile operational experience contracts", () => {
 
     expect(styles).toContain(".v2-metric-grid");
     expect(styles).toContain(".v2-mobile-detail-grid");
-    expect(dashboard).toContain("v2-dashboard-primary-metrics");
-    expect(styles).toContain(
-      ".v2-dashboard-primary-metrics .v2-metric-card,.v2-dashboard-secondary-metrics .v2-metric-card"
-    );
-    expect(productivity).toContain("aria-expanded={expanded}");
-    expect(productivity).toContain("Ver detalhes");
+    expect(dashboard).toContain("v2-dashboard-summary-metrics");
+    expect(dashboard).toContain("v2-dashboard-journey-content");
+    expect(styles).toContain(".v2-dashboard-journey-arrow");
+    expect(productivity).toContain("v2-productivity-mobile-row");
+    expect(productivity).toContain("SellerDrawer");
     expect(reports).toContain(
       "const detailColumns = report.data.columns.slice(4);"
     );

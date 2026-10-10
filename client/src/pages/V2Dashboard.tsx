@@ -22,13 +22,7 @@ import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
 import {
-  BellRing,
-  CheckCircle2,
   Inbox,
-  Info,
-  MessageSquareText,
-  PhoneCall,
-  Send,
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -81,6 +75,10 @@ function percent(value: number | null | undefined) {
       }).format(value);
 }
 
+function rate(numerator: number, denominator: number) {
+  return denominator > 0 ? numerator / denominator : null;
+}
+
 function duration(seconds: number | null | undefined) {
   if (seconds == null) return "—";
   const rounded = Math.max(0, Math.round(seconds));
@@ -120,6 +118,7 @@ function MetricCard({
   tooltip,
   value,
   comparison,
+  detail,
   href,
   destructive = false,
   compact = false,
@@ -129,14 +128,16 @@ function MetricCard({
   tooltip?: string;
   value: string;
   comparison?: number | null;
+  detail?: string;
   href?: string;
   destructive?: boolean;
   compact?: boolean;
   icon?: LucideIcon;
 }) {
-  const comparisonText =
-    comparison !== undefined ? delta(comparison) : undefined;
-  const comparisonDisplay = compact ? undefined : compactDelta(comparison);
+  const comparisonText = detail ?? (comparison !== undefined ? delta(comparison) : undefined);
+  const comparisonDisplay = compact
+    ? undefined
+    : detail ?? compactDelta(comparison);
   const comparisonTone =
     comparison == null
       ? undefined
@@ -269,185 +270,94 @@ export default function V2Dashboard() {
         />
       ) : dashboard.data ? (
         <>
-          <section className="v2-dashboard-indicator-groups">
-            <section className="v2-dashboard-indicator-group v2-dashboard-primary-group">
-              <p className="v2-dashboard-section-label">Indicadores do período</p>
-              <div className="v2-metric-grid v2-dashboard-primary-metrics">
-                <MetricCard
-                  title="Leads recebidos"
-                  value={number(dashboard.data.cards.leadsReceived)}
-                  comparison={dashboard.data.comparisons.leadsReceived}
-                  icon={Inbox}
-                />
-                <MetricCard
-                  title="Leads trabalhados"
-                  value={number(dashboard.data.cards.leadsWorked)}
-                  comparison={dashboard.data.comparisons.leadsWorked}
-                  icon={MessageSquareText}
-                />
-                <MetricCard
-                  title="Tentativas"
-                  value={number(dashboard.data.cards.attempts)}
-                  comparison={dashboard.data.comparisons.attempts}
-                  icon={Send}
-                />
-                <MetricCard
-                  title="Contatos efetivos"
-                  value={number(dashboard.data.cards.effectiveContacts)}
-                  comparison={dashboard.data.comparisons.effectiveContacts}
-                  icon={PhoneCall}
-                />
-                <MetricCard
-                  title="Conversões"
-                  value={number(dashboard.data.cards.conversions)}
-                  comparison={dashboard.data.comparisons.conversions}
-                  icon={CheckCircle2}
-                />
-                <MetricCard
-                  title="Follow-ups vencidos"
-                  value={number(dashboard.data.cards.followUpsOverdue)}
-                  destructive
-                  href={followUpPath("overdue")}
-                  icon={BellRing}
-                />
+          <section className="v2-dashboard-summary" aria-labelledby="dashboard-summary-title">
+            <div className="v2-dashboard-section-heading">
+              <div>
+                <p className="v2-dashboard-section-label">Resumo da operação</p>
+                <h2 id="dashboard-summary-title">O que aconteceu no período</h2>
               </div>
-            </section>
-
-            <section className="v2-dashboard-indicator-group v2-dashboard-efficiency-group">
-              <p className="v2-dashboard-section-label">Indicadores de eficiência</p>
-              <div className="v2-metric-grid v2-dashboard-secondary-metrics">
-                <MetricCard
-                  title="Tx. contato"
-                  tooltip="Taxa de contato efetivo"
-                  value={percent(dashboard.data.cards.effectiveContactRate)}
-                  comparison={dashboard.data.comparisons.effectiveContactRate}
-                  compact
-                />
-                <MetricCard
-                  title="Tx. conversão"
-                  tooltip="Taxa de conversão"
-                  value={percent(dashboard.data.cards.conversionRate)}
-                  comparison={dashboard.data.comparisons.conversionRate}
-                  compact
-                />
-                <MetricCard
-                  title="Interessados"
-                  value={number(dashboard.data.cards.interested)}
-                  compact
-                />
-                <MetricCard
-                  title="1ª tentativa"
-                  tooltip="Tempo até a primeira tentativa"
-                  value={duration(dashboard.data.cards.firstAttemptAverageSeconds)}
-                  compact
-                />
-                <MetricCard
-                  title="1º contato"
-                  tooltip="Tempo até o primeiro contato efetivo"
-                  value={duration(
-                    dashboard.data.cards.firstEffectiveContactAverageSeconds
-                  )}
-                  compact
-                />
-              </div>
-            </section>
-          </section>
-
-          <section className="v2-dashboard-funnel-shell">
-            <Card className="v2-section-card v2-dashboard-funnel">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  Funil da coorte do período
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label="Como interpretar o funil da coorte"
-                        className="grid size-5 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <Info className="size-3.5" aria-hidden="true" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs text-center">
-                      Os indicadores acima mostram atividades realizadas no
-                      período. Este funil acompanha somente a evolução dos
-                      leads recebidos dentro do período selecionado.
-                    </TooltipContent>
-                  </Tooltip>
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Evolução dos leads recebidos no período selecionado.
-                </p>
-              </CardHeader>
-              <CardContent className="v2-dashboard-funnel-content">
-                {[
-                  ["Recebidos", dashboard.data.funnel.received],
-                  ["Trabalhados", dashboard.data.funnel.worked],
-                  ["Com tentativa", dashboard.data.funnel.attempted],
-                  ["Com contato efetivo", dashboard.data.funnel.contacted],
-                  ["Interessados", dashboard.data.funnel.interested],
-                  ["Convertidos", dashboard.data.funnel.converted],
-                ].map(([label, raw]) => {
-                  const count = Number(raw);
-                  const width = dashboard.data.funnel.received
-                    ? Math.min(
-                        100,
-                        (count / dashboard.data.funnel.received) * 100
-                      )
-                    : 0;
-                  return (
-                    <div
-                      key={String(label)}
-                      className="v2-dashboard-funnel-stage"
-                    >
-                      <span className="text-sm text-muted-foreground">
-                        {label}
-                      </span>
-                      <div
-                        role="img"
-                        aria-label={`${label}: ${number(count)}`}
-                        style={{ width: `${Math.max(width, count ? 8 : 0)}%` }}
-                      />
-                      <strong className="text-sm">{number(count)}</strong>
-                      <span className="v2-dashboard-funnel-rate">
-                        {percent(width / 100)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
+              <p>Entrada, alcance, eficiência e velocidade da operação.</p>
+            </div>
+            <div className="v2-metric-grid v2-dashboard-summary-metrics">
+              <MetricCard
+                title="Leads recebidos"
+                value={number(dashboard.data.cards.leadsReceived)}
+                comparison={dashboard.data.comparisons.leadsReceived}
+                icon={Inbox}
+              />
+              <MetricCard
+                title="Cobertura de trabalho"
+                tooltip="Leads recebidos no período que tiveram tentativa ou contato efetivo até o fim do período"
+                value={percent(
+                  rate(
+                    dashboard.data.funnel.worked,
+                    dashboard.data.funnel.received
+                  )
+                )}
+                detail={`${number(dashboard.data.funnel.worked)} de ${number(dashboard.data.funnel.received)} Leads`}
+              />
+              <MetricCard
+                title="Taxa de contato"
+                tooltip="Leads com contato efetivo ÷ Leads trabalhados no período"
+                value={percent(dashboard.data.cards.effectiveContactRate)}
+                comparison={dashboard.data.comparisons.effectiveContactRate}
+              />
+              <MetricCard
+                title="Taxa de conversão"
+                tooltip="Leads convertidos ÷ Leads com contato efetivo no período"
+                value={percent(dashboard.data.cards.conversionRate)}
+                comparison={dashboard.data.comparisons.conversionRate}
+              />
+              <MetricCard
+                title="1ª tentativa"
+                tooltip="Tempo médio até a primeira tentativa"
+                value={duration(dashboard.data.cards.firstAttemptAverageSeconds)}
+              />
+              <MetricCard
+                title="1º contato"
+                tooltip="Tempo médio até o primeiro contato efetivo"
+                value={duration(
+                  dashboard.data.cards.firstEffectiveContactAverageSeconds
+                )}
+              />
+            </div>
+            <div className="v2-dashboard-fact-strip" aria-label="Fatos complementares do período">
+              <span><strong>{number(dashboard.data.cards.leadsWorked)}</strong> Leads trabalhados no período</span>
+              <span><strong>{number(dashboard.data.cards.leadsWithAttempt)}</strong> Leads com tentativa</span>
+              <span><strong>{number(dashboard.data.cards.attempts)}</strong> tentativas realizadas</span>
+              <span><strong>{number(dashboard.data.cards.effectiveContacts)}</strong> contatos efetivos</span>
+              <span><strong>{number(dashboard.data.cards.conversions)}</strong> conversões</span>
+              <span><strong>{number(dashboard.data.cards.interested)}</strong> interessados</span>
+            </div>
           </section>
 
           <section className="v2-dashboard-health-shell">
             <Card className="v2-section-card v2-dashboard-health">
               <CardHeader>
-                <CardTitle>Saúde da operação</CardTitle>
+                <CardTitle>Pontos de atenção</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Principais indicadores de pendência no seu escopo.
+                  O que precisa de ação agora.
                 </p>
               </CardHeader>
               <CardContent className="v2-health-list">
+                <HealthItem
+                  label="Sem trabalho"
+                  title="Leads atribuídos sem tentativa ou contato efetivo"
+                  value={dashboard.data.health.assignedWithoutWork}
+                  onClick={() => openHealthDetail("assigned_without_work")}
+                />
                 <HealthItem
                   label="Sem responsável"
                   value={dashboard.data.health.unassigned}
                   onClick={() => openHealthDetail("unassigned")}
                 />
                 <HealthItem
-                  label="Sem trabalho"
-                  title="Leads atribuídos sem trabalho"
-                  value={dashboard.data.health.assignedWithoutWork}
-                  onClick={() => openHealthDetail("assigned_without_work")}
+                  label="Follow-ups vencidos"
+                  value={dashboard.data.health.followUpsOverdue}
+                  onClick={() => openHealthDetail("follow_ups_overdue")}
                 />
                 <HealthItem
-                  label="Pend. documentais"
-                  title="Pendências documentais"
-                  value={dashboard.data.health.governancePending}
-                  onClick={() => openHealthDetail("governance_pending")}
-                />
-                <HealthItem
-                  label="Aguard. resposta"
-                  title="Aguardando resposta"
+                  label="Aguardando resposta"
                   value={dashboard.data.health.awaitingResponse}
                   onClick={() => openHealthDetail("awaiting_response")}
                 />
@@ -459,26 +369,84 @@ export default function V2Dashboard() {
                     openHealthDetail("terminal_residual_follow_ups")
                   }
                 />
-                <HealthSummaryItem
-                  label="Cobertura evidências"
-                  title="Cobertura de evidências: abra para ver os registros elegíveis e pendências"
-                  value={percent(dashboard.data.health.evidenceCoverage.coverage)}
-                  detail={`${number(dashboard.data.health.evidenceCoverage.withEvidence)} de ${number(dashboard.data.health.evidenceCoverage.eligible)} elegíveis`}
-                  onClick={() => openHealthDetail("evidence_eligible")}
-                />
-                <HealthSummaryItem
-                  label="Tentativas contato"
-                  title="Cobertura de evidências das tentativas de contato: abra para ver os registros elegíveis e pendências"
-                  value={percent(
-                    dashboard.data.health.evidenceCoverage.attemptCoverage
-                      .coverage
-                  )}
-                  detail={`${number(dashboard.data.health.evidenceCoverage.attemptCoverage.withEvidence)} de ${number(dashboard.data.health.evidenceCoverage.attemptCoverage.eligible)} elegíveis`}
-                  onClick={() => openHealthDetail("attempt_evidence_eligible")}
-                />
+                {dashboard.data.health.governancePending > 0 && (
+                  <HealthItem
+                    label="Pendências de governança"
+                    value={dashboard.data.health.governancePending}
+                    onClick={() => openHealthDetail("governance_pending")}
+                  />
+                )}
               </CardContent>
             </Card>
           </section>
+
+          <section className="v2-dashboard-journey-shell" aria-labelledby="dashboard-journey-title">
+            <Card className="v2-section-card v2-dashboard-journey">
+              <CardHeader>
+                <CardTitle id="dashboard-journey-title">Jornada da base</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Da entrada ao resultado no período selecionado.
+                </p>
+              </CardHeader>
+              <CardContent className="v2-dashboard-journey-content">
+                <JourneyStage label="Recebidos" value={dashboard.data.funnel.received} detail="100% da base" />
+                <JourneyArrow />
+                <JourneyStage
+                  label="Trabalhados"
+                  value={dashboard.data.funnel.worked}
+                  detail={`${percent(rate(dashboard.data.funnel.worked, dashboard.data.funnel.received))} dos recebidos`}
+                />
+                <JourneyArrow />
+                <JourneyStage
+                  label="Contato efetivo"
+                  value={dashboard.data.funnel.contacted}
+                  detail={`${percent(rate(dashboard.data.funnel.contacted, dashboard.data.funnel.worked))} dos trabalhados`}
+                />
+                <JourneyArrow />
+                <JourneyStage
+                  label="Convertidos"
+                  value={dashboard.data.funnel.converted}
+                  detail={`${percent(rate(dashboard.data.funnel.converted, dashboard.data.funnel.contacted))} dos contatos`}
+                />
+              </CardContent>
+              <div className="v2-dashboard-journey-note">
+                <strong>{number(dashboard.data.funnel.attempted)}</strong> Leads com tentativa · <strong>{number(dashboard.data.cards.attempts)}</strong> tentativas realizadas
+              </div>
+            </Card>
+          </section>
+
+          {dashboard.data.health.evidenceCoverage.eligible > 0 ||
+          dashboard.data.health.evidenceCoverage.attemptCoverage.eligible > 0 ? (
+            <section className="v2-dashboard-quality-shell" aria-labelledby="dashboard-quality-title">
+              <Card className="v2-section-card v2-dashboard-quality">
+                <CardHeader>
+                  <CardTitle id="dashboard-quality-title">Qualidade dos registros</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Cobertura de evidências elegíveis no período. Ausência opcional não é pendência.
+                  </p>
+                </CardHeader>
+                <CardContent className="v2-dashboard-quality-list">
+                  <HealthSummaryItem
+                    label="Evidências em contatos"
+                    title="Cobertura de evidências nas tratativas efetivas"
+                    value={percent(dashboard.data.health.evidenceCoverage.coverage)}
+                    detail={`${number(dashboard.data.health.evidenceCoverage.withEvidence)} de ${number(dashboard.data.health.evidenceCoverage.eligible)} elegíveis`}
+                    onClick={() => openHealthDetail("evidence_eligible")}
+                  />
+                  <HealthSummaryItem
+                    label="Evidências nas tentativas"
+                    title="Cobertura de evidências nas tentativas de contato"
+                    value={percent(
+                      dashboard.data.health.evidenceCoverage.attemptCoverage
+                        .coverage
+                    )}
+                    detail={`${number(dashboard.data.health.evidenceCoverage.attemptCoverage.withEvidence)} de ${number(dashboard.data.health.evidenceCoverage.attemptCoverage.eligible)} elegíveis`}
+                    onClick={() => openHealthDetail("attempt_evidence_eligible")}
+                  />
+                </CardContent>
+              </Card>
+            </section>
+          ) : null}
 
           <section className="v2-dashboard-overview-shell">
             <Card className="v2-section-card v2-dashboard-overview-panel">
@@ -708,12 +676,38 @@ function HealthSummaryItem({
   );
 }
 
+function JourneyStage({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+}) {
+  return (
+    <article className="v2-dashboard-journey-stage">
+      <p>{label}</p>
+      <strong>{number(value)}</strong>
+      <span>{detail}</span>
+    </article>
+  );
+}
+
+function JourneyArrow() {
+  return <span className="v2-dashboard-journey-arrow" aria-hidden="true">→</span>;
+}
+
 type OverviewRow = {
   id: number;
   name: string;
   leads: number;
+  leadsWorked: number;
+  workCoverage: number | null;
   attempts: number;
+  leadsWithAttempt: number;
   effectiveContacts: number;
+  effectiveContactRate: number | null;
   interested: number;
   conversions: number;
   conversionRate: number | null;
@@ -764,9 +758,27 @@ function Overview({
                   </div>
                   <div className="v2-mobile-detail-grid mt-3 text-sm text-muted-foreground">
                     <span>
+                      Cobertura{" "}
+                      <strong className="text-foreground">
+                        {percent(row.workCoverage)}
+                      </strong>
+                    </span>
+                    <span>
+                      Trabalhados{" "}
+                      <strong className="text-foreground">
+                        {number(row.leadsWorked)}
+                      </strong>
+                    </span>
+                    <span>
                       Tentativas{" "}
                       <strong className="text-foreground">
                         {number(row.attempts)}
+                      </strong>
+                    </span>
+                    <span>
+                      Leads c/ tentativa{" "}
+                      <strong className="text-foreground">
+                        {number(row.leadsWithAttempt)}
                       </strong>
                     </span>
                     <span>
@@ -796,9 +808,13 @@ function Overview({
                 <thead className="border-b text-left text-muted-foreground">
                   <tr>
                     <th className="p-2">{campaign ? "Campanha" : "PDV"}</th>
-                    <th className="p-2">Base</th>
+                    <th className="p-2">Base atual</th>
+                    <th className="p-2">Cobertura</th>
+                    <th className="p-2">Trabalhados</th>
                     <th className="p-2">Tentativas</th>
+                    <th className="p-2">Leads c/ tentativa</th>
                     <th className="p-2">Contatos</th>
+                    <th className="p-2">Tx. contato</th>
                     <th className="p-2">Interessados</th>
                     <th className="p-2">Conversões</th>
                     <th className="p-2">Taxa</th>
@@ -822,8 +838,14 @@ function Overview({
                         )}
                       </td>
                       <td className="p-2">{number(row.leads)}</td>
+                      <td className="p-2">{percent(row.workCoverage)}</td>
+                      <td className="p-2">{number(row.leadsWorked)}</td>
                       <td className="p-2">{number(row.attempts)}</td>
+                      <td className="p-2">{number(row.leadsWithAttempt)}</td>
                       <td className="p-2">{number(row.effectiveContacts)}</td>
+                      <td className="p-2">
+                        {percent(row.effectiveContactRate)}
+                      </td>
                       <td className="p-2">{number(row.interested)}</td>
                       <td className="p-2">{number(row.conversions)}</td>
                       <td className="p-2">{percent(row.conversionRate)}</td>
