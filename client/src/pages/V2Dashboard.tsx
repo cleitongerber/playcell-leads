@@ -302,8 +302,8 @@ export default function V2Dashboard() {
                 icon={Inbox}
               />
               <MetricCard
-                title="Cobertura de trabalho"
-                tooltip="Leads recebidos no período que tiveram tentativa ou contato efetivo até o fim do período. Acompanha a coorte de entrada, não toda a atividade da operação."
+                title="Cobertura dos recebidos"
+                tooltip="Leads recebidos no período que tiveram tentativa ou contato efetivo."
                 value={percent(
                   rate(
                     dashboard.data.funnel.worked,
@@ -341,8 +341,8 @@ export default function V2Dashboard() {
               <span className="v2-dashboard-fact-context">Fatos da operação no período</span>
               <CountFact
                 value={dashboard.data.cards.leadsWorked}
-                singular="Lead trabalhado na operação"
-                plural="Leads trabalhados na operação"
+                singular="Lead com atividade no período"
+                plural="Leads com atividade no período"
               />
               <CountFact
                 value={dashboard.data.cards.leadsWithAttempt}
@@ -440,7 +440,7 @@ export default function V2Dashboard() {
                 <JourneyStage label="Recebidos" value={dashboard.data.funnel.received} detail="100% da base" />
                 <JourneyArrow />
                 <JourneyStage
-                  label="Trabalhados"
+                  label="Recebidos trabalhados"
                   value={dashboard.data.funnel.worked}
                   detail={`${percent(rate(dashboard.data.funnel.worked, dashboard.data.funnel.received))} dos recebidos`}
                 />
@@ -821,7 +821,7 @@ function Overview({
                       </strong>
                     </span>
                     <span>
-                      Trabalhados{" "}
+                      Com atividade{" "}
                       <strong className="text-foreground">
                         {number(row.leadsWorked)}
                       </strong>
@@ -867,7 +867,12 @@ function Overview({
                     <th className="p-2">{campaign ? "Campanha" : "PDV"}</th>
                     <th className="p-2">Base atual</th>
                     <th className="p-2">Cobertura</th>
-                    <th className="p-2">Trabalhados</th>
+                    <th
+                      className="p-2"
+                      title="Leads distintos com tentativa ou contato efetivo registrado no período."
+                    >
+                      Com atividade
+                    </th>
                     <th className="p-2">Tentativas</th>
                     <th className="p-2">Leads c/ tentativa</th>
                     <th className="p-2">Contatos</th>

@@ -85,10 +85,14 @@ describe("FLUXO visual system experience contracts", () => {
     expect(journey).toBeGreaterThan(attention);
     expect(overview).toBeGreaterThan(journey);
     expect(quality).toBeGreaterThan(overview);
-    expect(dashboard).toContain("Cobertura de trabalho");
+    expect(dashboard).toContain("Cobertura dos recebidos");
     expect(dashboard).toContain("Fatos da operação no período");
-    expect(dashboard).toContain("Leads trabalhados na operação");
+    expect(dashboard).toContain("Leads com atividade no período");
     expect(dashboard).toContain("entre os Leads recebidos no período");
+    expect(dashboard).toContain('label="Recebidos trabalhados"');
+    expect(dashboard).toContain("Com atividade");
+    expect(dashboard).not.toContain('title="Cobertura de trabalho"');
+    expect(dashboard).not.toContain("Leads trabalhados na operação");
     expect(dashboard).toContain("Leads com tentativa");
     expect(dashboard).toContain("Evidências nas tentativas");
     expect(dashboard).toContain('Base atual');
@@ -132,6 +136,9 @@ describe("FLUXO visual system experience contracts", () => {
     expect(productivity).toContain('title="Velocidade"');
     expect(productivity).toContain('title="Disciplina"');
     expect(productivity).toContain("Ver evolução individual");
+    expect(productivity).toContain('className="v2-productivity-daily-bar"');
+    expect(productivity).toContain("value > 0 && <b>{number(value)}</b>");
+    expect(productivity).toContain("metricName");
     expect(productivity).toContain("SortableHead");
     expect(productivity).not.toContain("Atividade por vendedor");
     expect(styles).toContain(".v2-productivity-bars");

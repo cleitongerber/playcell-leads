@@ -618,24 +618,31 @@ function DailyBars({
   metric: DailyMetric;
 }) {
   const maximum = Math.max(1, ...rows.map(row => Number(row[metric] ?? 0)));
+  const metricName = dailyOptions.find(option => option.value === metric)?.label ?? "Indicador";
   return (
     <div
       className="v2-productivity-daily"
       aria-label={`Evolução diária: ${dailyOptions.find(option => option.value === metric)?.label}`}
     >
-      {rows.map(row => (
-        <div
-          key={String(row.date)}
-          title={`${row.date}: ${number(Number(row[metric] ?? 0))}`}
-        >
-          <i
-            style={{
-              height: `${Math.max(Number(row[metric]) ? 8 : 0, (Number(row[metric] ?? 0) / maximum) * 100)}%`,
-            }}
-          />
-          <span>{String(row.date).slice(-2)}</span>
-        </div>
-      ))}
+      {rows.map(row => {
+        const value = Number(row[metric] ?? 0);
+        return (
+          <div
+            key={String(row.date)}
+            title={`${row.date}: ${metricName} — ${number(value)}`}
+          >
+            <div className="v2-productivity-daily-bar">
+              {value > 0 && <b>{number(value)}</b>}
+              <i
+                style={{
+                  height: `${Math.max(value ? 8 : 0, (value / maximum) * 100)}%`,
+                }}
+              />
+            </div>
+            <span>{String(row.date).slice(-2)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
