@@ -54,6 +54,17 @@ describe("FLUXO visual system experience contracts", () => {
     expect(followUps).toContain("setView(option);");
   });
 
+  it("keeps Minha carteira operational without changing the available queue", () => {
+    expect(leads).toContain("Prioridade operacional");
+    expect(leads).toContain("Para agir");
+    expect(leads).toContain("Retorno vencido");
+    expect(leads).toContain("Sem atendimento");
+    expect(leads).toContain('view === "mine" && presentation');
+    expect(leads).toContain('<Badge variant="secondary">Atribuído</Badge>');
+    expect(leads).toContain("<Badge>Disponível</Badge>");
+    expect(leads).toContain('view === "mine" ? "Operação" : "Responsável"');
+  });
+
   it("keeps a single quick-contact area in the Lead workspace", () => {
     expect(journey).toContain('className="v2-contact-shortcuts flex');
     expect(journey).not.toContain('actionPresentation.cta === "contact"');

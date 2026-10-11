@@ -743,6 +743,9 @@ export const v2FoundationRouter = v2Router({
           assignedMembershipId: z.number().int().positive().optional(),
           assignment: z.enum(["assigned", "unassigned"]).optional(),
           firstContact: z.enum(["missing", "recorded"]).optional(),
+          operationalFilter: z
+            .enum(["all", "action", "unworked", "returns", "closed"])
+            .default("all"),
           search: z.string().max(200).optional(),
         })
       )
