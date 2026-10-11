@@ -1,13 +1,30 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { DataTable, PageToolbar } from "@/components/v2/V2Layout";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
+import { SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 
@@ -196,8 +213,19 @@ export default function V2Leads() {
     firstContact,
     operationalFilter,
   } = listState;
+  const [portfolioFiltersOpen, setPortfolioFiltersOpen] = useState(false);
+  const [pendingOperationalFilter, setPendingOperationalFilter] =
+    useState<OperationalFilter>(operationalFilter);
   const updateListState = (patch: Partial<LeadListState>) =>
     setListState(current => ({ ...current, ...patch }));
+
+  const updateOperationalFilter = (next: OperationalFilter) =>
+    updateListState({ operationalFilter: next, page: 1 });
+
+  useEffect(() => {
+    if (view === "mine" || operationalFilter === "all") return;
+    updateListState({ operationalFilter: "all" });
+  }, [operationalFilter, view]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -270,7 +298,7 @@ export default function V2Leads() {
       />
 
       <PageToolbar className="v2-leads-toolbar">
-        <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="w-full min-w-0 space-y-1.5 md:flex-1">
           <Label>Visão</Label>
           <div className="v2-tab-list" aria-label="Visão de Leads">
             {(
@@ -289,18 +317,25 @@ export default function V2Leads() {
                 variant="ghost"
                 className={view === option ? "is-active" : undefined}
                 aria-pressed={view === option}
-                onClick={() => updateListState({ view: option, page: 1 })}
+                onClick={() =>
+                  updateListState({
+                    view: option,
+                    page: 1,
+                    operationalFilter:
+                      option === "mine" ? operationalFilter : "all",
+                  })
+                }
               >
                 {label}
               </Button>
             ))}
           </div>
         </div>
-        <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="w-full min-w-0 space-y-1.5 md:flex-1">
           <Label htmlFor="leads-search">Busca</Label>
           <Input
             id="leads-search"
-            className="max-w-md"
+            className="w-full max-w-none md:max-w-md"
             placeholder="Buscar nome ou telefone"
             value={search}
             onChange={event =>
@@ -309,33 +344,117 @@ export default function V2Leads() {
           />
         </div>
         {view === "mine" && (
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <Label>Prioridade operacional</Label>
-            <div
-              className="v2-tab-list"
-              aria-label="Prioridade operacional da carteira"
-            >
-              {(
-                Object.keys(operationalFilterLabels) as OperationalFilter[]
-              ).map(option => (
-                <Button
-                  key={option}
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className={
-                    operationalFilter === option ? "is-active" : undefined
-                  }
-                  aria-pressed={operationalFilter === option}
-                  onClick={() =>
-                    updateListState({ operationalFilter: option, page: 1 })
-                  }
+          <>
+            <div className="w-full min-w-0 md:hidden">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium">Filtros</p>
+                  <p className="text-xs text-muted-foreground">
+                    Prioridade: {operationalFilterLabels[operationalFilter]}
+                  </p>
+                </div>
+                <Drawer
+                  open={portfolioFiltersOpen}
+                  onOpenChange={setPortfolioFiltersOpen}
                 >
-                  {operationalFilterLabels[option]}
-                </Button>
-              ))}
+                  <DrawerTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        setPendingOperationalFilter(operationalFilter)
+                      }
+                    >
+                      <SlidersHorizontal className="mr-2 size-4" /> Ajustar
+                    </Button>
+                  </DrawerTrigger>
+                  <DrawerContent className="max-h-[90dvh] overflow-y-auto">
+                    <DrawerHeader>
+                      <DrawerTitle>Filtros da carteira</DrawerTitle>
+                      <DrawerDescription>
+                        Refine a prioridade dos Leads da sua carteira.
+                      </DrawerDescription>
+                    </DrawerHeader>
+                    <div className="grid gap-2 px-4">
+                      <Label htmlFor="portfolio-operational-filter">
+                        Prioridade operacional
+                      </Label>
+                      <Select
+                        value={pendingOperationalFilter}
+                        onValueChange={value =>
+                          setPendingOperationalFilter(
+                            value as OperationalFilter
+                          )
+                        }
+                      >
+                        <SelectTrigger id="portfolio-operational-filter">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(
+                            Object.keys(
+                              operationalFilterLabels
+                            ) as OperationalFilter[]
+                          ).map(option => (
+                            <SelectItem key={option} value={option}>
+                              {operationalFilterLabels[option]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <DrawerFooter className="flex-row justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setPendingOperationalFilter("all");
+                          updateOperationalFilter("all");
+                          setPortfolioFiltersOpen(false);
+                        }}
+                      >
+                        Limpar
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          updateOperationalFilter(pendingOperationalFilter);
+                          setPortfolioFiltersOpen(false);
+                        }}
+                      >
+                        Aplicar
+                      </Button>
+                    </DrawerFooter>
+                  </DrawerContent>
+                </Drawer>
+              </div>
             </div>
-          </div>
+            <div className="hidden min-w-0 flex-1 space-y-1.5 md:block">
+              <Label>Prioridade operacional</Label>
+              <div
+                className="v2-tab-list"
+                aria-label="Prioridade operacional da carteira"
+              >
+                {(
+                  Object.keys(operationalFilterLabels) as OperationalFilter[]
+                ).map(option => (
+                  <Button
+                    key={option}
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className={
+                      operationalFilter === option ? "is-active" : undefined
+                    }
+                    aria-pressed={operationalFilter === option}
+                    onClick={() => updateOperationalFilter(option)}
+                  >
+                    {operationalFilterLabels[option]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </>
         )}
       </PageToolbar>
 

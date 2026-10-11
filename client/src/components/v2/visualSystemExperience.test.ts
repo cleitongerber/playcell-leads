@@ -49,13 +49,39 @@ describe("FLUXO visual system experience contracts", () => {
 
   it("uses compact visual tabs while preserving the existing lead and follow-up state", () => {
     expect(leads).toContain('className="v2-tab-list"');
-    expect(leads).toContain("updateListState({ view: option, page: 1 })");
+    expect(leads).toContain("view: option,");
+    expect(leads).toContain("page: 1,");
     expect(followUps).toContain('className="v2-tab-list"');
     expect(followUps).toContain("setView(option);");
   });
 
   it("keeps Minha carteira operational without changing the available queue", () => {
+    const mobileFilterStart = leads.indexOf(
+      'className="w-full min-w-0 md:hidden"'
+    );
+    const desktopFilterStart = leads.indexOf(
+      'className="hidden min-w-0 flex-1 space-y-1.5 md:block"'
+    );
+    const mobilePortfolioFilter = leads.slice(
+      mobileFilterStart,
+      desktopFilterStart
+    );
+
     expect(leads).toContain("Prioridade operacional");
+    expect(leads).toContain("Filtros da carteira");
+    expect(leads).toContain("Prioridade: {operationalFilterLabels[operationalFilter]}");
+    expect(leads).toContain("<SlidersHorizontal className=\"mr-2 size-4\" /> Ajustar");
+    expect(leads).toContain('className="hidden min-w-0 flex-1 space-y-1.5 md:block"');
+    expect(leads).toContain('className="w-full min-w-0 md:hidden"');
+    expect(leads).toContain('updateOperationalFilter("all")');
+    expect(leads).toContain('option === "mine" ? operationalFilter : "all"');
+    expect(leads).toContain('view === "mine" || operationalFilter === "all"');
+    expect(mobilePortfolioFilter).toContain("<Select");
+    expect(mobilePortfolioFilter).toContain("<SelectItem key={option} value={option}>");
+    expect(mobilePortfolioFilter).not.toContain('className="v2-tab-list"');
+    expect(mobilePortfolioFilter).toContain(
+      "updateOperationalFilter(pendingOperationalFilter)"
+    );
     expect(leads).toContain("Para agir");
     expect(leads).toContain("Retorno vencido");
     expect(leads).toContain("Sem atendimento");
