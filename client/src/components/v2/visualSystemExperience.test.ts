@@ -78,6 +78,13 @@ describe("FLUXO visual system experience contracts", () => {
     expect(leads).toContain('view === "mine" || operationalFilter === "all"');
     expect(mobilePortfolioFilter).toContain("<Select");
     expect(mobilePortfolioFilter).toContain("<SelectItem key={option} value={option}>");
+    expect(mobilePortfolioFilter).toContain('side="bottom"');
+    expect(mobilePortfolioFilter).toContain('align="start"');
+    expect(mobilePortfolioFilter).toContain("collisionBoundary={");
+    expect(mobilePortfolioFilter).toContain(
+      "portfolioDrawerBoundary ?? undefined"
+    );
+    expect(mobilePortfolioFilter).toContain("collisionPadding={12}");
     expect(mobilePortfolioFilter).not.toContain('className="v2-tab-list"');
     expect(mobilePortfolioFilter).toContain(
       "updateOperationalFilter(pendingOperationalFilter)"
@@ -89,6 +96,15 @@ describe("FLUXO visual system experience contracts", () => {
     expect(leads).toContain('<Badge variant="secondary">Atribuído</Badge>');
     expect(leads).toContain("<Badge>Disponível</Badge>");
     expect(leads).toContain('view === "mine" ? "Operação" : "Responsável"');
+  });
+
+  it("uses natural singular and plural language for the existing follow-up alert", () => {
+    expect(leads).toContain("function pendingReturnsLabel(count: number)");
+    expect(leads).toContain(
+      '`${count} retorno${count === 1 ? "" : "s"} pendente${count === 1 ? "" : "s"}`'
+    );
+    expect(leads).toContain("pendingReturnsLabel(");
+    expect(leads).not.toContain("follow-up(s) pendente(s)");
   });
 
   it("keeps a single quick-contact area in the Lead workspace", () => {

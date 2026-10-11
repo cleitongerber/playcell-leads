@@ -122,6 +122,10 @@ const operationalFilterLabels: Record<OperationalFilter, string> = {
   closed: "Encerrados",
 };
 
+function pendingReturnsLabel(count: number) {
+  return `${count} retorno${count === 1 ? "" : "s"} pendente${count === 1 ? "" : "s"}`;
+}
+
 function formatOperationalDate(value: Date | null, timezone: string | null) {
   if (!value) return null;
   return new Intl.DateTimeFormat("pt-BR", {
@@ -214,6 +218,8 @@ export default function V2Leads() {
     operationalFilter,
   } = listState;
   const [portfolioFiltersOpen, setPortfolioFiltersOpen] = useState(false);
+  const [portfolioDrawerBoundary, setPortfolioDrawerBoundary] =
+    useState<HTMLDivElement | null>(null);
   const [pendingOperationalFilter, setPendingOperationalFilter] =
     useState<OperationalFilter>(operationalFilter);
   const updateListState = (patch: Partial<LeadListState>) =>
@@ -288,9 +294,10 @@ export default function V2Leads() {
           0 ? (
             <Link href="/v2/follow-ups?view=overdue">
               <Badge className="cursor-pointer" variant="destructive">
-                {(followUpAlerts.data?.overdue ?? 0) +
-                  (followUpAlerts.data?.today ?? 0)}{" "}
-                follow-up(s) pendente(s)
+                {pendingReturnsLabel(
+                  (followUpAlerts.data?.overdue ?? 0) +
+                    (followUpAlerts.data?.today ?? 0)
+                )}
               </Badge>
             </Link>
           ) : undefined
@@ -368,7 +375,10 @@ export default function V2Leads() {
                       <SlidersHorizontal className="mr-2 size-4" /> Ajustar
                     </Button>
                   </DrawerTrigger>
-                  <DrawerContent className="max-h-[90dvh] overflow-y-auto">
+                  <DrawerContent
+                    ref={setPortfolioDrawerBoundary}
+                    className="max-h-[90dvh] overflow-y-auto"
+                  >
                     <DrawerHeader>
                       <DrawerTitle>Filtros da carteira</DrawerTitle>
                       <DrawerDescription>
@@ -390,7 +400,16 @@ export default function V2Leads() {
                         <SelectTrigger id="portfolio-operational-filter">
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent
+                          side="bottom"
+                          align="start"
+                          sideOffset={4}
+                          collisionBoundary={
+                            portfolioDrawerBoundary ?? undefined
+                          }
+                          collisionPadding={12}
+                          className="z-[60]"
+                        >
                           {(
                             Object.keys(
                               operationalFilterLabels
