@@ -8,25 +8,19 @@ import {
   isNotNull,
   isNull,
   like,
-  max,
-  min,
   or,
-  sql,
 } from "drizzle-orm";
 import {
   campaignPdvs,
   campaigns,
   followUps,
-  leadContactAttempts,
   leadContacts,
-  leadConversions,
   leadEvidences,
   leadSources,
   leadStatuses,
   leadTimelineEvents,
   leadTreatmentGovernance,
   leads,
-  partnerSettings,
   pdvs,
   userPartners,
   userPdvAssignments,
@@ -44,11 +38,6 @@ import {
 import { requirePdvAdministration } from "./operationalScope";
 import { resolvePdvScope } from "./pdvScope";
 import {
-  portfolioPriorities,
-  type PortfolioOperationalFilter,
-} from "./leadPortfolioDomain";
-import { partnerDayBounds } from "./partnerTime";
-import {
   campaignAllowsLeadOperations,
   sellerCanModifyLead,
 } from "./leadPolicy";
@@ -56,82 +45,6 @@ import { writeV2Audit } from "./partnerService";
 
 const PAGE_MAX = 100;
 type LeadRow = typeof leads.$inferSelect;
-
-async function partnerTimezone(db: V2Database, partnerId: number) {
-  return (
-    (
-      await db
-        .select({ timezone: partnerSettings.timezone })
-        .from(partnerSettings)
-        .where(eq(partnerSettings.partnerId, partnerId))
-        .limit(1)
-    )[0]?.timezone ?? "America/Sao_Paulo"
-  );
-}
-
-/** Aggregate once per tenant/Lead; never issue a fact query per list row. */
-function createPortfolioFacts(db: V2Database, context: PartnerContext) {
-  const attempts = db
-    .select({
-      partnerId: leadContactAttempts.partnerId,
-      leadId: leadContactAttempts.leadId,
-      attemptCount: count().as("attemptCount"),
-      lastAttemptAt: max(leadContactAttempts.occurredAt).as("lastAttemptAt"),
-    })
-    .from(leadContactAttempts)
-    .where(eq(leadContactAttempts.partnerId, context.partnerId))
-    .groupBy(leadContactAttempts.partnerId, leadContactAttempts.leadId)
-    .as("portfolio_attempt_facts");
-  const contacts = db
-    .select({
-      partnerId: leadContacts.partnerId,
-      leadId: leadContacts.leadId,
-      lastEffectiveContactAt: max(leadContacts.occurredAt).as(
-        "lastEffectiveContactAt"
-      ),
-    })
-    .from(leadContacts)
-    .where(
-      and(
-        eq(leadContacts.partnerId, context.partnerId),
-        eq(leadContacts.recordKind, "effective_contact")
-      )
-    )
-    .groupBy(leadContacts.partnerId, leadContacts.leadId)
-    .as("portfolio_effective_contact_facts");
-  const pendingFollowUps = db
-    .select({
-      partnerId: followUps.partnerId,
-      leadId: followUps.leadId,
-      pendingFollowUpCount: count().as("pendingFollowUpCount"),
-      nextFollowUpAt: min(followUps.dueAt).as("nextFollowUpAt"),
-    })
-    .from(followUps)
-    .where(
-      and(
-        eq(followUps.partnerId, context.partnerId),
-        eq(followUps.status, "pending")
-      )
-    )
-    .groupBy(followUps.partnerId, followUps.leadId)
-    .as("portfolio_pending_follow_up_facts");
-  const conversions = db
-    .select({
-      partnerId: leadConversions.partnerId,
-      leadId: leadConversions.leadId,
-      conversionAt: max(leadConversions.occurredAt).as("conversionAt"),
-    })
-    .from(leadConversions)
-    .where(eq(leadConversions.partnerId, context.partnerId))
-    .groupBy(leadConversions.partnerId, leadConversions.leadId)
-    .as("portfolio_conversion_facts");
-  return { attempts, contacts, pendingFollowUps, conversions };
-}
-
-function priorityFromRank(value: unknown) {
-  const rank = Number(value);
-  return portfolioPriorities[rank - 1] ?? "terminal";
-}
 
 function normalizePhone(phone: string | null | undefined) {
   const digits = phone?.replace(/\D/g, "") ?? "";
@@ -494,7 +407,6 @@ export async function listLeads(
     assignedMembershipId?: number;
     assignment?: "assigned" | "unassigned";
     firstContact?: "missing" | "recorded";
-    operationalFilter?: PortfolioOperationalFilter;
     search?: string;
   }
 ) {
@@ -502,7 +414,7 @@ export async function listLeads(
   const pageSize = Math.min(Math.max(input.pageSize, 1), PAGE_MAX);
   const scope = await scopedPdvIds(db, context);
   if (scope && !scope.length)
-    return { items: [], total: 0, page: input.page, pageSize, timezone: null };
+    return { items: [], total: 0, page: input.page, pageSize };
   const conditions = [
     eq(leads.partnerId, context.partnerId),
     isNull(leads.deletedAt),
@@ -552,7 +464,6 @@ export async function listLeads(
       )!
     );
   const where = and(...conditions);
-  const operationalFilter = input.operationalFilter ?? "all";
   const fields = {
     id: leads.id,
     campaignId: leads.campaignId,
@@ -571,196 +482,24 @@ export async function listLeads(
     pdvName: pdvs.name,
     campaignName: campaigns.name,
   };
-
-  // Only the seller portfolio changes behavior in CODEX 030. The available
-  // queue and every other view retain their existing chronological query.
-  if (input.view !== "mine") {
-    const [items, totals] = await Promise.all([
-      db
-        .select(fields)
-        .from(leads)
-        .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
-        .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
-        .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
-        .where(where)
-        .orderBy(desc(leads.receivedAt), desc(leads.id))
-        .limit(pageSize)
-        .offset((Math.max(input.page, 1) - 1) * pageSize),
-      db.select({ total: count() }).from(leads).where(where),
-    ]);
-    return {
-      items: items.map(item => ({ ...item, operational: null })),
-      total: Number(totals[0]?.total ?? 0),
-      page: Math.max(input.page, 1),
-      pageSize,
-      timezone: null,
-    };
-  }
-
-  const timezone = await partnerTimezone(db, context.partnerId);
-  const now = new Date();
-  const day = partnerDayBounds(timezone, now);
-  const facts = createPortfolioFacts(db, context);
-  const attemptCount = sql<number>`coalesce(${facts.attempts.attemptCount}, 0)`;
-  const hasEffectiveContact = sql<number>`case when ${facts.contacts.lastEffectiveContactAt} is null then 0 else 1 end`;
-  const nextFollowUpAt = facts.pendingFollowUps.nextFollowUpAt;
-  const priorityRank = sql<number>`case
-    when ${leadStatuses.isTerminal} then 7
-    when ${nextFollowUpAt} is not null and ${nextFollowUpAt} < ${now} then 1
-    when ${nextFollowUpAt} is not null and ${nextFollowUpAt} >= ${now} and ${nextFollowUpAt} < ${day.end} then 2
-    when ${attemptCount} = 0 and ${hasEffectiveContact} = 0 then 3
-    when ${hasEffectiveContact} = 0 and ${nextFollowUpAt} is null then 4
-    when ${nextFollowUpAt} is not null then 6
-    else 5
-  end`;
-  if (operationalFilter === "action")
-    conditions.push(sql`${priorityRank} in (1, 2, 3, 4)`);
-  if (operationalFilter === "unworked")
-    conditions.push(sql`${priorityRank} = 3`);
-  if (operationalFilter === "returns")
-    conditions.push(sql`${priorityRank} in (1, 2, 6)`);
-  if (operationalFilter === "closed") conditions.push(sql`${priorityRank} = 7`);
-  const portfolioWhere = and(...conditions);
-  const portfolioFields = {
-    ...fields,
-    isTerminal: leadStatuses.isTerminal,
-    priorityRank: priorityRank.as("priorityRank"),
-    attemptCount: attemptCount.as("attemptCount"),
-    lastAttemptAt: facts.attempts.lastAttemptAt,
-    hasEffectiveContact: hasEffectiveContact.as("hasEffectiveContact"),
-    lastEffectiveContactAt: facts.contacts.lastEffectiveContactAt,
-    nextFollowUpAt,
-    pendingFollowUpCount:
-      sql<number>`coalesce(${facts.pendingFollowUps.pendingFollowUpCount}, 0)`.as(
-        "pendingFollowUpCount"
-      ),
-    conversionAt: facts.conversions.conversionAt,
-  };
   const [items, totals] = await Promise.all([
     db
-        .select(portfolioFields)
-        .from(leads)
-        .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
-        .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
-        .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
-        .leftJoin(
-          facts.attempts,
-          and(
-            eq(facts.attempts.partnerId, leads.partnerId),
-            eq(facts.attempts.leadId, leads.id)
-          )
-        )
-        .leftJoin(
-          facts.contacts,
-          and(
-            eq(facts.contacts.partnerId, leads.partnerId),
-            eq(facts.contacts.leadId, leads.id)
-          )
-        )
-        .leftJoin(
-          facts.pendingFollowUps,
-          and(
-            eq(facts.pendingFollowUps.partnerId, leads.partnerId),
-            eq(facts.pendingFollowUps.leadId, leads.id)
-          )
-        )
-        .leftJoin(
-          facts.conversions,
-          and(
-            eq(facts.conversions.partnerId, leads.partnerId),
-            eq(facts.conversions.leadId, leads.id)
-          )
-        )
-        .where(portfolioWhere)
-        .orderBy(
-          priorityRank,
-          sql`case when ${priorityRank} in (1, 2, 6) then ${nextFollowUpAt} end`,
-          sql`case when ${priorityRank} = 3 then ${leads.receivedAt} end`,
-          sql`case when ${priorityRank} in (4, 5) then coalesce(${leads.lastActivityAt}, ${facts.attempts.lastAttemptAt}, ${leads.receivedAt}) end`,
-          sql`case when ${priorityRank} = 7 then ${leads.lastActivityAt} end desc`,
-          asc(leads.id)
-        )
-        .limit(pageSize)
-        .offset((Math.max(input.page, 1) - 1) * pageSize),
-    db
-        .select({ total: count() })
-        .from(leads)
-        .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
-        .leftJoin(
-          facts.attempts,
-          and(
-            eq(facts.attempts.partnerId, leads.partnerId),
-            eq(facts.attempts.leadId, leads.id)
-          )
-        )
-        .leftJoin(
-          facts.contacts,
-          and(
-            eq(facts.contacts.partnerId, leads.partnerId),
-            eq(facts.contacts.leadId, leads.id)
-          )
-        )
-        .leftJoin(
-          facts.pendingFollowUps,
-          and(
-            eq(facts.pendingFollowUps.partnerId, leads.partnerId),
-            eq(facts.pendingFollowUps.leadId, leads.id)
-          )
-        )
-        .where(portfolioWhere),
+      .select(fields)
+      .from(leads)
+      .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
+      .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
+      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
+      .where(where)
+      .orderBy(desc(leads.receivedAt), desc(leads.id))
+      .limit(pageSize)
+      .offset((Math.max(input.page, 1) - 1) * pageSize),
+    db.select({ total: count() }).from(leads).where(where),
   ]);
-  const ids = items.map(item => item.id);
-  const lastAttempts = ids.length
-    ? await db
-        .select({
-          id: leadContactAttempts.id,
-          leadId: leadContactAttempts.leadId,
-          channel: leadContactAttempts.channel,
-          resultLabel: leadContactAttempts.resultLabel,
-          occurredAt: leadContactAttempts.occurredAt,
-        })
-        .from(leadContactAttempts)
-        .where(
-          and(
-            eq(leadContactAttempts.partnerId, context.partnerId),
-            inArray(leadContactAttempts.leadId, ids)
-          )
-        )
-        .orderBy(
-          asc(leadContactAttempts.leadId),
-          desc(leadContactAttempts.occurredAt),
-          desc(leadContactAttempts.id)
-        )
-    : [];
-  const lastAttemptByLead = new Map<number, (typeof lastAttempts)[number]>();
-  for (const attempt of lastAttempts) {
-    if (!lastAttemptByLead.has(attempt.leadId))
-      lastAttemptByLead.set(attempt.leadId, attempt);
-  }
   return {
-    items: items.map(item => {
-      const lastAttempt = lastAttemptByLead.get(item.id);
-      return {
-        ...item,
-        operational: {
-          priority: priorityFromRank(item.priorityRank),
-          attemptCount: Number(item.attemptCount ?? 0),
-          lastAttemptAt: item.lastAttemptAt,
-          lastAttemptChannel: lastAttempt?.channel ?? null,
-          lastAttemptResult: lastAttempt?.resultLabel ?? null,
-          hasEffectiveContact: Number(item.hasEffectiveContact) > 0,
-          lastEffectiveContactAt: item.lastEffectiveContactAt,
-          nextFollowUpAt: item.nextFollowUpAt,
-          pendingFollowUpCount: Number(item.pendingFollowUpCount ?? 0),
-          isTerminal: item.isTerminal,
-          conversionAt: item.conversionAt,
-        },
-      };
-    }),
+    items,
     total: Number(totals[0]?.total ?? 0),
     page: Math.max(input.page, 1),
     pageSize,
-    timezone,
   };
 }
 

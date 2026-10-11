@@ -14,29 +14,6 @@ import { Link, useLocation } from "wouter";
 type View = "available" | "mine" | "all";
 type AssignmentFilter = "assigned" | "unassigned";
 type WorkFilter = "missing" | "recorded";
-type OperationalFilter = "all" | "action" | "unworked" | "returns" | "closed";
-type OperationalPriority =
-  | "overdue"
-  | "today"
-  | "unworked"
-  | "attempting"
-  | "in_progress"
-  | "upcoming"
-  | "terminal";
-
-type OperationalState = {
-  priority: OperationalPriority;
-  attemptCount: number;
-  lastAttemptAt: Date | null;
-  lastAttemptChannel: string | null;
-  lastAttemptResult: string | null;
-  hasEffectiveContact: boolean;
-  lastEffectiveContactAt: Date | null;
-  nextFollowUpAt: Date | null;
-  pendingFollowUpCount: number;
-  isTerminal: boolean;
-  conversionAt: Date | null;
-};
 
 type LeadListState = {
   view: View;
@@ -48,7 +25,6 @@ type LeadListState = {
   assignedMembershipId?: number;
   assignment?: AssignmentFilter;
   firstContact?: WorkFilter;
-  operationalFilter: OperationalFilter;
 };
 
 function positiveInteger(value: string | null) {
@@ -64,7 +40,6 @@ function readLeadListState(): LeadListState {
   const requestedView = params.get("view");
   const requestedAssignment = params.get("assignment");
   const requestedWork = params.get("firstContact");
-  const requestedOperationalFilter = params.get("operationalFilter");
   return {
     view:
       requestedView === "available" ||
@@ -87,98 +62,7 @@ function readLeadListState(): LeadListState {
       requestedWork === "missing" || requestedWork === "recorded"
         ? requestedWork
         : undefined,
-    operationalFilter:
-      requestedOperationalFilter === "action" ||
-      requestedOperationalFilter === "unworked" ||
-      requestedOperationalFilter === "returns" ||
-      requestedOperationalFilter === "closed"
-        ? requestedOperationalFilter
-        : "all",
   };
-}
-
-const operationalFilterLabels: Record<OperationalFilter, string> = {
-  all: "Todos",
-  action: "Para agir",
-  unworked: "Sem atendimento",
-  returns: "Retornos",
-  closed: "Encerrados",
-};
-
-function formatOperationalDate(value: Date | null, timezone: string | null) {
-  if (!value) return null;
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: timezone ?? undefined,
-  }).format(new Date(value));
-}
-
-function operationalPresentation(
-  operational: OperationalState | null,
-  timezone: string | null
-) {
-  if (!operational) return null;
-  const followUpAt = formatOperationalDate(
-    operational.nextFollowUpAt,
-    timezone
-  );
-  const lastAttemptAt = formatOperationalDate(
-    operational.lastAttemptAt,
-    timezone
-  );
-  const lastContactAt = formatOperationalDate(
-    operational.lastEffectiveContactAt,
-    timezone
-  );
-  switch (operational.priority) {
-    case "overdue":
-      return {
-        label: "Retorno vencido",
-        detail: followUpAt ? `Previsto em ${followUpAt}` : null,
-        variant: "destructive" as const,
-      };
-    case "today":
-      return {
-        label: "Retorno hoje",
-        detail: followUpAt ? `Hoje, ${followUpAt.split(", ").at(-1)}` : null,
-        variant: "secondary" as const,
-      };
-    case "unworked":
-      return {
-        label: "Sem atendimento",
-        detail: null,
-        variant: "secondary" as const,
-      };
-    case "attempting":
-      return {
-        label: `${operational.attemptCount} tentativa${operational.attemptCount === 1 ? "" : "s"}`,
-        detail: lastAttemptAt ? `Última em ${lastAttemptAt}` : null,
-        variant: "outline" as const,
-      };
-    case "in_progress":
-      return {
-        label: "Em atendimento",
-        detail: lastContactAt ? `Último contato em ${lastContactAt}` : null,
-        variant: "secondary" as const,
-      };
-    case "upcoming":
-      return {
-        label: "Retorno agendado",
-        detail: followUpAt ?? null,
-        variant: "outline" as const,
-      };
-    default:
-      return {
-        label: "Encerrado",
-        detail: operational.conversionAt
-          ? `Conversão em ${formatOperationalDate(operational.conversionAt, timezone)}`
-          : null,
-        variant: "outline" as const,
-      };
-  }
 }
 
 export default function V2Leads() {
@@ -194,7 +78,6 @@ export default function V2Leads() {
     assignedMembershipId,
     assignment,
     firstContact,
-    operationalFilter,
   } = listState;
   const updateListState = (patch: Partial<LeadListState>) =>
     setListState(current => ({ ...current, ...patch }));
@@ -211,10 +94,6 @@ export default function V2Leads() {
       assignedMembershipId,
       assignment,
       firstContact,
-      operationalFilter:
-        view === "mine" && operationalFilter !== "all"
-          ? operationalFilter
-          : undefined,
     });
     const current = `${window.location.pathname}${window.location.search}`;
     if (target !== current)
@@ -224,7 +103,6 @@ export default function V2Leads() {
     assignment,
     campaignId,
     firstContact,
-    operationalFilter,
     page,
     pdvId,
     search,
@@ -242,7 +120,6 @@ export default function V2Leads() {
     assignedMembershipId,
     assignment,
     firstContact,
-    operationalFilter: view === "mine" ? operationalFilter : undefined,
     search: search || undefined,
   });
   const access = v2trpc.access.context.useQuery();
@@ -270,73 +147,44 @@ export default function V2Leads() {
       />
 
       <PageToolbar className="v2-leads-toolbar">
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <Label>Visão</Label>
-          <div className="v2-tab-list" aria-label="Visão de Leads">
-            {(
-              [
-                ["available", "Fila disponível"],
-                ["mine", "Minha carteira"],
-                ...(access.data?.role !== "seller"
-                  ? [["all", "Todos no escopo"]]
-                  : []),
-              ] as Array<[View, string]>
-            ).map(([option, label]) => (
-              <Button
-                key={option}
-                type="button"
-                size="sm"
-                variant="ghost"
-                className={view === option ? "is-active" : undefined}
-                aria-pressed={view === option}
-                onClick={() => updateListState({ view: option, page: 1 })}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-        </div>
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <Label htmlFor="leads-search">Busca</Label>
-          <Input
-            id="leads-search"
-            className="max-w-md"
-            placeholder="Buscar nome ou telefone"
-            value={search}
-            onChange={event =>
-              updateListState({ search: event.target.value, page: 1 })
-            }
-          />
-        </div>
-        {view === "mine" && (
           <div className="min-w-0 flex-1 space-y-1.5">
-            <Label>Prioridade operacional</Label>
-            <div
-              className="v2-tab-list"
-              aria-label="Prioridade operacional da carteira"
-            >
+            <Label>Visão</Label>
+            <div className="v2-tab-list" aria-label="Visão de Leads">
               {(
-                Object.keys(operationalFilterLabels) as OperationalFilter[]
-              ).map(option => (
+                [
+                  ["available", "Fila disponível"],
+                  ["mine", "Minha carteira"],
+                  ...(access.data?.role !== "seller"
+                    ? [["all", "Todos no escopo"]]
+                    : []),
+                ] as Array<[View, string]>
+              ).map(([option, label]) => (
                 <Button
                   key={option}
                   type="button"
                   size="sm"
                   variant="ghost"
-                  className={
-                    operationalFilter === option ? "is-active" : undefined
-                  }
-                  aria-pressed={operationalFilter === option}
-                  onClick={() =>
-                    updateListState({ operationalFilter: option, page: 1 })
-                  }
+                  className={view === option ? "is-active" : undefined}
+                  aria-pressed={view === option}
+                  onClick={() => updateListState({ view: option, page: 1 })}
                 >
-                  {operationalFilterLabels[option]}
+                  {label}
                 </Button>
               ))}
             </div>
           </div>
-        )}
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Label htmlFor="leads-search">Busca</Label>
+            <Input
+              id="leads-search"
+              className="max-w-md"
+              placeholder="Buscar nome ou telefone"
+              value={search}
+              onChange={event =>
+                updateListState({ search: event.target.value, page: 1 })
+              }
+            />
+          </div>
       </PageToolbar>
 
       {(campaignId ||
@@ -418,60 +266,21 @@ export default function V2Leads() {
                       <th>Campanha</th>
                       <th>PDV</th>
                       <th>Situação</th>
-                      <th>{view === "mine" ? "Operação" : "Responsável"}</th>
+                      <th>Responsável</th>
                       <th aria-label="Ações" />
                     </tr>
                   </thead>
                   <tbody>
                     {list.data.items.map(lead => (
                       <tr key={lead.id}>
-                        <td className="font-medium">
-                          {lead.name || "Lead sem nome"}
-                        </td>
+                        <td className="font-medium">{lead.name || "Lead sem nome"}</td>
                         <td>{lead.phone || "—"}</td>
                         <td>{lead.campaignName || "—"}</td>
                         <td>{lead.pdvName || "—"}</td>
-                        <td>
-                          <Badge variant="outline">{lead.statusLabel}</Badge>
-                        </td>
-                        <td>
-                          {view === "mine"
-                            ? (() => {
-                                const presentation = operationalPresentation(
-                                  lead.operational,
-                                  list.data?.timezone ?? null
-                                );
-                                return presentation ? (
-                                  <div className="space-y-1">
-                                    <Badge variant={presentation.variant}>
-                                      {presentation.label}
-                                    </Badge>
-                                    {presentation.detail && (
-                                      <p className="text-xs text-muted-foreground">
-                                        {presentation.detail}
-                                      </p>
-                                    )}
-                                  </div>
-                                ) : (
-                                  "—"
-                                );
-                              })()
-                            : lead.assignedMembershipId
-                              ? "Atribuído"
-                              : "Disponível"}
-                        </td>
+                        <td><Badge variant="outline">{lead.statusLabel}</Badge></td>
+                        <td>{lead.assignedMembershipId ? "Atribuído" : "Disponível"}</td>
                         <td className="text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              navigate(
-                                buildV2Path(`/v2/leads/${lead.id}`, {
-                                  from: currentV2Path(),
-                                })
-                              )
-                            }
-                          >
+                          <Button size="sm" variant="outline" onClick={() => navigate(buildV2Path(`/v2/leads/${lead.id}`, { from: currentV2Path() }))}>
                             Abrir
                           </Button>
                         </td>
@@ -481,66 +290,38 @@ export default function V2Leads() {
                 </table>
               </DataTable>
               <div className="grid gap-2 md:hidden">
-                {list.data.items.map(lead => (
-                  <button
-                    key={lead.id}
-                    className="v2-lead-list-item flex w-full flex-col justify-between gap-3 rounded-lg border p-4 text-left hover:bg-muted/40"
-                    onClick={() =>
-                      navigate(
-                        buildV2Path(`/v2/leads/${lead.id}`, {
-                          from: currentV2Path(),
-                        })
-                      )
-                    }
-                  >
-                    {(() => {
-                      const presentation = operationalPresentation(
-                        lead.operational,
-                        list.data?.timezone ?? null
-                      );
-                      return (
-                        <>
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold">
-                                {lead.name || "Lead sem nome"}
-                              </p>
-                              <p className="mt-0.5 text-sm text-muted-foreground">
-                                {lead.phone || "Sem telefone"}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap justify-end gap-1.5">
-                              <Badge variant="outline">
-                                {lead.statusLabel}
-                              </Badge>
-                              {view === "mine" && presentation ? (
-                                <Badge variant={presentation.variant}>
-                                  {presentation.label}
-                                </Badge>
-                              ) : lead.assignedMembershipId ? (
-                                <Badge variant="secondary">Atribuído</Badge>
-                              ) : (
-                                <Badge>Disponível</Badge>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-end justify-between gap-3 text-sm text-muted-foreground">
-                            <span className="min-w-0 truncate">
-                              {lead.campaignName || "Sem campanha"} ·{" "}
-                              {lead.pdvName || "Sem PDV"}
-                              {view === "mine" && presentation?.detail
-                                ? ` · ${presentation.detail}`
-                                : ""}
-                            </span>
-                            <span className="shrink-0 font-medium text-primary">
-                              Abrir
-                            </span>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </button>
-                ))}
+              {list.data.items.map(lead => (
+              <button
+                key={lead.id}
+                className="v2-lead-list-item flex w-full flex-col justify-between gap-3 rounded-lg border p-4 text-left hover:bg-muted/40"
+                onClick={() =>
+                  navigate(
+                    buildV2Path(`/v2/leads/${lead.id}`, {
+                      from: currentV2Path(),
+                    })
+                  )
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{lead.name || "Lead sem nome"}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">{lead.phone || "Sem telefone"}</p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-1.5">
+                  <Badge variant="outline">{lead.statusLabel}</Badge>
+                  {lead.assignedMembershipId ? (
+                    <Badge variant="secondary">Atribuído</Badge>
+                  ) : (
+                    <Badge>Disponível</Badge>
+                  )}
+                  </div>
+                </div>
+                <div className="flex items-end justify-between gap-3 text-sm text-muted-foreground">
+                  <span className="min-w-0 truncate">{lead.campaignName || "Sem campanha"} · {lead.pdvName || "Sem PDV"}</span>
+                  <span className="shrink-0 font-medium text-primary">Abrir</span>
+                </div>
+              </button>
+              ))}
               </div>
             </>
           ) : (
