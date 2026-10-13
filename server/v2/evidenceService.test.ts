@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  EvidenceAttachmentUploadError,
+  EvidenceStorageUploadError,
   evidenceAuditMetadata,
   preparePrivateEvidence,
 } from "./evidenceService";
@@ -52,5 +54,43 @@ describe("V2 evidence audit metadata", () => {
     expect(puts).toEqual([staged.storageKey]);
     await staged.cleanup();
     expect(removed).toEqual([staged.storageKey]);
+  });
+
+  it("wraps only the storage write failure without exposing the provider response", async () => {
+    const providerError = new Error("char 'P' is not expected: Smithy details");
+    const storage: EvidenceStorage = {
+      put: async () => {
+        throw providerError;
+      },
+      getSignedUrl: async () => "https://example.invalid/signed",
+    };
+
+    const failure = await preparePrivateEvidence(
+      71,
+      {
+        fileName: "tentativa.png",
+        mimeType: "image/png",
+        base64: "iVBORw0KGgoA",
+      },
+      defaultAttemptGovernanceRule,
+      storage
+    ).catch(error => error);
+
+    expect(failure).toBeInstanceOf(EvidenceStorageUploadError);
+    expect(failure.message).not.toContain("Smithy");
+    expect(failure.message).not.toContain("char 'P'");
+    expect(failure.cause).toBe(providerError);
+  });
+
+  it("keeps the later-attachment message distinct from a technical storage cause", () => {
+    const raw = new Error("PutObjectCommand failed");
+    const failure = new EvidenceAttachmentUploadError(
+      new EvidenceStorageUploadError(raw)
+    );
+
+    expect(failure.message).toBe(
+      "Não foi possível enviar a evidência. A ação já foi registrada e continua disponível; tente anexar novamente."
+    );
+    expect(failure.message).not.toContain("PutObjectCommand");
   });
 });

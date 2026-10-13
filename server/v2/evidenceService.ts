@@ -42,6 +42,42 @@ export type PreparedPrivateEvidence = {
 };
 
 /**
+ * Identifies a failed private-storage write without exposing the provider's
+ * response to a caller. The original error remains available as `cause` for
+ * server-side diagnostics, including evidence_storage_upload_failed.
+ */
+export class EvidenceStorageUploadError extends Error {
+  constructor(cause: unknown) {
+    super("Falha ao enviar evidência ao storage", { cause });
+    this.name = "EvidenceStorageUploadError";
+  }
+}
+
+/** Safe message for an attachment added after its operational event exists. */
+export class EvidenceAttachmentUploadError extends Error {
+  constructor(cause: unknown) {
+    super(
+      "Não foi possível enviar a evidência. A ação já foi registrada e continua disponível; tente anexar novamente.",
+      { cause }
+    );
+    this.name = "EvidenceAttachmentUploadError";
+  }
+}
+
+async function putPrivateEvidence(
+  storage: EvidenceStorage,
+  storageKey: string,
+  bytes: Buffer,
+  mimeType: string
+) {
+  try {
+    await storage.put(storageKey, bytes, mimeType);
+  } catch (error) {
+    throw new EvidenceStorageUploadError(error);
+  }
+}
+
+/**
  * Places a validated object in private storage before its parent operational
  * event is committed. Callers must either persist it in the same operation or
  * invoke cleanup after a failed transaction.
@@ -61,7 +97,12 @@ export async function preparePrivateEvidence(
   const activeStorage = storage ?? getEvidenceStorage(storageProvider);
   const upload = validateEvidenceUpload(input, rule);
   const storageKey = createEvidenceStorageKey(partnerId);
-  await activeStorage.put(storageKey, upload.bytes, upload.mimeType);
+  await putPrivateEvidence(
+    activeStorage,
+    storageKey,
+    upload.bytes,
+    upload.mimeType
+  );
   return {
     storageProvider,
     storageKey,
@@ -219,7 +260,12 @@ export async function uploadLeadEvidence(
 
   let storageUploaded = false;
   try {
-    await activeStorage.put(storageKey, upload.bytes, upload.mimeType);
+    await putPrivateEvidence(
+      activeStorage,
+      storageKey,
+      upload.bytes,
+      upload.mimeType
+    );
     storageUploaded = true;
     await db.transaction(async tx => {
       const transactionDb = tx as unknown as V2Database;
@@ -290,6 +336,9 @@ export async function uploadLeadEvidence(
         .catch(() => undefined);
     }
     if (error instanceof EvidenceStorageConfigurationError) throw error;
+    if (error instanceof EvidenceStorageUploadError) {
+      throw new EvidenceAttachmentUploadError(error);
+    }
     throw new Error("Não foi possível enviar a evidência");
   }
 }

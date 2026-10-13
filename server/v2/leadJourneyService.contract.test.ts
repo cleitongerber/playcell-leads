@@ -113,6 +113,24 @@ describe("016.4 unified journey service contract", () => {
     expect(router).toContain(".optional(),");
   });
 
+  it("keeps failed staged uploads before attempt persistence and maps only storage failures safely", () => {
+    const attempt = commandSlice(
+      "export async function registerAttempt",
+      "export async function recordEffectiveContact"
+    );
+    const stageAt = attempt.indexOf("stagedEvidence.value = await preparePrivateEvidence");
+    const timelineAt = attempt.indexOf("const timelineEventId = await writeTimeline");
+
+    expect(stageAt).toBeGreaterThanOrEqual(0);
+    expect(timelineAt).toBeGreaterThan(stageAt);
+    expect(attempt).toContain('publicEvidenceUploadFailure(error, "attempt")');
+    expect(attempt).toContain("stagedEvidence.value?.cleanup()");
+    expect(service).toContain('"EVIDENCE_UPLOAD_FAILED"');
+    expect(service).toContain(
+      "A tentativa não foi registrada. Tente novamente em alguns instantes."
+    );
+  });
+
   it("persists an effective contact, result snapshot, governance and conversion atomically", () => {
     const contact = commandSlice(
       "export async function recordEffectiveContact",
@@ -134,6 +152,25 @@ describe("016.4 unified journey service contract", () => {
     expect(contact).toContain("assertConversionSource");
     expect(contact).toContain('type: "conversion_recorded"');
     expect(contact).not.toContain("firstContactAt");
+  });
+
+  it("keeps a failed staged treatment upload before treatment persistence and preserves non-storage domain errors", () => {
+    const contact = commandSlice(
+      "export async function recordEffectiveContact",
+      "async function assertAdministrativeLead"
+    );
+    const stageAt = contact.indexOf("stagedEvidence.value = await preparePrivateEvidence");
+    const timelineAt = contact.indexOf("const timelineEventId = await writeTimeline");
+
+    expect(stageAt).toBeGreaterThanOrEqual(0);
+    expect(timelineAt).toBeGreaterThan(stageAt);
+    expect(contact).toContain(
+      'publicEvidenceUploadFailure(error, "effective_contact")'
+    );
+    expect(service).toContain(
+      "A tratativa não foi registrada. Tente novamente em alguns instantes."
+    );
+    expect(service).toContain("if (!(error instanceof EvidenceStorageUploadError)) return error;");
   });
 
   it("uses per-command idempotency and CAS before state changes", () => {
@@ -169,5 +206,19 @@ describe("016.4 unified journey service contract", () => {
     expect(router).toContain("recordEffectiveContact: v2OperationalProcedure");
     expect(router).not.toContain("changeStatus: v2PartnerProcedure");
     expect(router).not.toContain("contact: v2PartnerProcedure");
+  });
+
+  it("keeps a later attachment failed without changing its original operational event", () => {
+    const uploadStart = evidence.indexOf("export async function uploadLeadEvidence");
+    const upload = evidence.slice(uploadStart);
+    const failedAt = upload.indexOf('set({ storageStatus: "failed" })');
+    const attachmentErrorAt = upload.indexOf("new EvidenceAttachmentUploadError(error)");
+
+    expect(failedAt).toBeGreaterThanOrEqual(0);
+    expect(attachmentErrorAt).toBeGreaterThan(failedAt);
+    expect(upload).toContain("EvidenceStorageUploadError");
+    expect(evidence).toContain(
+      "A ação já foi registrada e continua disponível; tente anexar novamente."
+    );
   });
 });

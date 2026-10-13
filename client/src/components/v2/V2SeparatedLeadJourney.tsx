@@ -427,7 +427,7 @@ function EvidenceAttachmentAction({
         showPickerButton={false}
         onUploaded={onUploaded}
         successMessage="Evidência anexada ao evento operacional."
-        failureMessage="Não foi possível enviar a evidência. A ação já foi registrada e continua pendente; tente novamente."
+        failureMessage="Não foi possível enviar a evidência. A ação já foi registrada e continua disponível; tente anexar novamente."
       />
     </div>
   );

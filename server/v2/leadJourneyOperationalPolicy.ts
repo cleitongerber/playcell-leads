@@ -18,7 +18,8 @@ export class LeadJourneyOperationError extends Error {
       | "ADMINISTRATIVE_STATUS_FORBIDDEN"
       | "LEAD_REOPEN_FORBIDDEN"
       | "INVALID_RESULT_CONFIGURATION"
-      | "EVIDENCE_REQUIRED",
+      | "EVIDENCE_REQUIRED"
+      | "EVIDENCE_UPLOAD_FAILED",
     message: string
   ) {
     super(message);

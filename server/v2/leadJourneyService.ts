@@ -67,6 +67,7 @@ import {
 import { writeV2Audit } from "./partnerService";
 import {
   evidenceAuditMetadata,
+  EvidenceStorageUploadError,
   preparePrivateEvidence,
   type PreparedPrivateEvidence,
 } from "./evidenceService";
@@ -93,6 +94,19 @@ type CommandOperation =
   | "record_effective_contact"
   | "change_administrative_status"
   | "reopen_lead";
+
+export function publicEvidenceUploadFailure(
+  error: unknown,
+  operation: "attempt" | "effective_contact"
+) {
+  if (!(error instanceof EvidenceStorageUploadError)) return error;
+  return new LeadJourneyOperationError(
+    "EVIDENCE_UPLOAD_FAILED",
+    operation === "attempt"
+      ? "Não foi possível enviar a evidência. A tentativa não foi registrada. Tente novamente em alguns instantes."
+      : "Não foi possível enviar a evidência. A tratativa não foi registrada. Tente novamente em alguns instantes."
+  );
+}
 
 type PendingRequirement = {
   kind: "note" | "follow_up" | "evidence";
@@ -1406,7 +1420,7 @@ export async function registerAttempt(
     return response;
   } catch (error) {
     await stagedEvidence.value?.cleanup().catch(() => undefined);
-    throw error;
+    throw publicEvidenceUploadFailure(error, "attempt");
   }
 }
 
@@ -1751,7 +1765,7 @@ export async function recordEffectiveContact(
     return response;
   } catch (error) {
     await stagedEvidence.value?.cleanup().catch(() => undefined);
-    throw error;
+    throw publicEvidenceUploadFailure(error, "effective_contact");
   }
 }
 

@@ -85,6 +85,13 @@ describe("016.4 unified lead journey experience contract", () => {
     expect(evidenceUploader).toContain("Enviar evidência");
   });
 
+  it("uses a safe attachment-specific message without exposing storage internals", () => {
+    expect(workspace).toContain(
+      "A ação já foi registrada e continua disponível; tente anexar novamente."
+    );
+    expect(workspace).not.toContain("continua pendente; tente novamente.");
+  });
+
   it("offers the same attempt evidence surface whether governance makes it optional or required", () => {
     const attemptDialog = workspace.slice(
       workspace.indexOf("open={attemptOpen}"),
