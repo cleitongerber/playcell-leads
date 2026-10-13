@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createEvidenceStorageKey,
+  evidenceStorageUploadDiagnostic,
   EvidenceStorageConfigurationError,
+  putS3EvidenceObject,
   readS3EvidenceConfiguration,
   resolveEvidenceStorageProvider,
   validateEvidenceUpload,
@@ -12,6 +14,15 @@ const pngBytes = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,
 ]);
 const pngBase64 = pngBytes.toString("base64");
+
+const s3Configuration = {
+  bucket: "private-evidence-bucket",
+  region: "us-east-2",
+  endpoint: "https://project.storage.supabase.co/storage/v1/s3?never=log",
+  forcePathStyle: true,
+  accessKeyId: "access-key-must-not-appear",
+  secretAccessKey: "secret-key-must-not-appear",
+};
 
 describe("V2 evidence upload validation", () => {
   it("accepts a supported file and records a checksum without trusting its name for storage", () => {
@@ -117,5 +128,101 @@ describe("V2 evidence upload validation", () => {
         V2_EVIDENCE_S3_SECRET_ACCESS_KEY: "test-secret-key",
       })
     ).toThrow(EvidenceStorageConfigurationError);
+  });
+
+  it("records a bounded, sanitized XML S3 error and keeps it failed", async () => {
+    const error = Object.assign(new Error("S3 upload failed"), {
+      name: "S3ServiceException",
+      code: "AccessDenied",
+      $metadata: {
+        httpStatusCode: 403,
+        requestId: "safe-request-id",
+        extendedRequestId: "safe-extended-request-id",
+      },
+      $response: {
+        statusCode: 403,
+        statusMessage: "Forbidden",
+        headers: {
+          "content-type": "application/xml",
+          "x-amz-request-id": "safe-request-id",
+          authorization: "Bearer must-never-appear",
+        },
+        body: Buffer.from("<Error><Code>AccessDenied</Code></Error>"),
+      },
+    });
+    const send = vi.fn().mockRejectedValue(error);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      putS3EvidenceObject(
+        { send },
+        s3Configuration,
+        "v2/evidences/7/object",
+        pngBytes,
+        "image/png"
+      )
+    ).rejects.toBe(error);
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(log).toHaveBeenCalledOnce();
+    const [event, diagnostic] = log.mock.calls[0] as [string, Record<string, unknown>];
+    expect(event).toBe("[evidence_storage_upload_failed]");
+    expect(diagnostic).toMatchObject({
+      event: "evidence_storage_upload_failed",
+      provider: "s3",
+      operation: "PutObject",
+      region: "us-east-2",
+      endpoint: "project.storage.supabase.co/storage/v1/s3",
+      forcePathStyle: true,
+      errorName: "S3ServiceException",
+      errorCode: "AccessDenied",
+      httpStatus: 403,
+      metadataHttpStatus: 403,
+      metadataRequestId: "safe-request-id",
+      responseBodyPrefix: "<Error><Code>AccessDenied</Code></Error>",
+    });
+    expect((diagnostic.headers as Record<string, string>)["content-type"]).toBe(
+      "application/xml"
+    );
+    expect(JSON.stringify(diagnostic)).not.toContain("must-never-appear");
+    expect(JSON.stringify(diagnostic)).not.toContain("private-evidence-bucket");
+    expect(JSON.stringify(diagnostic)).not.toContain("v2/evidences/7/object");
+    expect(JSON.stringify(diagnostic)).not.toContain(pngBase64);
+    log.mockRestore();
+  });
+
+  it("sanitizes a plain-text response without consuming unavailable stream bodies", async () => {
+    const body = `Permission denied Authorization: Bearer top-secret token=abc123 ${"A".repeat(500)}`;
+    const error = Object.assign(new Error("storage response"), {
+      name: "UnknownError",
+      $response: {
+        statusCode: 401,
+        headers: {
+          "content-type": "text/plain",
+          server: "storage-gateway",
+          cookie: "session=must-not-appear",
+        },
+        body,
+      },
+    });
+    const diagnostic = evidenceStorageUploadDiagnostic(error, s3Configuration);
+
+    expect(diagnostic).toMatchObject({
+      httpStatus: 401,
+      responseBodyPrefix: expect.stringContaining("Permission denied"),
+    });
+    expect(diagnostic.responseBodyPrefix?.length).toBeLessThanOrEqual(400);
+    expect(JSON.stringify(diagnostic)).not.toContain("top-secret");
+    expect(JSON.stringify(diagnostic)).not.toContain("abc123");
+    expect(JSON.stringify(diagnostic)).not.toContain("must-not-appear");
+
+    const streamDiagnostic = evidenceStorageUploadDiagnostic(
+      Object.assign(new Error("storage response"), {
+        $response: { statusCode: 502, body: { pipe: () => undefined } },
+      }),
+      s3Configuration
+    );
+    expect(streamDiagnostic.responseBodyUnavailable).toBe(true);
+    expect(streamDiagnostic.responseBodyPrefix).toBeUndefined();
   });
 });

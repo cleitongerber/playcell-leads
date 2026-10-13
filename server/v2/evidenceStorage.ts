@@ -55,6 +55,28 @@ type S3EvidenceConfiguration = {
   secretAccessKey: string;
 };
 
+type S3CommandSender = {
+  send(command: PutObjectCommand): Promise<unknown>;
+};
+
+type S3ErrorResponse = {
+  statusCode?: unknown;
+  statusMessage?: unknown;
+  headers?: unknown;
+  body?: unknown;
+};
+
+type S3DiagnosticError = {
+  name?: unknown;
+  code?: unknown;
+  $metadata?: {
+    httpStatusCode?: unknown;
+    requestId?: unknown;
+    extendedRequestId?: unknown;
+  };
+  $response?: S3ErrorResponse;
+};
+
 function setting(environment: NodeJS.ProcessEnv, key: string) {
   return environment[key]?.trim() ?? "";
 }
@@ -64,6 +86,175 @@ function booleanSetting(value: string) {
   if (value === "true") return true;
   if (value === "false") return false;
   throw new EvidenceStorageConfigurationError();
+}
+
+const EVIDENCE_STORAGE_RESPONSE_PREFIX_LIMIT = 400;
+const EVIDENCE_STORAGE_HEADER_VALUE_LIMIT = 160;
+
+function boundedText(value: unknown, maximum: number) {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
+  if (!normalized) return undefined;
+  return normalized.slice(0, maximum);
+}
+
+function sanitizeResponseText(value: string) {
+  const withoutUrls = value.replace(
+    /https?:\/\/[^\s"'<>]+/gi,
+    raw => {
+      try {
+        const parsed = new URL(raw);
+        return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+      } catch {
+        return "[url-redacted]";
+      }
+    }
+  );
+  return withoutUrls
+    .replace(
+      /\b(authorization|cookie|set-cookie|access[ _-]?key|secret|token|jwt|signature|x-amz-signature)\b\s*[:=]\s*(?:bearer\s+)?[^\s,;]+/gi,
+      "$1=[redacted]"
+    )
+    .replace(/data:[^\s,]+,[^\s]+/gi, "[data-redacted]")
+    .replace(/\b[A-Za-z0-9+/]{64,}={0,2}\b/g, "[base64-redacted]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email-redacted]")
+    .replace(/\+?\d[\d\s().-]{8,}\d/g, "[phone-redacted]");
+}
+
+function responseBodyPrefix(body: unknown) {
+  if (typeof body === "string") {
+    return boundedText(
+      sanitizeResponseText(body),
+      EVIDENCE_STORAGE_RESPONSE_PREFIX_LIMIT
+    );
+  }
+  if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
+    return boundedText(
+      sanitizeResponseText(Buffer.from(body).toString("utf8")),
+      EVIDENCE_STORAGE_RESPONSE_PREFIX_LIMIT
+    );
+  }
+  return undefined;
+}
+
+function allowedDiagnosticHeaders(headers: unknown) {
+  if (!headers || typeof headers !== "object") return undefined;
+  const source = headers as Record<string, unknown>;
+  const permitted = [
+    "content-type",
+    "server",
+    "x-request-id",
+    "x-amz-request-id",
+    "x-amz-id-2",
+    "cf-ray",
+  ];
+  const result: Record<string, string> = {};
+  for (const header of permitted) {
+    const matchingKey = Object.keys(source).find(
+      key => key.toLowerCase() === header
+    );
+    if (!matchingKey) continue;
+    const sanitized = boundedText(
+      sanitizeResponseText(String(source[matchingKey] ?? "")),
+      EVIDENCE_STORAGE_HEADER_VALUE_LIMIT
+    );
+    if (sanitized) result[header] = sanitized;
+  }
+  return Object.keys(result).length ? result : undefined;
+}
+
+function endpointDiagnostic(endpoint: string | undefined) {
+  if (!endpoint) return undefined;
+  try {
+    const parsed = new URL(endpoint);
+    return `${parsed.host}${parsed.pathname}`;
+  } catch {
+    return "[invalid-endpoint]";
+  }
+}
+
+function bucketDiagnostic(bucket: string) {
+  return `sha256:${createHash("sha256").update(bucket).digest("hex").slice(0, 16)}`;
+}
+
+/**
+ * S3 errors sometimes contain a parsed XML exception and sometimes a raw
+ * response. Keep this diagnostic deliberately narrow: it never logs the
+ * object key, bytes, original filename, credentials, or unallowlisted headers.
+ */
+export function evidenceStorageUploadDiagnostic(
+  error: unknown,
+  config: S3EvidenceConfiguration
+) {
+  const diagnosticError =
+    error && typeof error === "object" ? (error as S3DiagnosticError) : {};
+  const response = diagnosticError.$response;
+  const prefix = responseBodyPrefix(response?.body);
+  const headers = allowedDiagnosticHeaders(response?.headers);
+  const metadata = diagnosticError.$metadata;
+  return {
+    event: "evidence_storage_upload_failed",
+    observedAt: new Date().toISOString(),
+    provider: "s3",
+    operation: "PutObject",
+    bucketFingerprint: bucketDiagnostic(config.bucket),
+    region: config.region,
+    endpoint: endpointDiagnostic(config.endpoint),
+    forcePathStyle: config.forcePathStyle,
+    errorName:
+      typeof diagnosticError.name === "string"
+        ? diagnosticError.name
+        : "UnknownError",
+    errorCode:
+      typeof diagnosticError.code === "string" ||
+      typeof diagnosticError.code === "number"
+        ? diagnosticError.code
+        : undefined,
+    httpStatus:
+      typeof response?.statusCode === "number"
+        ? response.statusCode
+        : typeof metadata?.httpStatusCode === "number"
+          ? metadata.httpStatusCode
+          : undefined,
+    statusMessage:
+      typeof response?.statusMessage === "string"
+        ? boundedText(sanitizeResponseText(response.statusMessage), 120)
+        : undefined,
+    headers,
+    metadataHttpStatus:
+      typeof metadata?.httpStatusCode === "number"
+        ? metadata.httpStatusCode
+        : undefined,
+    metadataRequestId: boundedText(metadata?.requestId, 160),
+    metadataExtendedRequestId: boundedText(metadata?.extendedRequestId, 160),
+    responseBodyPrefix: prefix,
+    responseBodyUnavailable: Boolean(response) && !prefix,
+  };
+}
+
+export async function putS3EvidenceObject(
+  client: S3CommandSender,
+  config: S3EvidenceConfiguration,
+  key: string,
+  bytes: Buffer,
+  mimeType: string
+) {
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: config.bucket,
+        Key: key,
+        Body: bytes,
+        ContentType: mimeType,
+      })
+    );
+  } catch (error) {
+    console.error(
+      "[evidence_storage_upload_failed]",
+      evidenceStorageUploadDiagnostic(error, config)
+    );
+    throw error;
+  }
 }
 
 /**
@@ -132,14 +323,7 @@ function createS3EvidenceStorage(
   });
   return {
     async put(key, bytes, mimeType) {
-      await client.send(
-        new PutObjectCommand({
-          Bucket: config.bucket,
-          Key: key,
-          Body: bytes,
-          ContentType: mimeType,
-        })
-      );
+      await putS3EvidenceObject(client, config, key, bytes, mimeType);
     },
     getSignedUrl(key) {
       return getSignedUrl(
