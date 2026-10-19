@@ -31,6 +31,7 @@ import {
   users,
   userPartners,
   type CustomFieldType,
+  type DuplicateIdentifier,
   type DuplicateMatchStrategy,
   type DuplicatePolicy,
   type ImportBatchStatus,
@@ -41,10 +42,12 @@ import { parseImportCsv } from "./csvImport";
 import {
   canCreateImportForCampaign,
   defaultDuplicatePolicy,
-  duplicateIsMatch,
+  duplicateIdentityKeys,
+  evaluateDuplicateCandidates,
   mapImportRow,
   mappingFingerprint,
   normalizeEmail,
+  resolveDuplicateRule,
   normalizeSafeUpdateFields,
   validateImportMappings,
   type ImportCustomField,
@@ -80,6 +83,8 @@ export type ImportPolicyInput = {
   policy: DuplicatePolicy;
   matchStrategy: DuplicateMatchStrategy;
   safeUpdateFields?: string[] | null;
+  duplicateIdentifiers?: DuplicateIdentifier[] | null;
+  duplicateMatchVersion?: "any_v2" | null;
 };
 
 export type ImportValidationInput = {
@@ -168,6 +173,9 @@ function parseMappedRow(value: unknown): MappedStorageRow | null {
     email: typeof row.email === "string" ? row.email : null,
     normalizedEmail:
       typeof row.normalizedEmail === "string" ? row.normalizedEmail : null,
+    cpf: typeof row.cpf === "string" ? row.cpf : null,
+    normalizedCpf:
+      typeof row.normalizedCpf === "string" ? row.normalizedCpf : null,
     sourceValue: null,
     pdvValue: null,
     sourceId: typeof row.sourceId === "number" ? row.sourceId : null,
@@ -189,6 +197,8 @@ function outputBatch(batch: DbBatch) {
     headers: readStringArray(batch.headersJson),
     duplicatePolicy: batch.duplicatePolicy,
     duplicateMatchStrategy: batch.duplicateMatchStrategy,
+    duplicateIdentifiers: readStringArray(batch.duplicateIdentifiers),
+    duplicateMatchVersion: batch.duplicateMatchVersion,
     safeUpdateFields: normalizeSafeUpdateFields(batch.safeUpdateFields),
     totalRows: batch.totalRows,
     validRows: batch.validRows,
@@ -378,6 +388,13 @@ async function resolveImportPolicy(
     policy: source.policy,
     matchStrategy: source.matchStrategy,
     safeUpdateFields: normalizeSafeUpdateFields(source.safeUpdateFields),
+    duplicateIdentifiers: readStringArray(source.duplicateIdentifiers),
+    duplicateMatchVersion: source.duplicateMatchVersion,
+    rule: resolveDuplicateRule({
+      matchStrategy: source.matchStrategy,
+      duplicateIdentifiers: source.duplicateIdentifiers,
+      duplicateMatchVersion: source.duplicateMatchVersion,
+    }),
     source: campaignPolicy[0] ? ("campaign" as const) : ("partner" as const),
   };
 }
@@ -886,6 +903,10 @@ export async function createImportDraft(
       headersJson: parsed.headers,
       duplicatePolicy: policy.policy,
       duplicateMatchStrategy: policy.matchStrategy,
+      duplicateIdentifiers:
+        policy.rule.version === "any_v2" ? policy.rule.identifiers : null,
+      duplicateMatchVersion:
+        policy.rule.version === "any_v2" ? policy.rule.version : null,
       safeUpdateFields: policy.safeUpdateFields,
       totalRows: parsed.rows.length,
       status: "draft",
@@ -923,7 +944,8 @@ export async function createImportDraft(
 async function findDuplicates(
   db: V2Database,
   partnerId: number,
-  rows: Array<{ mapped: MappedStorageRow }>
+  rows: Array<{ mapped: MappedStorageRow }>,
+  identifiers: readonly DuplicateIdentifier[]
 ) {
   const phones = Array.from(
     new Set(
@@ -935,18 +957,29 @@ async function findDuplicates(
       rows.map(row => row.mapped.normalizedEmail).filter(Boolean) as string[]
     )
   );
-  if (!phones.length && !emails.length) return [];
+  const cpfs = Array.from(
+    new Set(
+      rows.map(row => row.mapped.normalizedCpf).filter(Boolean) as string[]
+    )
+  );
+  if (!phones.length && !emails.length && !cpfs.length) return [];
   const matches = [];
-  if (phones.length || emails.length) {
+  if (phones.length || emails.length || cpfs.length) {
     const clauses = [];
-    if (phones.length) clauses.push(inArray(leads.normalizedPhone, phones));
-    if (emails.length) clauses.push(inArray(leads.email, emails));
+    if (identifiers.includes("phone") && phones.length)
+      clauses.push(inArray(leads.normalizedPhone, phones));
+    if (identifiers.includes("email") && emails.length)
+      clauses.push(inArray(leads.email, emails));
+    if (identifiers.includes("cpf") && cpfs.length)
+      clauses.push(inArray(leads.normalizedCpf, cpfs));
+    if (!clauses.length) return [];
     matches.push(
       ...(await db
         .select({
           id: leads.id,
           normalizedPhone: leads.normalizedPhone,
-          email: leads.email,
+          normalizedEmail: leads.email,
+          normalizedCpf: leads.normalizedCpf,
         })
         .from(leads)
         .where(
@@ -959,20 +992,6 @@ async function findDuplicates(
     );
   }
   return matches;
-}
-
-function selectDuplicate(
-  mapped: MappedStorageRow,
-  candidates: Array<{
-    id: number;
-    normalizedPhone: string | null;
-    email: string | null;
-  }>,
-  strategy: DuplicateMatchStrategy
-) {
-  return candidates.find(candidate =>
-    duplicateIsMatch(strategy, mapped, candidate)
-  );
 }
 
 export async function validateImportBatch(
@@ -1038,7 +1057,9 @@ export async function validateImportBatch(
         targetPdvId: null,
         normalizedPhone: null,
         normalizedEmail: null,
+        normalizedCpf: null,
         duplicateLeadId: null,
+        duplicateReasonCodes: null,
         status: "staged",
         processedAt: null,
       })
@@ -1105,7 +1126,8 @@ export async function validateImportBatch(
     const candidates = await findDuplicates(
       db,
       context.partnerId,
-      prepared.filter(item => !item.issues.length && item.mapped.pdvId)
+      prepared.filter(item => !item.issues.length && item.mapped.pdvId),
+      policy.rule.identifiers
     );
     const changes = [] as Array<{
       id: number;
@@ -1113,35 +1135,62 @@ export async function validateImportBatch(
       targetPdvId: number | null;
       normalizedPhone: string | null;
       normalizedEmail: string | null;
+      normalizedCpf: string | null;
       duplicateLeadId: number | null;
+      duplicateReasonCodes: string[] | null;
       status: ImportRowStatus;
       issues: Array<{ code: string; fieldKey: string | null; details: string }>;
     }>;
     for (const item of prepared) {
       const issues = [...item.issues];
       let duplicateLeadId: number | null = null;
+      let duplicateReasonCodes: string[] | null = null;
       if (!issues.length) {
-        const duplicate = selectDuplicate(
+        const duplicate = evaluateDuplicateCandidates(
+          policy.rule,
           item.mapped,
-          candidates,
-          policy.matchStrategy
+          candidates
         );
-        const internalKey = `${item.mapped.normalizedPhone ?? ""}|${item.mapped.normalizedEmail ?? ""}`;
-        const hasIdentity = Boolean(
-          item.mapped.normalizedPhone || item.mapped.normalizedEmail
+        const internalKeys = duplicateIdentityKeys(policy.rule, item.mapped);
+        const repeatedInternalKeys = internalKeys.filter(key =>
+          seenKeys.has(key)
         );
-        const inBatchDuplicate = hasIdentity && seenKeys.has(internalKey);
-        if (hasIdentity) seenKeys.add(internalKey);
-        if (duplicate || inBatchDuplicate) {
-          duplicateLeadId = duplicate?.id ?? null;
+        const inBatchDuplicate = repeatedInternalKeys.length > 0;
+        internalKeys.forEach(key => seenKeys.add(key));
+        if (duplicate.isDuplicate || inBatchDuplicate) {
+          duplicateLeadId = duplicate.duplicateLeadId;
+          const inBatchReasonCodes = repeatedInternalKeys.flatMap(key => {
+            if (key.startsWith("phone_and_email:"))
+              return ["duplicate_phone", "duplicate_email"];
+            const identifier = key.split(":", 1)[0];
+            return identifier === "cpf"
+              ? ["duplicate_cpf"]
+              : identifier === "email"
+                ? ["duplicate_email"]
+                : ["duplicate_phone"];
+          });
+          const reasonCodes = duplicate.identityConflict
+            ? ["identity_conflict", ...duplicate.reasons]
+            : Array.from(
+                new Set([...duplicate.reasons, ...inBatchReasonCodes])
+              );
+          duplicateReasonCodes = reasonCodes.length
+            ? reasonCodes
+            : ["duplicate_in_batch"];
           issues.push({
-            code: inBatchDuplicate
-              ? "duplicate_in_batch"
-              : "duplicate_possible",
-            fieldKey: duplicate ? "phone" : null,
-            details: inBatchDuplicate
-              ? "A linha repete uma identificação já presente neste arquivo."
-              : "Foi encontrada uma possível duplicidade conforme a política atual.",
+            code: duplicateReasonCodes[0],
+            fieldKey: duplicateReasonCodes.includes("duplicate_cpf")
+              ? "cpf"
+              : duplicateReasonCodes.includes("duplicate_email")
+                ? "email"
+                : duplicateReasonCodes.includes("duplicate_phone")
+                  ? "phone"
+                  : null,
+            details: duplicate.identityConflict
+              ? "Identificadores apontam para leads diferentes. Nenhum lead será atualizado."
+              : inBatchDuplicate
+                ? "A linha repete uma identificação já presente neste arquivo."
+                : "Foi encontrada uma possível duplicidade conforme a política atual.",
           });
         }
       }
@@ -1161,7 +1210,9 @@ export async function validateImportBatch(
         targetPdvId: isInvalid ? null : item.mapped.pdvId,
         normalizedPhone: isInvalid ? null : item.mapped.normalizedPhone,
         normalizedEmail: isInvalid ? null : item.mapped.normalizedEmail,
+        normalizedCpf: isInvalid ? null : item.mapped.normalizedCpf,
         duplicateLeadId,
+        duplicateReasonCodes: isInvalid ? null : duplicateReasonCodes,
         status,
         issues,
       });
@@ -1175,7 +1226,9 @@ export async function validateImportBatch(
             targetPdvId: change.targetPdvId,
             normalizedPhone: change.normalizedPhone,
             normalizedEmail: change.normalizedEmail,
+            normalizedCpf: change.normalizedCpf,
             duplicateLeadId: change.duplicateLeadId,
+            duplicateReasonCodes: change.duplicateReasonCodes,
             status: change.status,
           })
           .where(
@@ -1206,6 +1259,10 @@ export async function validateImportBatch(
         templateVersionId,
         duplicatePolicy: policy.policy,
         duplicateMatchStrategy: policy.matchStrategy,
+        duplicateIdentifiers:
+          policy.rule.version === "any_v2" ? policy.rule.identifiers : null,
+        duplicateMatchVersion:
+          policy.rule.version === "any_v2" ? policy.rule.version : null,
         safeUpdateFields: policy.safeUpdateFields,
         validRows,
         invalidRows,
@@ -1268,6 +1325,7 @@ async function insertImportedLead(
     name: mapped.name,
     phone: mapped.phone,
     normalizedPhone: mapped.normalizedPhone,
+    normalizedCpf: mapped.normalizedCpf,
     email: mapped.email,
     customData: mapped.customData,
     receivedAt: mapped.receivedAt ? new Date(mapped.receivedAt) : new Date(),
@@ -1327,6 +1385,14 @@ async function updateLeadSafely(
   if (safe.has("email") && mapped.email && mapped.email !== existing.email) {
     update.email = mapped.email;
     changedFields.push("email");
+  }
+  if (
+    safe.has("normalizedCpf") &&
+    mapped.normalizedCpf &&
+    mapped.normalizedCpf !== existing.normalizedCpf
+  ) {
+    update.normalizedCpf = mapped.normalizedCpf;
+    changedFields.push("normalizedCpf");
   }
   if (
     safe.has("sourceId") &&
@@ -1591,7 +1657,27 @@ export async function getImportBatch(context: PartnerContext, batchId: number) {
   assertImportOperator(context);
   const db = await getV2Db();
   const { batch } = await getBatchInScope(db, context, batchId);
-  return outputBatch(batch);
+  const rows = await db
+    .select({ reasons: leadImportRows.duplicateReasonCodes })
+    .from(leadImportRows)
+    .where(
+      and(
+        eq(leadImportRows.partnerId, context.partnerId),
+        eq(leadImportRows.batchId, batch.id),
+        eq(leadImportRows.status, "duplicate")
+      )
+    );
+  const countReason = (reason: string) =>
+    rows.filter(row => readStringArray(row.reasons).includes(reason)).length;
+  return {
+    ...outputBatch(batch),
+    duplicateSummary: {
+      duplicateByPhone: countReason("duplicate_phone"),
+      duplicateByCpf: countReason("duplicate_cpf"),
+      duplicateByEmail: countReason("duplicate_email"),
+      identityConflicts: countReason("identity_conflict"),
+    },
+  };
 }
 
 export async function listImportPreviewRows(
@@ -1613,6 +1699,7 @@ export async function listImportPreviewRows(
         status: leadImportRows.status,
         mappedDataJson: leadImportRows.mappedDataJson,
         duplicateLeadId: leadImportRows.duplicateLeadId,
+        duplicateReasonCodes: leadImportRows.duplicateReasonCodes,
       })
       .from(leadImportRows)
       .where(where)
@@ -1626,6 +1713,7 @@ export async function listImportPreviewRows(
       ...item,
       // Only mapped output (not the raw CSV) is exposed in the preview.
       mappedData: item.mappedDataJson,
+      duplicateReasonCodes: readStringArray(item.duplicateReasonCodes),
     })),
     total: Number(totalRows[0]?.total ?? 0),
     page: Math.max(input.page, 1),
@@ -1778,19 +1866,33 @@ export async function setPartnerImportPolicy(
 ) {
   assertPartnerAdmin(context);
   const db = await getV2Db();
-  const safeUpdateFields = normalizeSafeUpdateFields(input.safeUpdateFields);
+  const isV2Rule =
+    input.duplicateMatchVersion === "any_v2" &&
+    Boolean(input.duplicateIdentifiers?.length);
+  const safeUpdateFields = Array.from(
+    new Set([
+      ...normalizeSafeUpdateFields(input.safeUpdateFields),
+      ...(isV2Rule && input.duplicateIdentifiers?.includes("cpf")
+        ? ["normalizedCpf"]
+        : []),
+    ])
+  );
   await db
     .insert(partnerImportPolicies)
     .values({
       partnerId: context.partnerId,
       policy: input.policy,
       matchStrategy: input.matchStrategy,
+      duplicateIdentifiers: isV2Rule ? input.duplicateIdentifiers : null,
+      duplicateMatchVersion: isV2Rule ? "any_v2" : null,
       safeUpdateFields,
     })
     .onDuplicateKeyUpdate({
       set: {
         policy: input.policy,
         matchStrategy: input.matchStrategy,
+        duplicateIdentifiers: isV2Rule ? input.duplicateIdentifiers : null,
+        duplicateMatchVersion: isV2Rule ? "any_v2" : null,
         safeUpdateFields,
         updatedAt: new Date(),
       },
@@ -1843,7 +1945,17 @@ export async function setCampaignImportPolicy(
     });
     return;
   }
-  const safeUpdateFields = normalizeSafeUpdateFields(input.safeUpdateFields);
+  const isV2Rule =
+    input.duplicateMatchVersion === "any_v2" &&
+    Boolean(input.duplicateIdentifiers?.length);
+  const safeUpdateFields = Array.from(
+    new Set([
+      ...normalizeSafeUpdateFields(input.safeUpdateFields),
+      ...(isV2Rule && input.duplicateIdentifiers?.includes("cpf")
+        ? ["normalizedCpf"]
+        : []),
+    ])
+  );
   await db
     .insert(campaignImportPolicies)
     .values({
@@ -1851,12 +1963,16 @@ export async function setCampaignImportPolicy(
       campaignId,
       policy: input.policy,
       matchStrategy: input.matchStrategy,
+      duplicateIdentifiers: isV2Rule ? input.duplicateIdentifiers : null,
+      duplicateMatchVersion: isV2Rule ? "any_v2" : null,
       safeUpdateFields,
     })
     .onDuplicateKeyUpdate({
       set: {
         policy: input.policy,
         matchStrategy: input.matchStrategy,
+        duplicateIdentifiers: isV2Rule ? input.duplicateIdentifiers : null,
+        duplicateMatchVersion: isV2Rule ? "any_v2" : null,
         safeUpdateFields,
         updatedAt: new Date(),
       },

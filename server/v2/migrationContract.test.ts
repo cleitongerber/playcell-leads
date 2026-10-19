@@ -252,6 +252,41 @@ describe("V2 migration tenant-key contract", () => {
     expect(renderBlueprint).not.toContain("db:push");
   });
 
+  it("adds extensible import identifiers incrementally without backfilling lead data", () => {
+    const migration = readFileSync(
+      resolve(
+        process.cwd(),
+        "drizzle-v2/0018_v2_extensible_import_deduplication.sql"
+      ),
+      "utf8"
+    );
+    expect(migration).toContain("ADD `normalizedCpf` varchar(11)");
+    expect(migration).toContain("leads_partner_normalized_cpf_idx");
+    expect(migration).toContain("ADD `duplicateIdentifiers` json");
+    expect(migration).toContain("ADD `duplicateReasonCodes` json");
+    expect(migration).not.toMatch(/\bUPDATE\b/i);
+    expect(migration).not.toMatch(/\bINSERT\b/i);
+    expect(migration).not.toMatch(/\bDELETE\b/i);
+    expect(migration).not.toMatch(/\bDROP\b/i);
+    expect(
+      getTableConfig(leads).columns.some(
+        column => column.name === "normalizedCpf"
+      )
+    ).toBe(true);
+    expect(
+      getTableConfig(leads).indexes.some(
+        index =>
+          index.config.name === "leads_partner_normalized_cpf_idx" &&
+          !index.config.unique
+      )
+    ).toBe(true);
+    const journal = readFileSync(
+      resolve(process.cwd(), "drizzle-v2/meta/_journal.json"),
+      "utf8"
+    );
+    expect(journal).toContain("0018_v2_extensible_import_deduplication");
+  });
+
   it("enables the separated journey only for existing pre-operational partners", () => {
     const migration = readFileSync(
       resolve(

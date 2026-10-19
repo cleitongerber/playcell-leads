@@ -3,11 +3,17 @@ import {
   canCreateImportForCampaign,
   claimImportBatch,
   duplicateIsMatch,
+  duplicateIdentityKeys,
+  duplicateReasons,
+  evaluateDuplicateCandidates,
+  isValidCpf,
   mapImportRow,
+  normalizeCpf,
   normalizeImportBoolean,
   normalizeImportDate,
   normalizeImportNumber,
   normalizeSafeUpdateFields,
+  resolveDuplicateRule,
   validateImportMappings,
 } from "./importDomain";
 
@@ -142,6 +148,165 @@ describe("V2 configurable import domain", () => {
     ).toBe(false);
     expect(claimImportBatch("validated")).toBe("processing");
     expect(claimImportBatch("completed")).toBe("completed");
+  });
+
+  it("normalizes and validates CPF as text without losing leading zeroes", () => {
+    expect(normalizeCpf("012.345.678-90")).toBe("01234567890");
+    expect(normalizeCpf("   ")).toBeNull();
+    expect(normalizeCpf("CPF 529.982.247-25")).toBeNull();
+    expect(isValidCpf("52998224725")).toBe(true);
+    expect(isValidCpf("11111111111")).toBe(false);
+    expect(isValidCpf("52998224724")).toBe(false);
+    const mapped = mapImportRow(
+      { Nome: "Ana", Telefone: "47999999999", CPF: "012.345.678-90" },
+      [
+        {
+          sourceHeader: "Nome",
+          targetKind: "core",
+          targetKey: "name",
+          valueType: "text",
+          isRequired: true,
+        },
+        {
+          sourceHeader: "Telefone",
+          targetKind: "core",
+          targetKey: "phone",
+          valueType: "text",
+          isRequired: true,
+        },
+        {
+          sourceHeader: "CPF",
+          targetKind: "core",
+          targetKey: "cpf",
+          valueType: "text",
+          isRequired: true,
+        },
+      ],
+      []
+    );
+    expect(mapped.mapped.normalizedCpf).toBe("01234567890");
+    expect(mapped.issues.map(issue => issue.code)).not.toContain("invalid_cpf");
+    expect(
+      mapImportRow(
+        { Nome: "Ana", Telefone: "47999999999", CPF: "111.111.111-11" },
+        [
+          {
+            sourceHeader: "Nome",
+            targetKind: "core",
+            targetKey: "name",
+            valueType: "text",
+            isRequired: true,
+          },
+          {
+            sourceHeader: "Telefone",
+            targetKind: "core",
+            targetKey: "phone",
+            valueType: "text",
+            isRequired: true,
+          },
+          {
+            sourceHeader: "CPF",
+            targetKind: "core",
+            targetKey: "cpf",
+            valueType: "text",
+            isRequired: true,
+          },
+        ],
+        []
+      ).issues.map(issue => issue.code)
+    ).toContain("invalid_cpf");
+  });
+
+  it("uses V2 ANY identity keys consistently for external and in-file duplicates", () => {
+    const rule = resolveDuplicateRule({
+      matchStrategy: "phone_or_email",
+      duplicateIdentifiers: ["phone", "cpf"],
+      duplicateMatchVersion: "any_v2",
+    });
+    expect(rule).toMatchObject({
+      version: "any_v2",
+      identifiers: ["phone", "cpf"],
+    });
+    expect(
+      duplicateReasons(
+        rule,
+        {
+          normalizedPhone: "47999999999",
+          normalizedEmail: null,
+          normalizedCpf: "52998224725",
+        },
+        {
+          normalizedPhone: "47000000000",
+          normalizedEmail: null,
+          normalizedCpf: "52998224725",
+        }
+      )
+    ).toEqual(["duplicate_cpf"]);
+    expect(
+      duplicateIdentityKeys(rule, {
+        normalizedPhone: "47999999999",
+        normalizedEmail: null,
+        normalizedCpf: "52998224725",
+      })
+    ).toEqual(["phone:47999999999", "cpf:52998224725"]);
+  });
+
+  it("retains the historical phone_and_email behavior instead of silently becoming ANY", () => {
+    const rule = resolveDuplicateRule({ matchStrategy: "phone_and_email" });
+    const input = {
+      normalizedPhone: "47999999999",
+      normalizedEmail: "ana@example.com",
+      normalizedCpf: null,
+    };
+    expect(
+      duplicateReasons(rule, input, {
+        normalizedPhone: "47999999999",
+        normalizedEmail: "other@example.com",
+        normalizedCpf: null,
+      })
+    ).toEqual([]);
+    expect(duplicateReasons(rule, input, { ...input })).toEqual([
+      "duplicate_phone",
+      "duplicate_email",
+    ]);
+  });
+
+  it("flags an identity conflict when selected identifiers resolve to different leads", () => {
+    const rule = resolveDuplicateRule({
+      matchStrategy: "phone_or_email",
+      duplicateIdentifiers: ["phone", "cpf"],
+      duplicateMatchVersion: "any_v2",
+    });
+    const result = evaluateDuplicateCandidates(
+      rule,
+      {
+        normalizedPhone: "47999999999",
+        normalizedEmail: null,
+        normalizedCpf: "52998224725",
+      },
+      [
+        {
+          id: 10,
+          normalizedPhone: "47999999999",
+          normalizedEmail: null,
+          normalizedCpf: null,
+        },
+        {
+          id: 11,
+          normalizedPhone: null,
+          normalizedEmail: null,
+          normalizedCpf: "52998224725",
+        },
+      ]
+    );
+    expect(result).toMatchObject({
+      isDuplicate: true,
+      identityConflict: true,
+      duplicateLeadId: null,
+    });
+    expect(result.reasons).toEqual(
+      expect.arrayContaining(["duplicate_phone", "duplicate_cpf"])
+    );
   });
 
   it("keeps template mapping fingerprints deterministic and validates select fields", async () => {

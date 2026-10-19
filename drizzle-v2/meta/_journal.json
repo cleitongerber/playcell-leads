@@ -127,6 +127,13 @@
       "when": 1791745200000,
       "tag": "0017_v2_sales_script_introduction_category",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1792453063309,
+      "tag": "0018_v2_extensible_import_deduplication",
+      "breakpoints": true
     }
   ]
 }

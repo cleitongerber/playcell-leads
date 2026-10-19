@@ -148,6 +148,7 @@ export const duplicateMatchStrategy = [
   "phone_or_email",
   "phone_and_email",
 ] as const;
+export const duplicateIdentifier = ["phone", "cpf", "email"] as const;
 export const importFieldTargetKind = ["core", "custom"] as const;
 export const importValueType = ["text", "number", "date", "boolean"] as const;
 
@@ -659,6 +660,9 @@ export const leads = mysqlTable(
     name: varchar("name", { length: 200 }),
     phone: varchar("phone", { length: 64 }),
     normalizedPhone: varchar("normalizedPhone", { length: 32 }),
+    // Dedicated textual identity for import deduplication. The display value
+    // remains in customData so existing custom-field history is untouched.
+    normalizedCpf: varchar("normalizedCpf", { length: 11 }),
     email: varchar("email", { length: 320 }),
     customData: json("customData"),
     receivedAt: timestamp("receivedAt").notNull().defaultNow(),
@@ -727,6 +731,10 @@ export const leads = mysqlTable(
     partnerPhoneIdx: index("leads_partner_normalized_phone_idx").on(
       table.partnerId,
       table.normalizedPhone
+    ),
+    partnerCpfIdx: index("leads_partner_normalized_cpf_idx").on(
+      table.partnerId,
+      table.normalizedCpf
     ),
     partnerFirstAttemptIdx: index("leads_partner_first_attempt_idx").on(
       table.partnerId,
@@ -1570,6 +1578,8 @@ export const partnerImportPolicies = mysqlTable(
     matchStrategy: mysqlEnum("matchStrategy", duplicateMatchStrategy)
       .notNull()
       .default("phone_or_email"),
+    duplicateIdentifiers: json("duplicateIdentifiers"),
+    duplicateMatchVersion: varchar("duplicateMatchVersion", { length: 32 }),
     safeUpdateFields: json("safeUpdateFields"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
@@ -1596,6 +1606,8 @@ export const campaignImportPolicies = mysqlTable(
     matchStrategy: mysqlEnum("matchStrategy", duplicateMatchStrategy)
       .notNull()
       .default("phone_or_email"),
+    duplicateIdentifiers: json("duplicateIdentifiers"),
+    duplicateMatchVersion: varchar("duplicateMatchVersion", { length: 32 }),
     safeUpdateFields: json("safeUpdateFields"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
@@ -1640,6 +1652,8 @@ export const leadImportBatches = mysqlTable(
     )
       .notNull()
       .default("phone_or_email"),
+    duplicateIdentifiers: json("duplicateIdentifiers"),
+    duplicateMatchVersion: varchar("duplicateMatchVersion", { length: 32 }),
     safeUpdateFields: json("safeUpdateFields"),
     totalRows: int("totalRows").notNull().default(0),
     validRows: int("validRows").notNull().default(0),
@@ -1708,7 +1722,9 @@ export const leadImportRows = mysqlTable(
     targetPdvId: int("targetPdvId"),
     normalizedPhone: varchar("normalizedPhone", { length: 32 }),
     normalizedEmail: varchar("normalizedEmail", { length: 320 }),
+    normalizedCpf: varchar("normalizedCpf", { length: 11 }),
     duplicateLeadId: int("duplicateLeadId"),
+    duplicateReasonCodes: json("duplicateReasonCodes"),
     status: mysqlEnum("status", importRowStatus).notNull().default("staged"),
     processedAt: timestamp("processedAt"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -1850,5 +1866,6 @@ export type ImportBatchStatus = (typeof importBatchStatus)[number];
 export type ImportRowStatus = (typeof importRowStatus)[number];
 export type DuplicatePolicy = (typeof duplicatePolicy)[number];
 export type DuplicateMatchStrategy = (typeof duplicateMatchStrategy)[number];
+export type DuplicateIdentifier = (typeof duplicateIdentifier)[number];
 export type MembershipRole = (typeof membershipRole)[number];
 export type SystemRole = (typeof systemRole)[number];

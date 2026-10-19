@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type {
   CustomFieldType,
+  DuplicateIdentifier,
   DuplicateMatchStrategy,
   DuplicatePolicy,
 } from "../../drizzle-v2/schema";
@@ -9,6 +10,7 @@ export const coreImportKeys = [
   "name",
   "phone",
   "email",
+  "cpf",
   "source",
   "receivedAt",
   "pdv",
@@ -45,6 +47,8 @@ export type MappedLeadRow = {
   normalizedPhone: string | null;
   email: string | null;
   normalizedEmail: string | null;
+  cpf: string | null;
+  normalizedCpf: string | null;
   sourceValue: string | null;
   pdvValue: string | null;
   receivedAt: Date | null;
@@ -57,12 +61,39 @@ const safeUpdateFieldSet = new Set([
   "email",
   "sourceId",
   "customData",
+  "normalizedCpf",
 ]);
 
 export const defaultDuplicatePolicy = {
   policy: "reject" as DuplicatePolicy,
   matchStrategy: "phone_or_email" as DuplicateMatchStrategy,
-  safeUpdateFields: ["name", "phone", "email", "sourceId", "customData"],
+  safeUpdateFields: [
+    "name",
+    "phone",
+    "email",
+    "sourceId",
+    "customData",
+    "normalizedCpf",
+  ],
+};
+
+export type DuplicateMatchVersion = "legacy_v1" | "any_v2";
+export type DuplicateReasonCode =
+  | "duplicate_phone"
+  | "duplicate_email"
+  | "duplicate_cpf"
+  | "duplicate_multiple"
+  | "identity_conflict";
+
+export type DuplicateIdentity = Pick<
+  MappedLeadRow,
+  "normalizedPhone" | "normalizedEmail" | "normalizedCpf"
+>;
+
+export type ResolvedDuplicateRule = {
+  identifiers: DuplicateIdentifier[];
+  version: DuplicateMatchVersion;
+  legacyMatchStrategy: DuplicateMatchStrategy | null;
 };
 
 function text(value: unknown) {
@@ -77,6 +108,82 @@ export function normalizePhone(value: string | null | undefined) {
 export function normalizeEmail(value: string | null | undefined) {
   const normalized = value?.trim().toLocaleLowerCase("en-US") ?? "";
   return normalized || null;
+}
+
+/** Normalization is deliberately separate from CPF checksum validation. */
+export function normalizeCpf(value: string | null | undefined) {
+  if (value && /[^\d.\-\s]/.test(value)) return null;
+  const digits = value?.replace(/\D/g, "") ?? "";
+  return digits || null;
+}
+
+export function isValidCpf(normalizedCpf: string) {
+  if (!/^\d{11}$/.test(normalizedCpf)) return false;
+  if (/^(\d)\1{10}$/.test(normalizedCpf)) return false;
+  const digitAt = (length: number) => {
+    const total = normalizedCpf
+      .slice(0, length - 1)
+      .split("")
+      .reduce((sum, digit, index) => sum + Number(digit) * (length - index), 0);
+    const remainder = (total * 10) % 11;
+    return remainder === 10 ? 0 : remainder;
+  };
+  return (
+    digitAt(10) === Number(normalizedCpf[9]) &&
+    digitAt(11) === Number(normalizedCpf[10])
+  );
+}
+
+function normalizeDuplicateIdentifiers(value: unknown): DuplicateIdentifier[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value.filter(
+        (identifier): identifier is DuplicateIdentifier =>
+          identifier === "phone" ||
+          identifier === "cpf" ||
+          identifier === "email"
+      )
+    )
+  );
+}
+
+export function resolveDuplicateRule(input: {
+  matchStrategy: DuplicateMatchStrategy;
+  duplicateIdentifiers?: unknown;
+  duplicateMatchVersion?: unknown;
+}): ResolvedDuplicateRule {
+  const identifiers = normalizeDuplicateIdentifiers(input.duplicateIdentifiers);
+  if (input.duplicateMatchVersion === "any_v2" && identifiers.length) {
+    return {
+      identifiers,
+      version: "any_v2",
+      legacyMatchStrategy: null,
+    };
+  }
+  if (input.matchStrategy === "phone")
+    return {
+      identifiers: ["phone"],
+      version: "legacy_v1",
+      legacyMatchStrategy: "phone",
+    };
+  if (input.matchStrategy === "email")
+    return {
+      identifiers: ["email"],
+      version: "legacy_v1",
+      legacyMatchStrategy: "email",
+    };
+  if (input.matchStrategy === "phone_and_email")
+    return {
+      identifiers: ["phone", "email"],
+      version: "legacy_v1",
+      legacyMatchStrategy: "phone_and_email",
+    };
+  return {
+    identifiers: ["phone", "email"],
+    version: "legacy_v1",
+    legacyMatchStrategy: "phone_or_email",
+  };
 }
 
 function normalizedComparable(value: string) {
@@ -388,6 +495,8 @@ export function mapImportRow(
   const name = values.name?.trim() || null;
   const phone = values.phone?.trim() || null;
   const email = normalizeEmail(values.email);
+  const cpf = values.cpf?.trim() || null;
+  const normalizedCpf = normalizeCpf(cpf);
   if (!name) {
     issues.push({
       code: "lead_name_required",
@@ -417,6 +526,14 @@ export function mapImportRow(
       details: "O e-mail não possui um formato válido.",
     });
   }
+  if (cpf && (!normalizedCpf || !isValidCpf(normalizedCpf))) {
+    issues.push({
+      code: "invalid_cpf",
+      fieldKey: "cpf",
+      details: "O CPF informado não é válido.",
+    });
+  }
+  if (cpf) customData.cpf = cpf;
   const receivedAt = values.receivedAt
     ? normalizeImportDate(values.receivedAt)
     : null;
@@ -434,6 +551,8 @@ export function mapImportRow(
       normalizedPhone: normalizePhone(phone),
       email,
       normalizedEmail: email,
+      cpf,
+      normalizedCpf,
       sourceValue: values.source?.trim() || null,
       pdvValue: values.pdv?.trim() || null,
       receivedAt,
@@ -480,6 +599,90 @@ export function duplicateIsMatch(
   if (strategy === "email") return sameEmail;
   if (strategy === "phone_and_email") return samePhone && sameEmail;
   return samePhone || sameEmail;
+}
+
+function reasonFor(identifier: DuplicateIdentifier): DuplicateReasonCode {
+  if (identifier === "phone") return "duplicate_phone";
+  if (identifier === "cpf") return "duplicate_cpf";
+  return "duplicate_email";
+}
+
+export function duplicateReasons(
+  rule: ResolvedDuplicateRule,
+  input: DuplicateIdentity,
+  candidate: DuplicateIdentity
+): DuplicateReasonCode[] {
+  const matches = (identifier: DuplicateIdentifier) => {
+    if (identifier === "phone")
+      return (
+        Boolean(input.normalizedPhone) &&
+        input.normalizedPhone === candidate.normalizedPhone
+      );
+    if (identifier === "cpf")
+      return (
+        Boolean(input.normalizedCpf) &&
+        input.normalizedCpf === candidate.normalizedCpf
+      );
+    return (
+      Boolean(input.normalizedEmail) &&
+      input.normalizedEmail === candidate.normalizedEmail
+    );
+  };
+  if (
+    rule.version === "legacy_v1" &&
+    rule.legacyMatchStrategy === "phone_and_email"
+  ) {
+    return matches("phone") && matches("email")
+      ? ["duplicate_phone", "duplicate_email"]
+      : [];
+  }
+  const reasons = rule.identifiers.filter(matches).map(reasonFor);
+  return reasons.length > 1 ? ["duplicate_multiple", ...reasons] : reasons;
+}
+
+/** Canonical keys make in-file deduplication obey the same rule as DB lookup. */
+export function duplicateIdentityKeys(
+  rule: ResolvedDuplicateRule,
+  value: DuplicateIdentity
+) {
+  if (
+    rule.version === "legacy_v1" &&
+    rule.legacyMatchStrategy === "phone_and_email"
+  ) {
+    return value.normalizedPhone && value.normalizedEmail
+      ? [`phone_and_email:${value.normalizedPhone}|${value.normalizedEmail}`]
+      : [];
+  }
+  return rule.identifiers.flatMap(identifier => {
+    const normalized =
+      identifier === "phone"
+        ? value.normalizedPhone
+        : identifier === "cpf"
+          ? value.normalizedCpf
+          : value.normalizedEmail;
+    return normalized ? [`${identifier}:${normalized}`] : [];
+  });
+}
+
+export function evaluateDuplicateCandidates<
+  T extends DuplicateIdentity & { id: number },
+>(
+  rule: ResolvedDuplicateRule,
+  input: DuplicateIdentity,
+  candidates: readonly T[]
+) {
+  const matches = candidates
+    .map(candidate => ({
+      candidate,
+      reasons: duplicateReasons(rule, input, candidate),
+    }))
+    .filter(item => item.reasons.length);
+  return {
+    duplicateLeadId: matches.length === 1 ? matches[0].candidate.id : null,
+    reasons: Array.from(new Set(matches.flatMap(item => item.reasons))),
+    identityConflict: matches.length > 1,
+    isDuplicate: matches.length > 0,
+  };
 }
 
 export function canCreateImportForCampaign(input: {

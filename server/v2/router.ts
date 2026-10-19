@@ -234,6 +234,13 @@ const importPolicyInput = z.object({
     .max(20)
     .nullable()
     .optional(),
+  // Kept optional until CODEX 037 exposes the V2 configuration controls.
+  duplicateIdentifiers: z
+    .array(z.enum(["phone", "cpf", "email"]))
+    .min(1)
+    .max(3)
+    .optional(),
+  duplicateMatchVersion: z.literal("any_v2").optional(),
 });
 
 const leadManagementFiltersInput = z.object({
