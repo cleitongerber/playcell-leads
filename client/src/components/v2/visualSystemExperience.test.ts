@@ -254,6 +254,8 @@ describe("FLUXO visual system experience contracts", () => {
     expect(importConfiguration).toContain("Usar nova regra");
     expect(importConfiguration).toContain("CPF antigo");
     expect(importConfiguration).toContain("Documento do sistema");
+    expect(importConfiguration).toContain("Ver configuração");
+    expect(importConfiguration).toContain("campos mapeados");
   });
 
   it("keeps CPF mapping and an explainable import preview available", () => {
