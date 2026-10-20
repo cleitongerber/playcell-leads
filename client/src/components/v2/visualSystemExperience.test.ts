@@ -266,4 +266,19 @@ describe("FLUXO visual system experience contracts", () => {
     expect(importer).toContain("Telefone já cadastrado");
     expect(importer).toContain("CPF inválido");
   });
+
+  it("keeps campaign duplicate rules aligned with the V2 partner rule experience", () => {
+    expect(importer).toContain("Regras de duplicidade da campanha");
+    expect(importer).toContain("Usando o padrão do parceiro");
+    expect(importer).toContain("Usar regra específica da campanha");
+    expect(importer).toContain('["phone", "Telefone"],');
+    expect(importer).toContain('["cpf", "CPF"],');
+    expect(importer).toContain('["email", "E-mail"],');
+    expect(importer).toContain("Recusar novo registro");
+    expect(importer).toContain("Permitir outro registro");
+    expect(importer).toContain("Atualizar Lead existente");
+    expect(importer).toContain("Regra existente: Telefone + E-mail");
+    expect(importer).toContain("duplicateIdentifiers,");
+    expect(importer).toContain('duplicateMatchVersion: "any_v2"');
+  });
 });

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -26,6 +27,60 @@ type MappingDraft = {
   isRequired: boolean;
   transformKey: string | null;
 };
+
+type DuplicatePolicy = "reject" | "allow" | "update_safe_fields";
+type MatchStrategy = "phone" | "email" | "phone_or_email" | "phone_and_email";
+type DuplicateIdentifier = "phone" | "cpf" | "email";
+
+const duplicatePolicyCopy: Record<
+  DuplicatePolicy,
+  { title: string; description: string }
+> = {
+  reject: {
+    title: "Recusar novo registro",
+    description: "O registro duplicado não será importado.",
+  },
+  allow: {
+    title: "Permitir outro registro",
+    description:
+      "Um novo Lead será criado mesmo que já exista outro com o mesmo identificador.",
+  },
+  update_safe_fields: {
+    title: "Atualizar Lead existente",
+    description:
+      "Atualiza somente os dados cadastrais permitidos do Lead encontrado.",
+  },
+};
+
+function legacyDuplicateIdentifiers(
+  strategy: MatchStrategy
+): DuplicateIdentifier[] {
+  if (strategy === "phone") return ["phone"];
+  if (strategy === "email") return ["email"];
+  return ["phone", "email"];
+}
+
+function duplicateRuleSummary(input: {
+  duplicateIdentifiers: DuplicateIdentifier[];
+  duplicateMatchVersion: "any_v2" | null;
+  matchStrategy: MatchStrategy;
+}) {
+  if (
+    input.duplicateMatchVersion !== "any_v2" &&
+    input.matchStrategy === "phone_and_email"
+  ) {
+    return "Telefone e e-mail devem coincidir no mesmo Lead.";
+  }
+
+  const labels = input.duplicateIdentifiers.map(identifier =>
+    identifier === "phone"
+      ? "Telefone"
+      : identifier === "cpf"
+        ? "CPF"
+        : "E-mail"
+  );
+  return `Qualquer identificador selecionado: ${labels.join(", ") || "nenhum"}.`;
+}
 
 const coreTargets = [
   { key: "name", label: "Nome" },
@@ -151,12 +206,15 @@ export default function V2Importer() {
   const [policyMode, setPolicyMode] = useState<"inherit" | "override">(
     "inherit"
   );
-  const [policy, setPolicy] = useState<
-    "reject" | "allow" | "update_safe_fields"
-  >("reject");
-  const [matchStrategy, setMatchStrategy] = useState<
-    "phone" | "email" | "phone_or_email" | "phone_and_email"
-  >("phone_or_email");
+  const [policy, setPolicy] = useState<DuplicatePolicy>("reject");
+  const [matchStrategy, setMatchStrategy] =
+    useState<MatchStrategy>("phone_or_email");
+  const [duplicateIdentifiers, setDuplicateIdentifiers] = useState<
+    DuplicateIdentifier[]
+  >(["phone", "email"]);
+  const [duplicateMatchVersion, setDuplicateMatchVersion] = useState<
+    "any_v2" | null
+  >(null);
   const [customField, setCustomField] = useState({
     key: "",
     label: "",
@@ -187,6 +245,10 @@ export default function V2Importer() {
     );
     setPolicy(setup.data.policy.policy);
     setMatchStrategy(setup.data.policy.matchStrategy);
+    setDuplicateIdentifiers(
+      setup.data.policy.duplicateIdentifiers as DuplicateIdentifier[]
+    );
+    setDuplicateMatchVersion(setup.data.policy.duplicateMatchVersion);
     if (setup.data.pdvs.length === 1 && !targetPdv) {
       setTargetPdv(String(setup.data.pdvs[0].id));
     }
@@ -255,6 +317,17 @@ export default function V2Importer() {
   const canManageDistribution =
     setupData?.campaign.status === "active" && !setupData.campaign.isFrozen;
   const customFields = setupData?.customFields ?? [];
+  const campaignUsesLegacyAnd =
+    duplicateMatchVersion !== "any_v2" &&
+    matchStrategy === "phone_and_email";
+  const policyIsInherited = policyMode === "inherit";
+  const toggleDuplicateIdentifier = (identifier: DuplicateIdentifier) => {
+    setDuplicateIdentifiers(current =>
+      current.includes(identifier)
+        ? current.filter(item => item !== identifier)
+        : [...current, identifier]
+    );
+  };
   const activeMappings = useMemo(
     () => mappings.filter(mapping => mapping.targetKey),
     [mappings]
@@ -969,74 +1042,173 @@ export default function V2Importer() {
         <SectionCard>
           <CardHeader className="border-b border-border/70 pb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Configuração da campanha</p>
-            <CardTitle>Política de duplicidade da campanha</CardTitle>
+            <CardTitle>Regras de duplicidade da campanha</CardTitle>
             <p className="text-sm text-muted-foreground">
-              O override da campanha prevalece sobre o padrão do parceiro.
-              Atualizações seguras jamais alteram responsável, status, timeline,
-              follow-ups ou evidências.
+              Defina se esta campanha usa o padrão do parceiro ou uma regra específica.
             </p>
           </CardHeader>
-          <CardContent className="grid gap-3 pt-5 sm:grid-cols-4">
+          <CardContent className="space-y-5 pt-5">
             <select
-              className="h-10 rounded-md border bg-background px-2"
+              aria-label="Origem das regras de duplicidade"
+              className="h-10 w-full rounded-md border bg-background px-2 sm:max-w-sm"
               value={policyMode}
               onChange={event =>
                 setPolicyMode(event.target.value as "inherit" | "override")
               }
             >
               <option value="inherit">Usar padrão do parceiro</option>
-              <option value="override">Usar override da campanha</option>
+              <option value="override">Usar regra específica da campanha</option>
             </select>
-            <select
-              className="h-10 rounded-md border bg-background px-2"
-              disabled={policyMode === "inherit"}
-              value={policy}
-              onChange={event => setPolicy(event.target.value as typeof policy)}
-            >
-              <option value="reject">REJECT — recusar</option>
-              <option value="allow">ALLOW — permitir</option>
-              <option value="update_safe_fields">
-                UPDATE_SAFE_FIELDS — atualizar campos seguros
-              </option>
-            </select>
-            <select
-              className="h-10 rounded-md border bg-background px-2"
-              disabled={policyMode === "inherit"}
-              value={matchStrategy}
-              onChange={event =>
-                setMatchStrategy(event.target.value as typeof matchStrategy)
-              }
-            >
-              <option value="phone_or_email">Telefone ou e-mail</option>
-              <option value="phone">Telefone</option>
-              <option value="email">E-mail</option>
-              <option value="phone_and_email">Telefone e e-mail</option>
-            </select>
-            <Button
-              disabled={savePolicy.isPending}
-              onClick={() =>
-                savePolicy.mutate({
-                  campaignId,
-                  setting:
-                    policyMode === "inherit"
-                      ? { mode: "inherit" }
-                      : {
-                          mode: "override",
-                          policy,
-                          matchStrategy,
-                          safeUpdateFields: [
-                            "name",
-                            "phone",
-                            "email",
-                            "sourceId",
-                            "customData",
-                          ],
-                        },
-                })
-              }
-            >
-              Salvar política
-            </Button>
+
+            {policyIsInherited ? (
+              <div className="rounded-lg border bg-muted/40 p-4 text-sm">
+                <p className="font-medium">Usando o padrão do parceiro</p>
+                <p className="mt-1 text-muted-foreground">
+                  Esta campanha não possui regra própria. Para alterar estes critérios,
+                  selecione uma regra específica da campanha.
+                </p>
+                <p className="mt-3 text-muted-foreground">
+                  <strong className="text-foreground">Identificação:</strong>{" "}
+                  {duplicateRuleSummary({
+                    duplicateIdentifiers,
+                    duplicateMatchVersion,
+                    matchStrategy,
+                  })}
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  <strong className="text-foreground">Ao encontrar duplicidade:</strong>{" "}
+                  {duplicatePolicyCopy[policy].title}.
+                </p>
+              </div>
+            ) : campaignUsesLegacyAnd ? (
+              <div className="rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm">
+                <p className="font-medium">Regra existente: Telefone + E-mail</p>
+                <p className="mt-1 text-muted-foreground">
+                  Esta regra anterior exige que telefone e e-mail coincidam no mesmo Lead.
+                </p>
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setDuplicateIdentifiers(
+                      legacyDuplicateIdentifiers(matchStrategy)
+                    );
+                    setDuplicateMatchVersion("any_v2");
+                  }}
+                >
+                  Usar nova regra
+                </Button>
+              </div>
+            ) : (
+              <>
+                <fieldset>
+                  <legend className="text-sm font-semibold">
+                    Como identificar registros duplicados?
+                  </legend>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    {(
+                      [
+                        ["phone", "Telefone"],
+                        ["cpf", "CPF"],
+                        ["email", "E-mail"],
+                      ] as const
+                    ).map(([identifier, label]) => (
+                      <label
+                        key={identifier}
+                        className="flex min-h-12 items-center gap-3 rounded-lg border p-3 text-sm"
+                      >
+                        <Checkbox
+                          checked={duplicateIdentifiers.includes(identifier)}
+                          onCheckedChange={() =>
+                            toggleDuplicateIdentifier(identifier)
+                          }
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Um registro é considerado duplicado quando qualquer identificador selecionado
+                    já pertence a um Lead deste parceiro.
+                  </p>
+                </fieldset>
+                <fieldset>
+                  <legend className="text-sm font-semibold">
+                    Quando encontrar um registro duplicado
+                  </legend>
+                  <RadioGroup
+                    className="mt-3 grid gap-3"
+                    value={policy}
+                    onValueChange={value => setPolicy(value as DuplicatePolicy)}
+                  >
+                    {(Object.keys(duplicatePolicyCopy) as DuplicatePolicy[]).map(
+                      duplicatePolicy => (
+                        <label
+                          key={duplicatePolicy}
+                          className="flex cursor-pointer items-start gap-3 rounded-lg border p-4"
+                        >
+                          <RadioGroupItem value={duplicatePolicy} className="mt-1" />
+                          <span>
+                            <span className="font-medium">
+                              {duplicatePolicyCopy[duplicatePolicy].title}
+                            </span>
+                            <span className="mt-1 block text-sm text-muted-foreground">
+                              {duplicatePolicyCopy[duplicatePolicy].description}
+                            </span>
+                          </span>
+                        </label>
+                      )
+                    )}
+                  </RadioGroup>
+                  {policy === "update_safe_fields" && (
+                    <p className="mt-3 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+                      O Lead continuará na campanha, status e responsável atuais. Somente os
+                      dados cadastrais permitidos serão atualizados.
+                    </p>
+                  )}
+                </fieldset>
+              </>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                disabled={
+                  savePolicy.isPending ||
+                  (!policyIsInherited &&
+                    (!duplicateIdentifiers.length || campaignUsesLegacyAnd))
+                }
+                onClick={() =>
+                  savePolicy.mutate({
+                    campaignId,
+                    setting:
+                      policyIsInherited
+                        ? { mode: "inherit" }
+                        : {
+                            mode: "override",
+                            policy,
+                            matchStrategy: "phone_or_email",
+                            duplicateIdentifiers,
+                            duplicateMatchVersion: "any_v2",
+                            safeUpdateFields: [
+                              "name",
+                              "phone",
+                              "email",
+                              "sourceId",
+                              "customData",
+                            ],
+                          },
+                  })
+                }
+              >
+                Salvar regras
+              </Button>
+              {!policyIsInherited && !duplicateIdentifiers.length && (
+                <span className="text-sm text-destructive">
+                  Selecione ao menos um identificador.
+                </span>
+              )}
+            </div>
           </CardContent>
         </SectionCard>
       )}

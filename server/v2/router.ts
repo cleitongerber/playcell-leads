@@ -1244,6 +1244,8 @@ export const v2FoundationRouter = v2Router({
                 policy: input.setting.policy,
                 matchStrategy: input.setting.matchStrategy,
                 safeUpdateFields: input.setting.safeUpdateFields,
+                duplicateIdentifiers: input.setting.duplicateIdentifiers,
+                duplicateMatchVersion: input.setting.duplicateMatchVersion,
               }
         )
       ),
