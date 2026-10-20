@@ -1,303 +1,71 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { v2trpc } from "@/lib/v2trpc";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
-import { KpiCard, SectionCard } from "@/components/v2/V2Layout";
+import { SectionCard } from "@/components/v2/V2Layout";
+import { v2trpc } from "@/lib/v2trpc";
+import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Link } from "wouter";
 
 type DuplicatePolicy = "reject" | "allow" | "update_safe_fields";
 type MatchStrategy = "phone" | "email" | "phone_or_email" | "phone_and_email";
+type Identifier = "phone" | "cpf" | "email";
 type FieldType = "text" | "number" | "date" | "boolean" | "select";
+
+const policyCopy: Record<DuplicatePolicy, { title: string; description: string }> = {
+  reject: { title: "Recusar novo registro", description: "O registro duplicado não será importado." },
+  allow: { title: "Permitir outro registro", description: "Um novo Lead será criado mesmo que já exista outro com o mesmo identificador." },
+  update_safe_fields: { title: "Atualizar Lead existente", description: "Atualiza somente os dados cadastrais permitidos do Lead encontrado." },
+};
+const fieldTypeLabel: Record<FieldType, string> = { text: "Texto", number: "Número", date: "Data", boolean: "Sim/Não", select: "Seleção" };
+function legacyIdentifiers(strategy: MatchStrategy): Identifier[] {
+  if (strategy === "phone") return ["phone"];
+  if (strategy === "email") return ["email"];
+  return ["phone", "email"];
+}
 
 export default function V2ImportConfiguration() {
   const access = v2trpc.access.context.useQuery();
-  const canManage =
-    access.data?.role === "super_admin" ||
-    access.data?.role === "partner_admin";
-  const policyQuery = v2trpc.imports.partnerPolicy.useQuery(undefined, {
-    enabled: canManage,
-  });
-  const fields = v2trpc.imports.customFields.useQuery(
-    { includeInactive: true },
-    { enabled: canManage }
-  );
-  const templates = v2trpc.imports.templates.useQuery(
-    { includeInactive: true },
-    {
-      enabled: canManage,
-    }
-  );
+  const canManage = access.data?.role === "super_admin" || access.data?.role === "partner_admin";
+  const policyQuery = v2trpc.imports.partnerPolicy.useQuery(undefined, { enabled: canManage });
+  const fields = v2trpc.imports.customFields.useQuery({ includeInactive: true }, { enabled: canManage });
+  const templates = v2trpc.imports.templates.useQuery({ includeInactive: true }, { enabled: canManage });
   const utils = v2trpc.useUtils();
   const [policy, setPolicy] = useState<DuplicatePolicy>("reject");
-  const [matchStrategy, setMatchStrategy] =
-    useState<MatchStrategy>("phone_or_email");
-  const [field, setField] = useState({
-    key: "",
-    label: "",
-    fieldType: "text" as FieldType,
-    options: "",
-    isRequired: false,
-  });
+  const [matchStrategy, setMatchStrategy] = useState<MatchStrategy>("phone_or_email");
+  const [identifiers, setIdentifiers] = useState<Identifier[]>(["phone", "email"]);
+  const [isV2, setIsV2] = useState(false);
+  const [fieldDialogOpen, setFieldDialogOpen] = useState(false);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [field, setField] = useState({ key: "", label: "", fieldType: "text" as FieldType, options: "", isRequired: false, isActive: true });
   useEffect(() => {
     if (!policyQuery.data) return;
-    setPolicy(policyQuery.data.policy);
-    setMatchStrategy(policyQuery.data.matchStrategy);
+    setPolicy(policyQuery.data.policy); setMatchStrategy(policyQuery.data.matchStrategy);
+    const v2 = policyQuery.data.duplicateMatchVersion === "any_v2";
+    setIsV2(v2); setIdentifiers((v2 ? policyQuery.data.duplicateIdentifiers : legacyIdentifiers(policyQuery.data.matchStrategy)) as Identifier[]);
   }, [policyQuery.data]);
-  const savePolicy = v2trpc.imports.setPartnerPolicy.useMutation({
-    onSuccess: () => {
-      utils.imports.partnerPolicy.invalidate();
-      toast.success("Política padrão de importação atualizada");
-    },
-    onError: error => toast.error(error.message),
-  });
-  const saveField = v2trpc.imports.saveCustomField.useMutation({
-    onSuccess: () => {
-      setField({
-        key: "",
-        label: "",
-        fieldType: "text",
-        options: "",
-        isRequired: false,
-      });
-      utils.imports.customFields.invalidate();
-      toast.success("Campo personalizado salvo");
-    },
-    onError: error => toast.error(error.message),
-  });
-  const setTemplateActive = v2trpc.imports.setTemplateActive.useMutation({
-    onSuccess: () => {
-      utils.imports.templates.invalidate();
-      toast.success("Template atualizado");
-    },
-    onError: error => toast.error(error.message),
-  });
-
-  return (
-    <main className="v2-page v2-import-settings-page space-y-6">
-     <V2PageHeader eyebrow="Administração" title="Configuração de importações" description="Defina a política padrão, campos personalizados e templates reutilizáveis do parceiro." actions={<Link href="/v2/admin"><Button variant="outline">← Administração</Button></Link>} />
-      <section className="v2-metric-grid v2-import-summary">
-        <KpiCard label="Política de duplicidade" value={policy === "reject" ? "Recusar" : policy === "allow" ? "Permitir" : "Atualizar"} detail="regra padrão" />
-        <KpiCard label="Campos personalizados" value={fields.data?.length ?? 0} detail="cadastrados" />
-        <KpiCard label="Templates" value={templates.data?.length ?? 0} detail="reutilizáveis" />
-      </section>
-      {!canManage ? (
-        <SectionCard>
-          <CardContent className="p-6 text-sm text-muted-foreground">
-            Seu perfil não pode administrar templates, campos ou políticas de
-            importação.
-          </CardContent>
-        </SectionCard>
-      ) : (
-        <>
-          <SectionCard>
-            <CardHeader className="border-b border-border/70 pb-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Política</p>
-              <CardTitle>Política padrão de duplicidade</CardTitle>
-              <p className="text-sm text-muted-foreground">Defina como o parceiro identifica registros repetidos antes de iniciar um processamento.</p>
-            </CardHeader>
-            <CardContent className="grid gap-4 pt-5 sm:grid-cols-3">
-              <label className="space-y-1.5 text-sm font-medium">Ao encontrar duplicidade<select
-                className="h-10 rounded-md border bg-background px-2"
-                value={policy}
-                onChange={event =>
-                  setPolicy(event.target.value as DuplicatePolicy)
-                }
-              >
-                <option value="reject">REJECT — recusar duplicados</option>
-                <option value="allow">ALLOW — permitir duplicados</option>
-                <option value="update_safe_fields">
-                  UPDATE_SAFE_FIELDS — atualizar campos seguros
-                </option>
-              </select></label>
-              <label className="space-y-1.5 text-sm font-medium">Critério de comparação<select
-                className="h-10 rounded-md border bg-background px-2"
-                value={matchStrategy}
-                onChange={event =>
-                  setMatchStrategy(event.target.value as MatchStrategy)
-                }
-              >
-                <option value="phone_or_email">Telefone ou e-mail</option>
-                <option value="phone">Telefone</option>
-                <option value="email">E-mail</option>
-                <option value="phone_and_email">Telefone e e-mail</option>
-              </select></label>
-              <Button
-                disabled={savePolicy.isPending}
-                onClick={() =>
-                  savePolicy.mutate({
-                    policy,
-                    matchStrategy,
-                    safeUpdateFields: [
-                      "name",
-                      "phone",
-                      "email",
-                      "sourceId",
-                      "customData",
-                    ],
-                  })
-                }
-              >
-                Salvar padrão
-              </Button>
-            </CardContent>
-          </SectionCard>
-          <SectionCard>
-            <CardHeader className="border-b border-border/70 pb-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Dados</p>
-              <CardTitle>Campos personalizados de lead</CardTitle>
-              <p className="text-sm text-muted-foreground">Inclua somente os campos que sua operação precisa mapear durante a importação.</p>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-5">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <Input
-                  value={field.key}
-                  onChange={event =>
-                    setField({ ...field, key: event.target.value })
-                  }
-                  placeholder="Chave"
-                />
-                <Input
-                  value={field.label}
-                  onChange={event =>
-                    setField({ ...field, label: event.target.value })
-                  }
-                  placeholder="Nome exibido"
-                />
-                <select
-                  className="h-10 rounded-md border bg-background px-2"
-                  value={field.fieldType}
-                  onChange={event =>
-                    setField({
-                      ...field,
-                      fieldType: event.target.value as FieldType,
-                    })
-                  }
-                >
-                  <option value="text">Texto</option>
-                  <option value="number">Número</option>
-                  <option value="date">Data</option>
-                  <option value="boolean">Booleano</option>
-                  <option value="select">Seleção</option>
-                </select>
-                <Input
-                  disabled={field.fieldType !== "select"}
-                  value={field.options}
-                  onChange={event =>
-                    setField({ ...field, options: event.target.value })
-                  }
-                  placeholder="Opções por vírgula"
-                />
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={field.isRequired}
-                      onCheckedChange={value =>
-                        setField({ ...field, isRequired: value === true })
-                      }
-                    />{" "}
-                    Obrigatório
-                  </label>
-                  <Button
-                    size="sm"
-                    disabled={saveField.isPending}
-                    onClick={() =>
-                      saveField.mutate({
-                        key: field.key,
-                        label: field.label,
-                        fieldType: field.fieldType,
-                        options:
-                          field.fieldType === "select"
-                            ? field.options
-                                .split(",")
-                                .map(value => value.trim())
-                                .filter(Boolean)
-                            : null,
-                        isRequired: field.isRequired,
-                        isActive: true,
-                        sortOrder: (fields.data?.length ?? 0) + 1,
-                      })
-                    }
-                  >
-                    Salvar
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {fields.data?.map(item => (
-                  <div
-                    key={item.key}
-                    className="flex items-center justify-between rounded-lg border p-3 text-sm"
-                  >
-                    <div>
-                      <p className="font-medium">{item.label ?? item.key}</p>
-                      <p className="text-muted-foreground">
-                        {item.key} · {item.fieldType}
-                        {item.isRequired ? " · obrigatório" : ""}
-                      </p>
-                    </div>
-                    <Badge variant={item.isActive ? "secondary" : "outline"}>
-                      {item.isActive ? "Ativo" : "Inativo"}
-                    </Badge>
-                  </div>
-                ))}
-                {!fields.data?.length && (
-                  <p className="text-sm text-muted-foreground">
-                    Nenhum campo personalizado cadastrado.
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </SectionCard>
-          <SectionCard>
-            <CardHeader className="border-b border-border/70 pb-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Reutilização</p>
-              <CardTitle>Templates de importação</CardTitle>
-              <p className="text-sm text-muted-foreground">Mantenha os mapeamentos aprovados disponíveis para os próximos arquivos.</p>
-            </CardHeader>
-            <CardContent className="space-y-2 pt-5">
-              {templates.data?.map(template => (
-                <div
-                  key={template.id}
-                  className="flex flex-col justify-between gap-2 rounded-lg border p-3 sm:flex-row sm:items-center"
-                >
-                  <div>
-                    <p className="font-medium">{template.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {template.currentVersion
-                        ? `Versão atual: v${template.currentVersion.versionNumber} · ${template.currentVersion.fields.length} campo(s)`
-                        : "Sem versão"}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={setTemplateActive.isPending}
-                    onClick={() =>
-                      setTemplateActive.mutate({
-                        templateId: template.id,
-                        isActive: !template.isActive,
-                      })
-                    }
-                  >
-                    {template.isActive ? "Inativar" : "Reativar"}
-                  </Button>
-                </div>
-              ))}
-              {!templates.data?.length && (
-                <p className="text-sm text-muted-foreground">
-                  Salve um mapeamento no assistente de importação para criar o
-                  primeiro template.
-                </p>
-              )}
-            </CardContent>
-          </SectionCard>
-        </>
-      )}
-    </main>
-  );
+  const savePolicy = v2trpc.imports.setPartnerPolicy.useMutation({ onSuccess: () => { utils.imports.partnerPolicy.invalidate(); toast.success("Regras de duplicidade salvas."); }, onError: error => toast.error(error.message) });
+  const saveField = v2trpc.imports.saveCustomField.useMutation({ onSuccess: () => { setFieldDialogOpen(false); setEditingKey(null); utils.imports.customFields.invalidate(); toast.success("Campo da importação salvo."); }, onError: error => toast.error(error.message) });
+  const setTemplateActive = v2trpc.imports.setTemplateActive.useMutation({ onSuccess: () => { utils.imports.templates.invalidate(); toast.success("Modelo atualizado."); }, onError: error => toast.error(error.message) });
+  const legacyAnd = !isV2 && matchStrategy === "phone_and_email";
+  const toggleIdentifier = (identifier: Identifier) => setIdentifiers(current => current.includes(identifier) ? current.filter(item => item !== identifier) : [...current, identifier]);
+  const openAddField = () => { setEditingKey(null); setField({ key: "", label: "", fieldType: "text", options: "", isRequired: false, isActive: true }); setFieldDialogOpen(true); };
+  const openEditField = (item: NonNullable<typeof fields.data>[number]) => { setEditingKey(item.key); setField({ key: item.key, label: item.label ?? item.key, fieldType: item.fieldType as FieldType, options: item.options?.join(", ") ?? "", isRequired: item.isRequired, isActive: item.isActive }); setFieldDialogOpen(true); };
+  return <main className="v2-page v2-import-settings-page space-y-6">
+    <V2PageHeader eyebrow="Administração" title="Configuração de importações" description="Defina as regras, os campos e os mapeamentos reutilizáveis do parceiro." actions={<Link href="/v2/admin"><Button variant="outline">← Administração</Button></Link>} />
+    {!canManage ? <SectionCard><div className="p-6 text-sm text-muted-foreground">Seu perfil não pode administrar importações.</div></SectionCard> : <>
+      <SectionCard><div className="border-b border-border/70 p-6 pb-4"><p className="text-xs font-semibold uppercase tracking-[.12em] text-primary">Regras de duplicidade</p><h2 className="mt-1 text-xl font-semibold">Regras de duplicidade</h2><p className="mt-1 text-sm text-muted-foreground">Defina como o FLUXO identifica registros que já existem na sua base.</p></div><div className="space-y-6 p-6">
+        {legacyAnd ? <div className="rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm"><p className="font-medium">Regra existente: Telefone + E-mail</p><p className="mt-1 text-muted-foreground">Esta regra anterior exige que telefone e e-mail coincidam no mesmo Lead.</p><Button className="mt-3" size="sm" variant="outline" onClick={() => setIsV2(true)}>Usar nova regra</Button></div> : <fieldset><legend className="text-sm font-semibold">Como identificar registros duplicados?</legend><div className="mt-3 grid gap-3 sm:grid-cols-3">{([ ["phone", "Telefone"], ["cpf", "CPF"], ["email", "E-mail"] ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center gap-3 rounded-lg border p-3 text-sm"><Checkbox checked={identifiers.includes(key)} onCheckedChange={() => toggleIdentifier(key)} />{label}</label>)}</div><p className="mt-3 text-xs text-muted-foreground">Um registro é considerado duplicado quando qualquer identificador selecionado já pertence a um Lead deste parceiro.</p><p className="mt-1 text-xs text-muted-foreground">Abrangência: todos os Leads deste parceiro, inclusive de outras campanhas.</p></fieldset>}
+        <fieldset><legend className="text-sm font-semibold">Quando encontrar um registro duplicado</legend><RadioGroup className="mt-3 grid gap-3" value={policy} onValueChange={value => setPolicy(value as DuplicatePolicy)}>{(Object.keys(policyCopy) as DuplicatePolicy[]).map(key => <label key={key} className="flex cursor-pointer items-start gap-3 rounded-lg border p-4"><RadioGroupItem value={key} className="mt-1" /><span><span className="font-medium">{policyCopy[key].title}</span><span className="mt-1 block text-sm text-muted-foreground">{policyCopy[key].description}</span></span></label>)}</RadioGroup>{policy === "update_safe_fields" && <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">O Lead continuará na campanha, status e responsável atuais. Somente os dados cadastrais permitidos serão atualizados.</p>}</fieldset>
+        <div className="flex flex-wrap items-center gap-3"><Button disabled={savePolicy.isPending || legacyAnd || !identifiers.length} onClick={() => savePolicy.mutate({ policy, matchStrategy: "phone_or_email", duplicateIdentifiers: identifiers, duplicateMatchVersion: "any_v2", safeUpdateFields: ["name", "phone", "email", "sourceId", "customData"] })}>Salvar regras</Button>{!identifiers.length && <span className="text-sm text-destructive">Selecione ao menos um identificador.</span>}</div>
+      </div></SectionCard>
+      <SectionCard><div className="flex flex-col gap-3 border-b border-border/70 p-6 pb-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.12em] text-primary">Dados</p><h2 className="mt-1 text-xl font-semibold">Campos da importação</h2><p className="mt-1 text-sm text-muted-foreground">Configure informações adicionais que podem ser mapeadas ao importar seus Leads.</p></div><Button onClick={openAddField}>+ Adicionar campo</Button></div><div className="space-y-2 p-6"><div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm"><div><p className="font-medium">CPF <span className="font-normal text-muted-foreground">· Documento do sistema</span></p><p className="mt-1 text-xs text-muted-foreground">Preserva zeros à esquerda e pode ser usado nas regras de duplicidade.</p></div><Badge>Ativo</Badge></div>{fields.data?.map(item => <div key={item.key} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{item.key === "cpf" ? "CPF antigo" : item.label ?? item.key}</p><p className="mt-1 text-sm text-muted-foreground">{fieldTypeLabel[item.fieldType as FieldType]}{item.isRequired ? " · Obrigatório" : ""}{item.key === "cpf" ? " · Campo personalizado · Número" : ""}</p></div><div className="flex items-center gap-2"><Badge variant={item.isActive ? "secondary" : "outline"}>{item.isActive ? "Ativo" : "Inativo"}</Badge><Button size="sm" variant="outline" onClick={() => openEditField(item)}>Editar</Button></div></div>)}{!fields.data?.length && <p className="text-sm text-muted-foreground">Nenhum campo adicional cadastrado.</p>}</div></SectionCard>
+      <SectionCard><div className="border-b border-border/70 p-6 pb-4"><p className="text-xs font-semibold uppercase tracking-[.12em] text-primary">Reutilização</p><h2 className="mt-1 text-xl font-semibold">Modelos de importação</h2><p className="mt-1 text-sm text-muted-foreground">Mapeamentos salvos para reutilizar em novos arquivos.</p></div><div className="space-y-2 p-6">{templates.data?.map(template => <div key={template.id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{template.name}</p><p className="mt-1 text-sm text-muted-foreground">{template.currentVersion ? `${template.currentVersion.fields.length} campos · Versão ${template.currentVersion.versionNumber}` : "Sem versão"}</p></div><Button size="sm" variant="outline" disabled={setTemplateActive.isPending} onClick={() => setTemplateActive.mutate({ templateId: template.id, isActive: !template.isActive })}>{template.isActive ? "Inativar" : "Ativar"}</Button></div>)}{!templates.data?.length && <p className="text-sm text-muted-foreground">Salve um mapeamento no assistente de importação para criar o primeiro modelo.</p>}</div></SectionCard>
+    </>}
+    <Dialog open={fieldDialogOpen} onOpenChange={setFieldDialogOpen}><DialogContent><DialogHeader><DialogTitle>{editingKey ? "Editar campo" : "Adicionar campo"}</DialogTitle><DialogDescription>Configure o campo que poderá ser mapeado nos próximos arquivos.</DialogDescription></DialogHeader><div className="grid gap-4"><label className="grid gap-1 text-sm font-medium">Nome do campo<Input value={field.label} onChange={event => setField({ ...field, label: event.target.value })} /></label><label className="grid gap-1 text-sm font-medium">Identificador interno<Input disabled={Boolean(editingKey)} value={field.key} onChange={event => setField({ ...field, key: event.target.value })} placeholder="ex.: produto_interesse" /></label><label className="grid gap-1 text-sm font-medium">Tipo de informação<select className="h-10 rounded-md border bg-background px-2" disabled={Boolean(editingKey)} value={field.fieldType} onChange={event => setField({ ...field, fieldType: event.target.value as FieldType })}>{(Object.keys(fieldTypeLabel) as FieldType[]).map(type => <option key={type} value={type}>{fieldTypeLabel[type]}</option>)}</select></label>{field.fieldType === "select" && <label className="grid gap-1 text-sm font-medium">Opções<Input value={field.options} onChange={event => setField({ ...field, options: event.target.value })} placeholder="Opções separadas por vírgula" /></label>}<label className="flex items-center gap-2 text-sm"><Checkbox checked={field.isRequired} onCheckedChange={checked => setField({ ...field, isRequired: checked === true })} />Obrigatório</label>{editingKey && <label className="flex items-center gap-2 text-sm"><Checkbox checked={field.isActive} onCheckedChange={checked => setField({ ...field, isActive: checked === true })} />Campo ativo</label>}</div><DialogFooter><Button variant="outline" onClick={() => setFieldDialogOpen(false)}>Cancelar</Button><Button disabled={saveField.isPending || !field.key.trim() || !field.label.trim() || (!editingKey && field.key.trim().toLowerCase() === "cpf")} onClick={() => saveField.mutate({ key: field.key, label: field.label, fieldType: field.fieldType, options: field.fieldType === "select" ? field.options.split(",").map(value => value.trim()).filter(Boolean) : null, isRequired: field.isRequired, isActive: field.isActive, sortOrder: (fields.data?.findIndex(item => item.key === field.key) ?? fields.data?.length ?? 0) + 1 })}>Salvar campo</Button></DialogFooter></DialogContent></Dialog>
+  </main>;
 }

@@ -16,6 +16,10 @@ describe("FLUXO visual system experience contracts", () => {
   const dashboard = readProjectFile("client/src/pages/V2Dashboard.tsx");
   const productivity = readProjectFile("client/src/pages/V2Productivity.tsx");
   const reports = readProjectFile("client/src/pages/V2Reports.tsx");
+  const importConfiguration = readProjectFile(
+    "client/src/pages/V2ImportConfiguration.tsx"
+  );
+  const importer = readProjectFile("client/src/pages/V2Importer.tsx");
   const journey = readProjectFile(
     "client/src/components/v2/V2SeparatedLeadJourney.tsx"
   );
@@ -235,5 +239,29 @@ describe("FLUXO visual system experience contracts", () => {
     expect(styles).toContain(".v2-reports-toolbar { grid-template-columns:repeat(5");
     expect(styles).toContain(".v2-reports-toolbar-actions { grid-column:4 / span 2");
     expect(styles).toContain('[data-analytics-field="campaign"]');
+  });
+
+  it("keeps import configuration human-readable while preserving the V2 contract", () => {
+    expect(importConfiguration).toContain("Regras de duplicidade");
+    expect(importConfiguration).toContain("Campos da importação");
+    expect(importConfiguration).toContain("Modelos de importação");
+    expect(importConfiguration).toContain("Recusar novo registro");
+    expect(importConfiguration).toContain("Permitir outro registro");
+    expect(importConfiguration).toContain("Atualizar Lead existente");
+    expect(importConfiguration).toContain("duplicateIdentifiers: identifiers");
+    expect(importConfiguration).toContain('duplicateMatchVersion: "any_v2"');
+    expect(importConfiguration).toContain("Regra existente: Telefone + E-mail");
+    expect(importConfiguration).toContain("Usar nova regra");
+    expect(importConfiguration).toContain("CPF antigo");
+    expect(importConfiguration).toContain("Documento do sistema");
+  });
+
+  it("keeps CPF mapping and an explainable import preview available", () => {
+    expect(importer).toContain('{ key: "cpf", label: "CPF · Documento" }');
+    expect(importer).toContain("Registros encontrados");
+    expect(importer).toContain("Prontos para importar");
+    expect(importer).toContain("Registros com problema");
+    expect(importer).toContain("Telefone já cadastrado");
+    expect(importer).toContain("CPF inválido");
   });
 });

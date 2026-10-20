@@ -31,6 +31,7 @@ const coreTargets = [
   { key: "name", label: "Nome" },
   { key: "phone", label: "Telefone" },
   { key: "email", label: "E-mail" },
+  { key: "cpf", label: "CPF · Documento" },
   { key: "source", label: "Origem" },
   { key: "receivedAt", label: "Data de entrada" },
   { key: "pdv", label: "PDV" },
@@ -43,6 +44,19 @@ const batchStatusLabels = {
   completed: "Concluída",
   failed: "Falhou",
 } as const;
+
+const issueLabels: Record<string, string> = {
+  duplicate_phone: "Telefone já cadastrado",
+  duplicate_email: "E-mail já cadastrado",
+  duplicate_cpf: "CPF já cadastrado",
+  duplicate_multiple: "Mais de um identificador já cadastrado",
+  identity_conflict: "Os identificadores pertencem a Leads diferentes",
+  invalid_cpf: "CPF inválido",
+};
+
+function issueLabel(code: string, fallback: string) {
+  return issueLabels[code] ?? fallback;
+}
 
 function readFileAsBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -780,7 +794,7 @@ export default function V2Importer() {
           <section className="v2-metric-grid sm:grid-cols-4">
             <Card className="v2-metric-card">
               <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Linhas</p>
+                <p className="text-sm text-muted-foreground">Registros encontrados</p>
                 <p className="text-2xl font-semibold">
                   {batch.data?.totalRows ?? "…"}
                 </p>
@@ -788,7 +802,7 @@ export default function V2Importer() {
             </Card>
             <Card className="v2-metric-card">
               <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Válidas</p>
+                <p className="text-sm text-muted-foreground">Prontos para importar</p>
                 <p className="text-2xl font-semibold">
                   {batch.data?.validRows ?? "…"}
                 </p>
@@ -796,7 +810,7 @@ export default function V2Importer() {
             </Card>
             <Card className="v2-metric-card">
               <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Inválidas</p>
+                <p className="text-sm text-muted-foreground">Com problema</p>
                 <p className="text-2xl font-semibold">
                   {batch.data?.invalidRows ?? "…"}
                 </p>
@@ -805,7 +819,7 @@ export default function V2Importer() {
             <Card className="v2-metric-card">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">
-                  Possíveis duplicidades
+                  Duplicados
                 </p>
                 <p className="text-2xl font-semibold">
                   {batch.data?.duplicateRows ?? "…"}
@@ -816,13 +830,24 @@ export default function V2Importer() {
           {step === 3 && (
             <SectionCard>
               <CardHeader className="border-b border-border/70 pb-4">
-                <CardTitle>3. Prévia obrigatória</CardTitle>
+                <CardTitle>3. Prévia da importação</CardTitle>
                 <p className="text-sm text-muted-foreground">
                   Esta etapa ainda não criou leads. A confirmação abaixo é
                   explícita e só pode ser processada uma vez.
                 </p>
               </CardHeader>
               <CardContent className="space-y-5 pt-5">
+                {!!batch.data?.duplicateRows && (
+                  <div className="rounded-lg border bg-muted/30 p-4">
+                    <p className="font-medium">Duplicados</p>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                      {!!batch.data.duplicateSummary?.duplicateByPhone && <span>{batch.data.duplicateSummary.duplicateByPhone} por telefone</span>}
+                      {!!batch.data.duplicateSummary?.duplicateByCpf && <span>{batch.data.duplicateSummary.duplicateByCpf} por CPF</span>}
+                      {!!batch.data.duplicateSummary?.duplicateByEmail && <span>{batch.data.duplicateSummary.duplicateByEmail} por e-mail</span>}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">Um mesmo registro pode aparecer em mais de um motivo.</p>
+                  </div>
+                )}
                 <div className="grid gap-2 md:hidden">
                   {preview.data?.items.map(row => (
                     <div key={row.rowNumber} className="rounded-lg border p-3">
@@ -880,11 +905,12 @@ export default function V2Importer() {
                 </div>
                 {!!issues.data?.items.length && (
                   <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
-                    <p className="mb-2 font-medium">Problemas encontrados</p>
-                    <ul className="space-y-1 text-sm">
+                    <p className="mb-2 font-medium">Registros com problema</p>
+                    <p className="mb-3 text-sm text-muted-foreground">Ver registros com problema</p>
+                    <ul className="space-y-2 text-sm">
                       {issues.data.items.map(issue => (
-                        <li key={`${issue.rowNumber}-${issue.code}`}>
-                          Linha {issue.rowNumber}: {issue.details}
+                        <li key={`${issue.rowNumber}-${issue.code}`} className="rounded-md bg-background/70 p-2">
+                          <span className="font-medium">Linha {issue.rowNumber}</span><span className="text-muted-foreground"> · {issueLabel(issue.code, issue.details)}</span>
                         </li>
                       ))}
                     </ul>
