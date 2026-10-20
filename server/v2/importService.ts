@@ -63,6 +63,15 @@ const PAGE_MAX = 100;
 type DbCampaign = typeof campaigns.$inferSelect;
 type DbPdv = typeof pdvs.$inferSelect;
 type DbBatch = typeof leadImportBatches.$inferSelect;
+type ImportPolicySnapshot = Pick<
+  DbBatch,
+  | "status"
+  | "duplicatePolicy"
+  | "duplicateMatchStrategy"
+  | "duplicateIdentifiers"
+  | "duplicateMatchVersion"
+  | "safeUpdateFields"
+>;
 type MappedStorageRow = Omit<MappedLeadRow, "receivedAt"> & {
   pdvId: number;
   sourceId: number | null;
@@ -98,6 +107,16 @@ type CampaignImportScope = {
   campaign: DbCampaign;
   pdvs: DbPdv[];
   accessiblePdvIds: number[] | null;
+};
+
+export type ResolvedImportPolicy = {
+  policy: DuplicatePolicy;
+  matchStrategy: DuplicateMatchStrategy;
+  safeUpdateFields: string[];
+  duplicateIdentifiers: DuplicateIdentifier[];
+  duplicateMatchVersion: "any_v2" | null;
+  rule: ReturnType<typeof resolveDuplicateRule>;
+  source: "partner" | "campaign" | "batch";
 };
 
 function asInsertId(result: unknown) {
@@ -364,7 +383,7 @@ async function resolveImportPolicy(
   db: V2Database,
   partnerId: number,
   campaignId: number
-) {
+): Promise<ResolvedImportPolicy> {
   const [campaignPolicy, partnerPolicy] = await Promise.all([
     db
       .select()
@@ -384,19 +403,66 @@ async function resolveImportPolicy(
   ]);
   const source =
     campaignPolicy[0] ?? partnerPolicy[0] ?? defaultDuplicatePolicy;
+  const rule = resolveDuplicateRule({
+    matchStrategy: source.matchStrategy,
+    duplicateIdentifiers: source.duplicateIdentifiers,
+    duplicateMatchVersion: source.duplicateMatchVersion,
+  });
   return {
     policy: source.policy,
     matchStrategy: source.matchStrategy,
     safeUpdateFields: normalizeSafeUpdateFields(source.safeUpdateFields),
-    duplicateIdentifiers: readStringArray(source.duplicateIdentifiers),
-    duplicateMatchVersion: source.duplicateMatchVersion,
-    rule: resolveDuplicateRule({
-      matchStrategy: source.matchStrategy,
-      duplicateIdentifiers: source.duplicateIdentifiers,
-      duplicateMatchVersion: source.duplicateMatchVersion,
-    }),
+    duplicateIdentifiers: rule.identifiers,
+    duplicateMatchVersion: rule.version === "any_v2" ? "any_v2" : null,
+    rule,
     source: campaignPolicy[0] ? ("campaign" as const) : ("partner" as const),
   };
+}
+
+export function resolveImportPolicySnapshot(
+  batch: ImportPolicySnapshot
+): ResolvedImportPolicy {
+  const rule = resolveDuplicateRule({
+    matchStrategy: batch.duplicateMatchStrategy,
+    duplicateIdentifiers: batch.duplicateIdentifiers,
+    duplicateMatchVersion: batch.duplicateMatchVersion,
+  });
+  return {
+    policy: batch.duplicatePolicy,
+    matchStrategy: batch.duplicateMatchStrategy,
+    safeUpdateFields: normalizeSafeUpdateFields(batch.safeUpdateFields),
+    duplicateIdentifiers: rule.identifiers,
+    duplicateMatchVersion: rule.version === "any_v2" ? "any_v2" : null,
+    rule,
+    source: "batch",
+  };
+}
+
+/**
+ * A draft has not yet been validated, so its provisional policy may be
+ * replaced by the live policy at first validation. A validated batch is an
+ * immutable snapshot: revalidation must never consult live policy tables.
+ */
+export function resolvePolicyForBatchValidation(
+  batch: ImportPolicySnapshot,
+  livePolicy: ResolvedImportPolicy | null
+) {
+  if (batch.status === "validated") return resolveImportPolicySnapshot(batch);
+  if (!livePolicy) throw new Error("Política de importação não encontrada");
+  return livePolicy;
+}
+
+export function duplicateRowDisposition(input: {
+  status: ImportRowStatus;
+  policy: DuplicatePolicy;
+  duplicateLeadId: number | null;
+}) {
+  if (input.status !== "duplicate") return "insert" as const;
+  if (input.policy === "reject") return "reject" as const;
+  if (input.policy === "update_safe_fields") {
+    return input.duplicateLeadId ? ("update" as const) : ("reject" as const);
+  }
+  return "insert" as const;
 }
 
 async function getBatchInScope(
@@ -941,7 +1007,7 @@ export async function createImportDraft(
   });
 }
 
-async function findDuplicates(
+export async function findDuplicates(
   db: V2Database,
   partnerId: number,
   rows: Array<{ mapped: MappedStorageRow }>,
@@ -1011,7 +1077,7 @@ export async function validateImportBatch(
   const templateVersionId = await db.transaction(async tx =>
     resolveTemplateVersion(tx as unknown as V2Database, context, input)
   );
-  const [activeSources, policy] = await Promise.all([
+  const [activeSources, livePolicy] = await Promise.all([
     db
       .select({
         id: leadSources.id,
@@ -1025,8 +1091,11 @@ export async function validateImportBatch(
           eq(leadSources.isActive, true)
         )
       ),
-    resolveImportPolicy(db, context.partnerId, batch.campaignId),
+    batch.status === "draft"
+      ? resolveImportPolicy(db, context.partnerId, batch.campaignId)
+      : Promise.resolve(null),
   ]);
+  const policy = resolvePolicyForBatchValidation(batch, livePolicy);
   const hasPdvMapping = input.mappings.some(
     mapping => mapping.targetKind === "core" && mapping.targetKey === "pdv"
   );
@@ -1257,13 +1326,19 @@ export async function validateImportBatch(
       .update(leadImportBatches)
       .set({
         templateVersionId,
-        duplicatePolicy: policy.policy,
-        duplicateMatchStrategy: policy.matchStrategy,
-        duplicateIdentifiers:
-          policy.rule.version === "any_v2" ? policy.rule.identifiers : null,
-        duplicateMatchVersion:
-          policy.rule.version === "any_v2" ? policy.rule.version : null,
-        safeUpdateFields: policy.safeUpdateFields,
+        ...(batch.status === "draft"
+          ? {
+              duplicatePolicy: policy.policy,
+              duplicateMatchStrategy: policy.matchStrategy,
+              duplicateIdentifiers:
+                policy.rule.version === "any_v2"
+                  ? policy.rule.identifiers
+                  : null,
+              duplicateMatchVersion:
+                policy.rule.version === "any_v2" ? policy.rule.version : null,
+              safeUpdateFields: policy.safeUpdateFields,
+            }
+          : {}),
         validRows,
         invalidRows,
         duplicateRows,
@@ -1547,29 +1622,26 @@ export async function confirmImportBatch(
               .where(eq(leadImportRows.id, row.id));
             continue;
           }
-          if (
-            row.status === "duplicate" &&
-            batch.duplicatePolicy === "reject"
-          ) {
+          const disposition = duplicateRowDisposition({
+            status: row.status,
+            policy: batch.duplicatePolicy,
+            duplicateLeadId: row.duplicateLeadId,
+          });
+          if (disposition === "reject") {
             await tx
               .update(leadImportRows)
               .set({ status: "rejected", processedAt: new Date() })
               .where(eq(leadImportRows.id, row.id));
             continue;
           }
-          if (
-            row.status === "duplicate" &&
-            batch.duplicatePolicy === "update_safe_fields"
-          ) {
-            const updated = row.duplicateLeadId
-              ? await updateLeadSafely(
-                  transactionDb,
-                  context,
-                  batch,
-                  row.duplicateLeadId,
-                  mapped
-                )
-              : false;
+          if (disposition === "update") {
+            const updated = await updateLeadSafely(
+              transactionDb,
+              context,
+              batch,
+              row.duplicateLeadId!,
+              mapped
+            );
             await tx
               .update(leadImportRows)
               .set({

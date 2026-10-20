@@ -269,6 +269,30 @@ describe("V2 configurable import domain", () => {
       "duplicate_phone",
       "duplicate_email",
     ]);
+    const rowA = duplicateIdentityKeys(rule, {
+      normalizedPhone: "111",
+      normalizedEmail: "a@x.com",
+      normalizedCpf: null,
+    });
+    const rowB = duplicateIdentityKeys(rule, {
+      normalizedPhone: "111",
+      normalizedEmail: "b@x.com",
+      normalizedCpf: null,
+    });
+    const rowC = duplicateIdentityKeys(rule, {
+      normalizedPhone: "222",
+      normalizedEmail: "a@x.com",
+      normalizedCpf: null,
+    });
+    const rowD = duplicateIdentityKeys(rule, {
+      normalizedPhone: "111",
+      normalizedEmail: "a@x.com",
+      normalizedCpf: null,
+    });
+    expect(rowA).toEqual(["phone_and_email:111|a@x.com"]);
+    expect(rowB).not.toEqual(rowA);
+    expect(rowC).not.toEqual(rowA);
+    expect(rowD).toEqual(rowA);
   });
 
   it("flags an identity conflict when selected identifiers resolve to different leads", () => {
