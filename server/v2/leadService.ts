@@ -16,6 +16,7 @@ import {
 import {
   campaignPdvs,
   campaigns,
+  customFieldDefinitions,
   followUps,
   leadContactAttempts,
   leadContacts,
@@ -807,6 +808,29 @@ export async function getLeadDetail(context: PartnerContext, leadId: number) {
     .select({ id: pdvs.id, name: pdvs.name, code: pdvs.code })
     .from(pdvs)
     .where(eq(pdvs.id, lead.pdvId));
+  // Include inactive definitions so historical customData remains legible.
+  // The Lead visibility assertion above has already applied tenant, PDV and
+  // seller ownership scopes before this partner-scoped metadata is read.
+  const customFields = await db
+    .select({
+      key: customFieldDefinitions.key,
+      label: customFieldDefinitions.label,
+      fieldType: customFieldDefinitions.fieldType,
+      sortOrder: customFieldDefinitions.sortOrder,
+      isActive: customFieldDefinitions.isActive,
+    })
+    .from(customFieldDefinitions)
+    .where(
+      and(
+        eq(customFieldDefinitions.partnerId, context.partnerId),
+        eq(customFieldDefinitions.entityType, "lead")
+      )
+    )
+    .orderBy(
+      asc(customFieldDefinitions.sortOrder),
+      asc(customFieldDefinitions.label),
+      asc(customFieldDefinitions.key)
+    );
   const assignee = lead.assignedMembershipId
     ? ((
         await db
@@ -922,6 +946,7 @@ export async function getLeadDetail(context: PartnerContext, leadId: number) {
     status,
     campaign,
     pdv,
+    customFields,
     assignee,
     timeline: timeline.map(event => ({
       ...event,

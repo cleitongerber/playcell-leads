@@ -118,6 +118,14 @@ describe("FLUXO visual system experience contracts", () => {
     expect(journey).toContain("onClick={openTelephone}");
   });
 
+  it("keeps lead custom data dynamic and read-only in the existing detail section", () => {
+    expect(journey).toContain('import { presentLeadCustomData } from "@/lib/leadDetailPresentation"');
+    expect(journey).toContain("const customLeadData = useMemo(");
+    expect(journey).toContain("definitions: detail.data?.customFields");
+    expect(journey).toContain("customLeadData.map(field => (");
+    expect(journey).toContain("Dados do Lead");
+  });
+
   it("keeps sales scripts as a passive, contextual Lead aid", () => {
     expect(journey).toContain("Scripts de venda");
     expect(journey).toContain("v2trpc.salesScripts.forLead.useQuery");

@@ -34,6 +34,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { followUpStatusLabel } from "@/lib/followUpPresentation";
+import { presentLeadCustomData } from "@/lib/leadDetailPresentation";
 import {
   presentNextLeadAction,
   type BackendNextLeadAction,
@@ -797,6 +798,15 @@ export function V2SeparatedLeadJourney() {
   }, [treatment.resultId, treatmentRequirements.data]);
 
   const lead = detail.data?.lead;
+  const customLeadData = useMemo(
+    () =>
+      presentLeadCustomData({
+        normalizedCpf: lead?.normalizedCpf,
+        customData: lead?.customData,
+        definitions: detail.data?.customFields,
+      }),
+    [lead?.customData, lead?.normalizedCpf, detail.data?.customFields]
+  );
   const action = nextAction.data as BackendNextLeadAction | undefined;
   const actionPresentation = action ? presentNextLeadAction(action) : null;
   const isReadOnly = access.data?.role === "management";
@@ -1649,6 +1659,12 @@ export function V2SeparatedLeadJourney() {
                     Última atividade
                     <strong>{formatDateTime(lead.lastActivityAt)}</strong>
                   </span>
+                  {customLeadData.map(field => (
+                    <span key={field.key}>
+                      {field.label}
+                      <strong>{field.value}</strong>
+                    </span>
+                  ))}
                 </div>
               </details>
               <details className="rounded-md border border-border p-3">
