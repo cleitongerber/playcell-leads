@@ -683,6 +683,8 @@ export async function followUpAlerts(context: PartnerContext) {
     eq(followUps.partnerId, context.partnerId),
     eq(followUps.status, "pending"),
     isNull(leads.deletedAt),
+    eq(campaigns.status, "active"),
+    eq(campaigns.isFrozen, false),
   ];
   if (scope) base.push(inArray(leads.pdvId, scope));
   if (context.role === "seller")
@@ -692,11 +694,13 @@ export async function followUpAlerts(context: PartnerContext) {
       .select({ total: count() })
       .from(followUps)
       .innerJoin(leads, eq(leads.id, followUps.leadId))
+      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
       .where(and(...base, lt(followUps.dueAt, now))),
     db
       .select({ total: count() })
       .from(followUps)
       .innerJoin(leads, eq(leads.id, followUps.leadId))
+      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
       .where(
         and(...base, gte(followUps.dueAt, now), lt(followUps.dueAt, bounds.end))
       ),
@@ -704,6 +708,7 @@ export async function followUpAlerts(context: PartnerContext) {
       .select({ dueAt: min(followUps.dueAt) })
       .from(followUps)
       .innerJoin(leads, eq(leads.id, followUps.leadId))
+      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
       .where(and(...base)),
   ]);
   return {

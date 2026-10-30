@@ -494,6 +494,7 @@ export async function listLeads(
     page: number;
     pageSize: number;
     campaignId?: number;
+    campaignStatus?: "active" | "frozen" | "closed" | "archived" | "all";
     pdvId?: number;
     statusId?: number;
     assignedMembershipId?: number;
@@ -525,6 +526,25 @@ export async function listLeads(
       )!
     );
   if (input.campaignId) conditions.push(eq(leads.campaignId, input.campaignId));
+  // Campaign availability is part of the server-side query, never a
+  // client-only presentation filter. "all" intentionally excludes drafts:
+  // those are not an operational seller context.
+  const campaignStatus = input.campaignStatus ?? "all";
+  if (campaignStatus === "active") {
+    conditions.push(
+      and(eq(campaigns.status, "active"), eq(campaigns.isFrozen, false))!
+    );
+  } else if (campaignStatus === "frozen") {
+    conditions.push(
+      and(eq(campaigns.status, "active"), eq(campaigns.isFrozen, true))!
+    );
+  } else if (campaignStatus === "closed") {
+    conditions.push(eq(campaigns.status, "closed"));
+  } else if (campaignStatus === "archived") {
+    conditions.push(eq(campaigns.status, "archived"));
+  } else {
+    conditions.push(sql`${campaigns.status} <> 'draft'`);
+  }
   if (input.pdvId) conditions.push(eq(leads.pdvId, input.pdvId));
   if (input.statusId) conditions.push(eq(leads.statusId, input.statusId));
   if (input.assignedMembershipId) {
@@ -575,6 +595,8 @@ export async function listLeads(
     statusCategory: leadStatuses.category,
     pdvName: pdvs.name,
     campaignName: campaigns.name,
+    campaignStatus: campaigns.status,
+    campaignFrozen: campaigns.isFrozen,
   };
 
   // Only the seller portfolio changes behavior in CODEX 030. The available
@@ -591,7 +613,11 @@ export async function listLeads(
         .orderBy(desc(leads.receivedAt), desc(leads.id))
         .limit(pageSize)
         .offset((Math.max(input.page, 1) - 1) * pageSize),
-      db.select({ total: count() }).from(leads).where(where),
+      db
+        .select({ total: count() })
+        .from(leads)
+        .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
+        .where(where),
     ]);
     return {
       items: items.map(item => ({ ...item, operational: null })),
@@ -704,6 +730,7 @@ export async function listLeads(
       .select({ total: count() })
       .from(leads)
       .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
+      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
       .leftJoin(
         facts.attempts,
         and(

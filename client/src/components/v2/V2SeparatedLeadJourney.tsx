@@ -1183,6 +1183,21 @@ export function V2SeparatedLeadJourney() {
             <Badge>
               {detail.data?.status?.label ?? "Situação não informada"}
             </Badge>
+            {detail.data?.campaign && (
+              <Badge variant="outline">
+                {detail.data.campaign.isFrozen
+                  ? detail.data.campaign.status === "closed"
+                    ? "Campanha fechada · congelada"
+                    : detail.data.campaign.status === "archived"
+                      ? "Campanha arquivada · congelada"
+                      : "Campanha ativa · congelada"
+                  : detail.data.campaign.status === "closed"
+                    ? "Campanha fechada"
+                    : detail.data.campaign.status === "archived"
+                      ? "Campanha arquivada"
+                      : "Campanha ativa"}
+              </Badge>
+            )}
             <Link href={returnTo}>
               <Button variant="outline">
                 <ArrowLeft className="mr-2 size-4" /> Leads
@@ -1192,7 +1207,7 @@ export function V2SeparatedLeadJourney() {
         }
       />
 
-      {!lead.assignedMembershipId && isSeller && (
+      {!lead.assignedMembershipId && isSeller && canStartCommercialWork && (
         <Card className="border-brand-accent/35 bg-brand-accent/10">
           <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-3">
@@ -1409,7 +1424,7 @@ export function V2SeparatedLeadJourney() {
                   <ShieldCheck className="mt-0.5 size-4 shrink-0" />
                   <span>
                     {action?.kind === "campaign_not_operational"
-                      ? "Esta campanha está encerrada. Novas tentativas e tratativas não podem ser registradas."
+                      ? "Esta campanha não está disponível para operação. As informações e históricos permanecem disponíveis somente para consulta."
                       : isTerminal
                         ? "Este Lead está concluído. Use Reabrir Lead, quando tiver permissão, antes de uma nova ação comercial."
                         : !hasOperationalMembership

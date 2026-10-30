@@ -321,6 +321,7 @@ export function V2CampaignDetail() {
   const utils = v2trpc.useUtils();
   const [editing, setEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
   const [form, setForm] = useState<CampaignForm>(blank);
   const [governanceMode, setGovernanceMode] = useState<"inherit" | "override">(
     "inherit"
@@ -336,6 +337,15 @@ export function V2CampaignDetail() {
   });
   const freeze = v2trpc.campaigns.setFrozen.useMutation({
     onSuccess: () => utils.campaigns.get.invalidate({ id }),
+    onError: error => toast.error(error.message),
+  });
+  const reopen = v2trpc.campaigns.reopen.useMutation({
+    onSuccess: () => {
+      setReopenOpen(false);
+      utils.campaigns.get.invalidate({ id });
+      utils.campaigns.list.invalidate();
+      toast.success("Campanha reaberta");
+    },
     onError: error => toast.error(error.message),
   });
   const update = v2trpc.campaigns.update.useMutation({
@@ -629,6 +639,11 @@ export function V2CampaignDetail() {
                         : "Arquivar"}
                   </Button>
                 )}
+                {canManage && campaign.status === "closed" && (
+                  <Button variant="outline" onClick={() => setReopenOpen(true)}>
+                    Reabrir campanha
+                  </Button>
+                )}
                 {canManage && campaign.status !== "archived" && (
                   <Button
                     variant="outline"
@@ -644,6 +659,30 @@ export function V2CampaignDetail() {
           )}
         </CardContent>
       </Card>
+      <Dialog open={reopenOpen} onOpenChange={setReopenOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reabrir campanha?</DialogTitle>
+            <DialogDescription>
+              Os Leads, responsáveis, históricos e importações serão preservados.
+              {campaign.isFrozen
+                ? " A campanha continuará congelada até ser descongelada explicitamente."
+                : " A campanha voltará ao status ativa."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReopenOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => reopen.mutate({ id })}
+              disabled={reopen.isPending}
+            >
+              {reopen.isPending ? "Reabrindo…" : "Confirmar reabertura"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>

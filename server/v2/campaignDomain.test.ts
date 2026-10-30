@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PartnerAccessError, type PartnerContext } from "./access";
-import { assertCampaignTransition, canFreezeCampaign, canViewCampaignByPdvScope, normalizeCampaignCode } from "./campaignDomain";
+import { assertCampaignReopen, assertCampaignTransition, canFreezeCampaign, canViewCampaignByPdvScope, normalizeCampaignCode } from "./campaignDomain";
 
 const adminA: PartnerContext = { userId: 1, partnerId: 10, membershipId: 101, role: "partner_admin" };
 const managerA: PartnerContext = { userId: 2, partnerId: 10, membershipId: 102, role: "manager" };
@@ -13,6 +13,12 @@ describe("Campaign V2 domain and scope", () => {
     expect(() => assertCampaignTransition("closed", "archived")).not.toThrow();
     expect(() => assertCampaignTransition("draft", "closed")).toThrow("Transição de campanha inválida");
     expect(() => assertCampaignTransition("archived", "active")).toThrow("Transição de campanha inválida");
+  });
+
+  it("allows only a closed campaign to be explicitly reopened", () => {
+    expect(() => assertCampaignReopen("closed")).not.toThrow();
+    expect(() => assertCampaignReopen("active")).toThrow("Somente campanhas fechadas");
+    expect(() => assertCampaignReopen("archived")).toThrow("Somente campanhas fechadas");
   });
 
   it("keeps freezing independent of lifecycle but blocks archived campaigns", () => {

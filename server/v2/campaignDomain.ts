@@ -14,6 +14,12 @@ export function assertCampaignTransition(from: CampaignStatus, to: CampaignStatu
   }
 }
 
+export function assertCampaignReopen(status: CampaignStatus) {
+  if (status !== "closed") {
+    throw new Error("Somente campanhas fechadas podem ser reabertas");
+  }
+}
+
 export function canEditCampaign(status: CampaignStatus) {
   return status === "draft";
 }

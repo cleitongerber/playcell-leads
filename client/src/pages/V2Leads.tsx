@@ -25,7 +25,7 @@ import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
 import { SlidersHorizontal } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 type View = "available" | "mine" | "all";
@@ -40,6 +40,7 @@ type OperationalPriority =
   | "in_progress"
   | "upcoming"
   | "terminal";
+type CampaignFilterStatus = "active" | "frozen" | "closed" | "archived" | "all";
 
 type OperationalState = {
   priority: OperationalPriority;
@@ -60,6 +61,7 @@ type LeadListState = {
   page: number;
   search: string;
   campaignId?: number;
+  campaignStatus: CampaignFilterStatus;
   pdvId?: number;
   statusId?: number;
   assignedMembershipId?: number;
@@ -82,6 +84,8 @@ function readLeadListState(): LeadListState {
   const requestedAssignment = params.get("assignment");
   const requestedWork = params.get("firstContact");
   const requestedOperationalFilter = params.get("operationalFilter");
+  const requestedCampaignStatus = params.get("campaignStatus");
+  const campaignId = positiveInteger(params.get("campaignId"));
   return {
     view:
       requestedView === "available" ||
@@ -91,7 +95,19 @@ function readLeadListState(): LeadListState {
         : "available",
     page: positiveInteger(params.get("page")) ?? 1,
     search: params.get("search") ?? "",
-    campaignId: positiveInteger(params.get("campaignId")),
+    campaignId,
+    // Contextual links to one campaign retain access to its historical data;
+    // regular entry to Leads starts with actionable campaigns only.
+    campaignStatus:
+      requestedCampaignStatus === "active" ||
+      requestedCampaignStatus === "frozen" ||
+      requestedCampaignStatus === "closed" ||
+      requestedCampaignStatus === "archived" ||
+      requestedCampaignStatus === "all"
+        ? requestedCampaignStatus
+        : campaignId
+          ? "all"
+          : "active",
     pdvId: positiveInteger(params.get("pdvId")),
     statusId: positiveInteger(params.get("statusId")),
     assignedMembershipId: positiveInteger(params.get("assignedMembershipId")),
@@ -121,6 +137,40 @@ const operationalFilterLabels: Record<OperationalFilter, string> = {
   returns: "Retornos",
   closed: "Encerrados",
 };
+
+const campaignFilterLabels: Record<CampaignFilterStatus, string> = {
+  active: "Ativas",
+  frozen: "Congeladas",
+  closed: "Fechadas",
+  archived: "Arquivadas",
+  all: "Todas",
+};
+
+const campaignStatusLabels = {
+  draft: "Rascunho",
+  active: "Ativa",
+  closed: "Fechada",
+  archived: "Arquivada",
+} as const;
+
+function campaignMatchesFilter(
+  campaign: { status: keyof typeof campaignStatusLabels; isFrozen: boolean },
+  filter: CampaignFilterStatus
+) {
+  if (filter === "active") return campaign.status === "active" && !campaign.isFrozen;
+  if (filter === "frozen") return campaign.status === "active" && campaign.isFrozen;
+  if (filter === "closed") return campaign.status === "closed";
+  if (filter === "archived") return campaign.status === "archived";
+  return campaign.status !== "draft";
+}
+
+function campaignAvailabilityLabel(
+  status: keyof typeof campaignStatusLabels,
+  isFrozen: boolean
+) {
+  const label = campaignStatusLabels[status];
+  return isFrozen ? `${label} · congelada` : label;
+}
 
 function pendingReturnsLabel(count: number) {
   return `${count} retorno${count === 1 ? "" : "s"} pendente${count === 1 ? "" : "s"}`;
@@ -210,6 +260,7 @@ export default function V2Leads() {
     page,
     search,
     campaignId,
+    campaignStatus,
     pdvId,
     statusId,
     assignedMembershipId,
@@ -227,11 +278,26 @@ export default function V2Leads() {
 
   const updateOperationalFilter = (next: OperationalFilter) =>
     updateListState({ operationalFilter: next, page: 1 });
+  const campaigns = v2trpc.campaigns.list.useQuery({ includeArchived: true });
+  const eligibleCampaigns = useMemo(
+    () =>
+      (campaigns.data ?? []).filter(campaign =>
+        campaignMatchesFilter(campaign, campaignStatus)
+      ),
+    [campaignStatus, campaigns.data]
+  );
 
   useEffect(() => {
     if (view === "mine" || operationalFilter === "all") return;
     updateListState({ operationalFilter: "all" });
   }, [operationalFilter, view]);
+
+  useEffect(() => {
+    if (!campaignId || campaigns.isLoading) return;
+    if (!eligibleCampaigns.some(campaign => campaign.id === campaignId)) {
+      updateListState({ campaignId: undefined, page: 1 });
+    }
+  }, [campaignId, campaigns.isLoading, eligibleCampaigns]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -240,6 +306,7 @@ export default function V2Leads() {
       page: page > 1 ? page : undefined,
       search: search || undefined,
       campaignId,
+      campaignStatus: campaignStatus === "active" ? undefined : campaignStatus,
       pdvId,
       statusId,
       assignedMembershipId,
@@ -257,6 +324,7 @@ export default function V2Leads() {
     assignedMembershipId,
     assignment,
     campaignId,
+    campaignStatus,
     firstContact,
     operationalFilter,
     page,
@@ -271,6 +339,7 @@ export default function V2Leads() {
     page,
     pageSize: 25,
     campaignId,
+    campaignStatus,
     pdvId,
     statusId,
     assignedMembershipId,
@@ -337,6 +406,46 @@ export default function V2Leads() {
               </Button>
             ))}
           </div>
+        </div>
+        <div className="w-full min-w-0 space-y-1.5 md:max-w-44">
+          <Label htmlFor="leads-campaign-status">Status da campanha</Label>
+          <Select
+            value={campaignStatus}
+            onValueChange={value =>
+              updateListState({
+                campaignStatus: value as CampaignFilterStatus,
+                campaignId: undefined,
+                page: 1,
+              })
+            }
+          >
+            <SelectTrigger id="leads-campaign-status"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {(Object.keys(campaignFilterLabels) as CampaignFilterStatus[]).map(option => (
+                <SelectItem key={option} value={option}>{campaignFilterLabels[option]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-full min-w-0 space-y-1.5 md:max-w-64">
+          <Label htmlFor="leads-campaign">Campanha</Label>
+          <Select
+            value={campaignId ? String(campaignId) : "all"}
+            onValueChange={value =>
+              updateListState({
+                campaignId: value === "all" ? undefined : Number(value),
+                page: 1,
+              })
+            }
+          >
+            <SelectTrigger id="leads-campaign"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as campanhas</SelectItem>
+              {eligibleCampaigns.map(campaign => (
+                <SelectItem key={campaign.id} value={String(campaign.id)}>{campaign.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="w-full min-w-0 space-y-1.5 md:flex-1">
           <Label htmlFor="leads-search">Busca</Label>
@@ -487,7 +596,7 @@ export default function V2Leads() {
           <CardContent className="flex flex-wrap items-center gap-2 p-3 text-sm">
             <span className="text-muted-foreground">Contexto aplicado:</span>
             {campaignId && (
-              <Badge variant="outline">Campanha selecionada</Badge>
+              <Badge variant="outline">{campaignFilterLabels[campaignStatus]}{": campanha selecionada"}</Badge>
             )}
             {pdvId && <Badge variant="outline">PDV selecionado</Badge>}
             {statusId && <Badge variant="outline">Situação selecionada</Badge>}
@@ -512,6 +621,7 @@ export default function V2Leads() {
               onClick={() =>
                 updateListState({
                   campaignId: undefined,
+                  campaignStatus: "active",
                   pdvId: undefined,
                   statusId: undefined,
                   assignedMembershipId: undefined,
@@ -554,6 +664,7 @@ export default function V2Leads() {
                       <th>Lead</th>
                       <th>Telefone</th>
                       <th>Campanha</th>
+                      <th>Status da campanha</th>
                       <th>PDV</th>
                       <th>Situação</th>
                       <th>{view === "mine" ? "Operação" : "Responsável"}</th>
@@ -568,6 +679,13 @@ export default function V2Leads() {
                         </td>
                         <td>{lead.phone || "—"}</td>
                         <td>{lead.campaignName || "—"}</td>
+                        <td>
+                          <Badge variant="outline">
+                            {lead.campaignFrozen
+                              ? campaignAvailabilityLabel(lead.campaignStatus, true)
+                              : campaignAvailabilityLabel(lead.campaignStatus, false)}
+                          </Badge>
+                        </td>
                         <td>{lead.pdvName || "—"}</td>
                         <td>
                           <Badge variant="outline">{lead.statusLabel}</Badge>
@@ -594,7 +712,9 @@ export default function V2Leads() {
                                   "—"
                                 );
                               })()
-                            : lead.assignedMembershipId
+                            : lead.campaignStatus !== "active" || lead.campaignFrozen
+                              ? "Consulta"
+                              : lead.assignedMembershipId
                               ? "Atribuído"
                               : "Disponível"}
                         </td>
@@ -666,6 +786,9 @@ export default function V2Leads() {
                             <span className="min-w-0 truncate">
                               {lead.campaignName || "Sem campanha"} ·{" "}
                               {lead.pdvName || "Sem PDV"}
+                              {lead.campaignStatus !== "active" || lead.campaignFrozen
+                                ? ` · ${campaignAvailabilityLabel(lead.campaignStatus, lead.campaignFrozen)}`
+                                : ""}
                               {view === "mine" && presentation?.detail
                                 ? ` · ${presentation.detail}`
                                 : ""}

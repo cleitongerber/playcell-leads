@@ -10,6 +10,7 @@ import {
   createCampaign,
   getCampaignDetail,
   listCampaigns,
+  reopenCampaign,
   setCampaignFrozen,
   transitionCampaign,
   updateCampaign,
@@ -699,6 +700,9 @@ export const v2FoundationRouter = v2Router({
       .mutation(({ ctx, input }) =>
         transitionCampaign(ctx.partner, input.id, input.status)
       ),
+    reopen: v2PartnerAdminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => reopenCampaign(ctx.partner, input.id)),
     setFrozen: v2PartnerAdminProcedure
       .input(
         z.object({ id: z.number().int().positive(), isFrozen: z.boolean() })
@@ -745,6 +749,9 @@ export const v2FoundationRouter = v2Router({
           page: z.number().int().min(1).default(1),
           pageSize: z.number().int().min(1).max(100).default(25),
           campaignId: z.number().int().positive().optional(),
+          campaignStatus: z
+            .enum(["active", "frozen", "closed", "archived", "all"])
+            .optional(),
           pdvId: z.number().int().positive().optional(),
           statusId: z.number().int().positive().optional(),
           assignedMembershipId: z.number().int().positive().optional(),

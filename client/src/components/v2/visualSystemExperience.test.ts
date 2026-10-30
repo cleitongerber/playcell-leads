@@ -102,6 +102,27 @@ describe("FLUXO visual system experience contracts", () => {
     expect(leads).toContain('view === "mine" ? "Operação" : "Responsável"');
   });
 
+  it("keeps campaign availability filters server-backed and compact", () => {
+    expect(leads).toContain('type CampaignFilterStatus = "active" | "frozen" | "closed" | "archived" | "all"');
+    expect(leads).toContain('campaignStatus: "active"');
+    expect(leads).toContain('v2trpc.campaigns.list.useQuery({ includeArchived: true })');
+    expect(leads).toContain('campaignId: undefined');
+    expect(leads).toContain('campaignStatus: value as CampaignFilterStatus');
+    expect(leads).toContain('campaignStatus: campaignStatus === "active" ? undefined : campaignStatus');
+    expect(leads).toContain("Status da campanha");
+    expect(leads).toContain("Todas as campanhas");
+    expect(leads).toContain("campaignFrozen");
+    expect(leads).toContain("Consulta");
+  });
+
+  it("keeps inactive campaign leads consultable without commercial actions", () => {
+    expect(journey).toContain("Campanha ativa · congelada");
+    expect(journey).toContain("Campanha fechada");
+    expect(journey).toContain("Campanha arquivada");
+    expect(journey).toContain("canStartCommercialWork");
+    expect(journey).toContain("somente para consulta");
+  });
+
   it("uses natural singular and plural language for the existing follow-up alert", () => {
     expect(leads).toContain("function pendingReturnsLabel(count: number)");
     expect(leads).toContain(

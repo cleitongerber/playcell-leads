@@ -14,6 +14,7 @@ import {
 import { type PartnerContext } from "./access";
 import {
   assertCampaignTransition,
+  assertCampaignReopen,
   canEditCampaign,
   canFreezeCampaign,
   canViewCampaignByPdvScope,
@@ -325,6 +326,41 @@ export async function transitionCampaign(
       entityType: "campaign",
       entityId: campaignId,
       metadata: { from: current.status, to: status },
+    });
+  });
+}
+
+/** Reopening is intentionally separate from normal lifecycle transitions. */
+export async function reopenCampaign(context: PartnerContext, campaignId: number) {
+  requirePdvAdministration(context);
+  const db = await getV2Db();
+  const current = await getCampaignInPartner(db, context, campaignId);
+  assertCampaignReopen(current.status);
+  await db.transaction(async tx => {
+    const transactionDb = tx as unknown as V2Database;
+    const updated = await tx
+      .update(campaigns)
+      .set({ status: "active", updatedAt: new Date() })
+      .where(
+        and(
+          eq(campaigns.id, campaignId),
+          eq(campaigns.partnerId, context.partnerId),
+          eq(campaigns.status, "closed")
+        )
+      );
+    const affected = Number(
+      (updated as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0
+    );
+    if (affected !== 1)
+      throw new Error("A campanha foi alterada por outra operação. Recarregue e tente novamente.");
+    await writeV2Audit(transactionDb, {
+      partnerId: context.partnerId,
+      actorUserId: context.userId,
+      actorMembershipId: context.membershipId,
+      action: "campaign_reopened",
+      entityType: "campaign",
+      entityId: campaignId,
+      metadata: { from: "closed", to: "active", remainedFrozen: current.isFrozen },
     });
   });
 }
