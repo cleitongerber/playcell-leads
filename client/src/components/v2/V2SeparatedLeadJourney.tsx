@@ -37,6 +37,7 @@ import { followUpStatusLabel } from "@/lib/followUpPresentation";
 import { presentLeadCustomData } from "@/lib/leadDetailPresentation";
 import {
   presentNextLeadAction,
+  resolveLeadJourneyPermissions,
   type BackendNextLeadAction,
 } from "@/lib/leadJourneyPresentation";
 import {
@@ -582,18 +583,19 @@ export function V2SeparatedLeadJourney() {
     );
   }, [treatmentRequirements.data]);
 
-  const refresh = () => {
-    utils.leads.get.invalidate({ id });
-    utils.leads.nextAction.invalidate({ leadId: id });
-    utils.leads.operationRequirements.invalidate();
-    utils.leads.list.invalidate();
-    utils.followUps.alerts.invalidate();
-    utils.followUps.list.invalidate();
-  };
+  const refresh = () =>
+    Promise.all([
+      utils.leads.get.invalidate({ id }),
+      utils.leads.nextAction.invalidate({ leadId: id }),
+      utils.leads.operationRequirements.invalidate(),
+      utils.leads.list.invalidate(),
+      utils.followUps.alerts.invalidate(),
+      utils.followUps.list.invalidate(),
+    ]).then(() => undefined);
 
   const assume = v2trpc.leads.assume.useMutation({
-    onSuccess: () => {
-      refresh();
+    onSuccess: async () => {
+      await refresh();
       toast.success("Lead assumido. Você já pode trabalhar neste atendimento.");
     },
     onError: error => toast.error(error.message),
@@ -810,13 +812,7 @@ export function V2SeparatedLeadJourney() {
   const action = nextAction.data as BackendNextLeadAction | undefined;
   const actionPresentation = action ? presentNextLeadAction(action) : null;
   const isReadOnly = access.data?.role === "management";
-  const isSeller = access.data?.role === "seller";
-  const isOwner = lead?.assignedMembershipId === access.data?.membershipId;
   const hasOperationalMembership = Boolean(access.data?.membershipId);
-  const canOperateOwnLead = Boolean(
-    hasOperationalMembership && !isReadOnly && (!isSeller || isOwner)
-  );
-  const canManageFollowUps = canOperateOwnLead;
   const canAdministerStatus = Boolean(
     access.data && access.data.role !== "seller" && !isReadOnly
   );
@@ -826,7 +822,14 @@ export function V2SeparatedLeadJourney() {
   const isTerminal = Boolean(detail.data?.status?.isTerminal);
   const commercialActionsBlocked =
     action?.kind === "campaign_not_operational" || isTerminal;
-  const canStartCommercialWork = canOperateOwnLead && !commercialActionsBlocked;
+  const { canAssumeLead, canOperateOwnLead, canStartCommercialWork } =
+    resolveLeadJourneyPermissions({
+      role: access.data?.role,
+      membershipId: access.data?.membershipId,
+      assignedMembershipId: lead?.assignedMembershipId,
+      commercialActionsBlocked,
+    });
+  const canManageFollowUps = canOperateOwnLead;
   const directPhone = lead?.phone || lead?.normalizedPhone;
   const telephoneUrl = buildTelephoneUrl(directPhone);
 
@@ -1207,7 +1210,7 @@ export function V2SeparatedLeadJourney() {
         }
       />
 
-      {!lead.assignedMembershipId && isSeller && canStartCommercialWork && (
+      {canAssumeLead && (
         <Card className="border-brand-accent/35 bg-brand-accent/10">
           <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-3">

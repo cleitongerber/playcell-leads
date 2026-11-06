@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { presentNextLeadAction } from "./leadJourneyPresentation";
+import {
+  presentNextLeadAction,
+  resolveLeadJourneyPermissions,
+} from "./leadJourneyPresentation";
 
 describe("unified lead journey presentation", () => {
   it("presents backend next-action states without deriving commercial rules in React", () => {
@@ -31,5 +34,64 @@ describe("unified lead journey presentation", () => {
       description:
         "Há um follow-up anterior pendente para revisão, mas nenhuma nova ação comercial é sugerida.",
     });
+  });
+
+  it("lets an operational seller claim an available Lead without granting commercial work early", () => {
+    expect(
+      resolveLeadJourneyPermissions({
+        role: "seller",
+        membershipId: 41,
+        assignedMembershipId: null,
+        commercialActionsBlocked: false,
+      })
+    ).toMatchObject({
+      canAssumeLead: true,
+      canOperateOwnLead: false,
+      canStartCommercialWork: false,
+    });
+  });
+
+  it("moves commercial permission to the seller only after confirmed ownership", () => {
+    expect(
+      resolveLeadJourneyPermissions({
+        role: "seller",
+        membershipId: 41,
+        assignedMembershipId: 41,
+        commercialActionsBlocked: false,
+      })
+    ).toMatchObject({
+      canAssumeLead: false,
+      canOperateOwnLead: true,
+      canStartCommercialWork: true,
+    });
+
+    expect(
+      resolveLeadJourneyPermissions({
+        role: "seller",
+        membershipId: 41,
+        assignedMembershipId: 42,
+        commercialActionsBlocked: false,
+      })
+    ).toMatchObject({
+      canAssumeLead: false,
+      canOperateOwnLead: false,
+      canStartCommercialWork: false,
+    });
+  });
+
+  it("never offers a claim for terminal, frozen or closed campaign states", () => {
+    for (const commercialActionsBlocked of [true]) {
+      expect(
+        resolveLeadJourneyPermissions({
+          role: "seller",
+          membershipId: 41,
+          assignedMembershipId: null,
+          commercialActionsBlocked,
+        })
+      ).toMatchObject({
+        canAssumeLead: false,
+        canStartCommercialWork: false,
+      });
+    }
   });
 });

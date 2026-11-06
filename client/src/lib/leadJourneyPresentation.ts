@@ -14,6 +14,46 @@ export type BackendNextLeadAction = {
 
 export type LeadJourneyCta = "evidence" | "contact" | "treatment" | "none";
 
+type LeadJourneyRole =
+  | "super_admin"
+  | "partner_admin"
+  | "manager"
+  | "seller"
+  | "management"
+  | null
+  | undefined;
+
+/**
+ * Keeps the UI distinction between claiming an available queue item and
+ * working an already-owned Lead explicit. The server remains authoritative
+ * for both operations.
+ */
+export function resolveLeadJourneyPermissions(input: {
+  role: LeadJourneyRole;
+  membershipId: number | null | undefined;
+  assignedMembershipId: number | null | undefined;
+  commercialActionsBlocked: boolean;
+}) {
+  const isSeller = input.role === "seller";
+  const isReadOnly = input.role === "management";
+  const hasOperationalMembership = Boolean(input.membershipId);
+  const isOwner = input.assignedMembershipId === input.membershipId;
+  const canOperateOwnLead = Boolean(
+    hasOperationalMembership && !isReadOnly && (!isSeller || isOwner)
+  );
+
+  return {
+    canOperateOwnLead,
+    canStartCommercialWork:
+      canOperateOwnLead && !input.commercialActionsBlocked,
+    canAssumeLead:
+      isSeller &&
+      hasOperationalMembership &&
+      input.assignedMembershipId == null &&
+      !input.commercialActionsBlocked,
+  };
+}
+
 export function presentNextLeadAction(action: BackendNextLeadAction) {
   switch (action.kind) {
     case "complete_governance":

@@ -123,6 +123,24 @@ describe("FLUXO visual system experience contracts", () => {
     expect(journey).toContain("somente para consulta");
   });
 
+  it("keeps claiming an available Lead separate from commercial work permission", () => {
+    const claimCard = journey.slice(
+      journey.indexOf("{canAssumeLead && ("),
+      journey.indexOf(
+        '<div className="grid min-w-0',
+        journey.indexOf("{canAssumeLead && (")
+      )
+    );
+
+    expect(journey).toContain("resolveLeadJourneyPermissions");
+    expect(journey).toContain(
+      "const { canAssumeLead, canOperateOwnLead, canStartCommercialWork }"
+    );
+    expect(claimCard).toContain("Assumir Lead");
+    expect(claimCard).not.toContain("canStartCommercialWork");
+    expect(journey).toContain("await refresh();");
+  });
+
   it("uses natural singular and plural language for the existing follow-up alert", () => {
     expect(leads).toContain("function pendingReturnsLabel(count: number)");
     expect(leads).toContain(
