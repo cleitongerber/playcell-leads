@@ -252,6 +252,14 @@ function operationalPresentation(
   }
 }
 
+function responsibilityLabel(lead: {
+  assignedMembershipId: number | null;
+  assigneeName: string | null;
+}) {
+  if (lead.assignedMembershipId == null) return "Disponível";
+  return lead.assigneeName ?? "Responsável indisponível";
+}
+
 export default function V2Leads() {
   const [, navigate] = useLocation();
   const [listState, setListState] = useState<LeadListState>(readLeadListState);
@@ -666,7 +674,7 @@ export default function V2Leads() {
                       <th>Campanha</th>
                       <th>Status da campanha</th>
                       <th>PDV</th>
-                      <th>Situação</th>
+                      <th>Situação comercial</th>
                       <th>{view === "mine" ? "Operação" : "Responsável"}</th>
                       <th aria-label="Ações" />
                     </tr>
@@ -688,7 +696,24 @@ export default function V2Leads() {
                         </td>
                         <td>{lead.pdvName || "—"}</td>
                         <td>
-                          <Badge variant="outline">{lead.statusLabel}</Badge>
+                          {(() => {
+                            const presentation = operationalPresentation(
+                              lead.operational,
+                              list.data?.timezone ?? null
+                            );
+                            return (
+                              <div className="space-y-1">
+                                <Badge variant="outline">{lead.statusLabel}</Badge>
+                                {view !== "mine" && presentation && (
+                                  <div>
+                                    <Badge variant={presentation.variant}>
+                                      {presentation.label}
+                                    </Badge>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td>
                           {view === "mine"
@@ -707,16 +732,25 @@ export default function V2Leads() {
                                         {presentation.detail}
                                       </p>
                                     )}
+                                    <p className="text-xs text-muted-foreground">
+                                      Responsável: {responsibilityLabel(lead)}
+                                    </p>
                                   </div>
                                 ) : (
                                   "—"
                                 );
                               })()
-                            : lead.campaignStatus !== "active" || lead.campaignFrozen
-                              ? "Consulta"
-                              : lead.assignedMembershipId
-                              ? "Atribuído"
-                              : "Disponível"}
+                            : (
+                                <div className="space-y-1">
+                                  <span>{responsibilityLabel(lead)}</span>
+                                  {(lead.campaignStatus !== "active" ||
+                                    lead.campaignFrozen) && (
+                                    <p className="text-xs text-muted-foreground">
+                                      Consulta
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                         </td>
                         <td className="text-right">
                           <Button
@@ -771,12 +805,10 @@ export default function V2Leads() {
                               <Badge variant="outline">
                                 {lead.statusLabel}
                               </Badge>
-                              {view === "mine" && presentation ? (
+                              {presentation ? (
                                 <Badge variant={presentation.variant}>
                                   {presentation.label}
                                 </Badge>
-                              ) : lead.assignedMembershipId ? (
-                                <Badge variant="secondary">Atribuído</Badge>
                               ) : (
                                 <Badge>Disponível</Badge>
                               )}
@@ -797,6 +829,9 @@ export default function V2Leads() {
                               Abrir
                             </span>
                           </div>
+                          <p className="text-xs text-muted-foreground">
+                            Responsável: {responsibilityLabel(lead)}
+                          </p>
                         </>
                       );
                     })()}

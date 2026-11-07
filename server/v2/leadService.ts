@@ -597,36 +597,8 @@ export async function listLeads(
     campaignName: campaigns.name,
     campaignStatus: campaigns.status,
     campaignFrozen: campaigns.isFrozen,
+    assigneeName: users.name,
   };
-
-  // Only the seller portfolio changes behavior in CODEX 030. The available
-  // queue and every other view retain their existing chronological query.
-  if (input.view !== "mine") {
-    const [items, totals] = await Promise.all([
-      db
-        .select(fields)
-        .from(leads)
-        .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
-        .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
-        .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
-        .where(where)
-        .orderBy(desc(leads.receivedAt), desc(leads.id))
-        .limit(pageSize)
-        .offset((Math.max(input.page, 1) - 1) * pageSize),
-      db
-        .select({ total: count() })
-        .from(leads)
-        .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
-        .where(where),
-    ]);
-    return {
-      items: items.map(item => ({ ...item, operational: null })),
-      total: Number(totals[0]?.total ?? 0),
-      page: Math.max(input.page, 1),
-      pageSize,
-      timezone: null,
-    };
-  }
 
   const timezone = await partnerTimezone(db, context.partnerId);
   const now = new Date();
@@ -680,6 +652,128 @@ export async function listLeads(
       ),
     conversionAt: conversionAtFact.as("conversionAt"),
   };
+
+  // Available and all-scope lists retain their chronological ordering, but
+  // receive the same pre-aggregated operational facts as the portfolio. This
+  // makes the operational indicator descriptive only; it never changes the
+  // commercial status or list ordering outside `view = mine`.
+  if (input.view !== "mine") {
+    const [items, totals] = await Promise.all([
+      db
+        .select(portfolioFields)
+        .from(leads)
+        .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
+        .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
+        .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
+        .leftJoin(
+          userPartners,
+          and(
+            eq(userPartners.id, leads.assignedMembershipId),
+            eq(userPartners.partnerId, leads.partnerId)
+          )
+        )
+        .leftJoin(users, eq(users.id, userPartners.userId))
+        .leftJoin(
+          facts.attempts,
+          and(
+            eq(facts.attempts.partnerId, leads.partnerId),
+            eq(facts.attempts.leadId, leads.id)
+          )
+        )
+        .leftJoin(
+          facts.contacts,
+          and(
+            eq(facts.contacts.partnerId, leads.partnerId),
+            eq(facts.contacts.leadId, leads.id)
+          )
+        )
+        .leftJoin(
+          facts.pendingFollowUps,
+          and(
+            eq(facts.pendingFollowUps.partnerId, leads.partnerId),
+            eq(facts.pendingFollowUps.leadId, leads.id)
+          )
+        )
+        .leftJoin(
+          facts.conversions,
+          and(
+            eq(facts.conversions.partnerId, leads.partnerId),
+            eq(facts.conversions.leadId, leads.id)
+          )
+        )
+        .where(where)
+        .orderBy(desc(leads.receivedAt), desc(leads.id))
+        .limit(pageSize)
+        .offset((Math.max(input.page, 1) - 1) * pageSize),
+      db
+        .select({ total: count() })
+        .from(leads)
+        .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
+        .where(where),
+    ]);
+    const ids = items.map(item => item.id);
+    const lastAttempts = ids.length
+      ? await db
+          .select({
+            id: leadContactAttempts.id,
+            leadId: leadContactAttempts.leadId,
+            channel: leadContactAttempts.channel,
+            resultLabel: leadContactAttempts.resultLabel,
+            occurredAt: leadContactAttempts.occurredAt,
+          })
+          .from(leadContactAttempts)
+          .where(
+            and(
+              eq(leadContactAttempts.partnerId, context.partnerId),
+              inArray(leadContactAttempts.leadId, ids)
+            )
+          )
+          .orderBy(
+            asc(leadContactAttempts.leadId),
+            desc(leadContactAttempts.occurredAt),
+            desc(leadContactAttempts.id)
+          )
+      : [];
+    const lastAttemptByLead = new Map<number, (typeof lastAttempts)[number]>();
+    for (const attempt of lastAttempts) {
+      if (!lastAttemptByLead.has(attempt.leadId))
+        lastAttemptByLead.set(attempt.leadId, attempt);
+    }
+    const unresolvedAssigneeCount = items.filter(
+      item => item.assignedMembershipId !== null && !item.assigneeName
+    ).length;
+    if (unresolvedAssigneeCount) {
+      console.warn("[leads.list] assigned membership without display name", {
+        partnerId: context.partnerId,
+        count: unresolvedAssigneeCount,
+      });
+    }
+    return {
+      items: items.map(item => {
+        const lastAttempt = lastAttemptByLead.get(item.id);
+        return {
+          ...item,
+          operational: {
+            priority: priorityFromRank(item.priorityRank),
+            attemptCount: Number(item.attemptCount ?? 0),
+            lastAttemptAt: item.lastAttemptAt,
+            lastAttemptChannel: lastAttempt?.channel ?? null,
+            lastAttemptResult: lastAttempt?.resultLabel ?? null,
+            hasEffectiveContact: Number(item.hasEffectiveContact) > 0,
+            lastEffectiveContactAt: item.lastEffectiveContactAt,
+            nextFollowUpAt: item.nextFollowUpAt,
+            pendingFollowUpCount: Number(item.pendingFollowUpCount ?? 0),
+            isTerminal: item.isTerminal,
+            conversionAt: item.conversionAt,
+          },
+        };
+      }),
+      total: Number(totals[0]?.total ?? 0),
+      page: Math.max(input.page, 1),
+      pageSize,
+      timezone,
+    };
+  }
   const [items, totals] = await Promise.all([
     db
       .select(portfolioFields)
@@ -687,6 +781,14 @@ export async function listLeads(
       .innerJoin(leadStatuses, eq(leadStatuses.id, leads.statusId))
       .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
       .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
+      .leftJoin(
+        userPartners,
+        and(
+          eq(userPartners.id, leads.assignedMembershipId),
+          eq(userPartners.partnerId, leads.partnerId)
+        )
+      )
+      .leftJoin(users, eq(users.id, userPartners.userId))
       .leftJoin(
         facts.attempts,
         and(
@@ -781,6 +883,15 @@ export async function listLeads(
   for (const attempt of lastAttempts) {
     if (!lastAttemptByLead.has(attempt.leadId))
       lastAttemptByLead.set(attempt.leadId, attempt);
+  }
+  const unresolvedAssigneeCount = items.filter(
+    item => item.assignedMembershipId !== null && !item.assigneeName
+  ).length;
+  if (unresolvedAssigneeCount) {
+    console.warn("[leads.list] assigned membership without display name", {
+      partnerId: context.partnerId,
+      count: unresolvedAssigneeCount,
+    });
   }
   return {
     items: items.map(item => {

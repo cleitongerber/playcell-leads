@@ -96,8 +96,10 @@ describe("FLUXO visual system experience contracts", () => {
     expect(leads).toContain("Para agir");
     expect(leads).toContain("Retorno vencido");
     expect(leads).toContain("Sem atendimento");
-    expect(leads).toContain('view === "mine" && presentation');
-    expect(leads).toContain('<Badge variant="secondary">Atribuído</Badge>');
+    expect(leads).toContain("Situação comercial");
+    expect(leads).toContain("function responsibilityLabel");
+    expect(leads).toContain("Responsável indisponível");
+    expect(leads).toContain("Responsável: {responsibilityLabel(lead)}");
     expect(leads).toContain("<Badge>Disponível</Badge>");
     expect(leads).toContain('view === "mine" ? "Operação" : "Responsável"');
   });

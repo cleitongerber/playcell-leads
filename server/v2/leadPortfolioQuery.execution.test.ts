@@ -92,4 +92,24 @@ describe("seller portfolio MySQL/TiDB query execution contract", () => {
       portfolioQueries.some(query => query.sql.includes("in (1, 2, 6)"))
     ).toBe(true);
   });
+
+  it("projects the tenant-safe assignee name and operational facts outside Minha carteira without changing chronology", async () => {
+    await listLeads(context, {
+      view: "all",
+      page: 1,
+      pageSize: 25,
+    });
+
+    const listQuery = databaseMock.queries.find(query =>
+      query.sql.includes("left join `user_partners`")
+    );
+    expect(listQuery).toBeDefined();
+    expect(listQuery?.sql).toContain("left join `user_partners`");
+    expect(listQuery?.sql).toContain("`user_partners`.`partnerId` = `leads`.`partnerId`");
+    expect(listQuery?.sql).toContain("left join `users`");
+    expect(listQuery?.sql).toContain("portfolio_attempt_facts");
+    expect(listQuery?.sql).toContain("order by `leads`.`receivedAt` desc, `leads`.`id` desc");
+    expect(listQuery?.sql).not.toContain("order by case");
+    expect(listQuery?.params).toContain(context.partnerId);
+  });
 });
