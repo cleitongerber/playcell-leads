@@ -299,7 +299,8 @@ export default function V2Leads() {
   const isManagementView =
     access.data?.role === "super_admin" ||
     access.data?.role === "partner_admin" ||
-    access.data?.role === "manager";
+    access.data?.role === "manager" ||
+    access.data?.role === "management";
   const managementFilters = v2trpc.leads.listFilters.useQuery(undefined, {
     enabled: isManagementView,
   });

@@ -121,6 +121,7 @@ describe("FLUXO visual system experience contracts", () => {
     expect(leads).toContain("Situação comercial");
     expect(leads).toContain("v2trpc.leads.configuration.useQuery()");
     expect(leads).toContain("v2trpc.leads.listFilters.useQuery");
+    expect(leads).toContain('access.data?.role === "management"');
     expect(leads).toContain("Todos no escopo");
     expect(leads).toContain("Atribuídos");
     expect(leads).toContain("Todos os PDVs");

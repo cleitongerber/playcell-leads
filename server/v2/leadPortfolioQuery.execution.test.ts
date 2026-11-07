@@ -152,6 +152,29 @@ describe("seller portfolio MySQL/TiDB query execution contract", () => {
     );
   });
 
+  it("allows Gestão to read only its explicit PDV scope and no filter options outside it", async () => {
+    const managementContext: PartnerContext = {
+      ...context,
+      membershipId: 88,
+      role: "management",
+      pdvScopeMode: "specific",
+    };
+
+    await expect(listLeadListFilters(managementContext)).resolves.toEqual({
+      pdvs: [],
+      sellers: [],
+    });
+
+    const scopeQuery = databaseMock.queries.find(query =>
+      query.sql.includes("from `user_pdv_assignments`")
+    );
+    expect(scopeQuery?.sql).toContain("`user_pdv_assignments`.`partnerId` = ?");
+    expect(scopeQuery?.sql).toContain("`user_pdv_assignments`.`membershipId` = ?");
+    expect(scopeQuery?.params).toEqual(
+      expect.arrayContaining([context.partnerId, managementContext.membershipId])
+    );
+  });
+
   it("keeps the assigned view limited to the seller's own portfolio", async () => {
     await listLeads(
       { ...context, role: "seller", membershipId: 17, pdvScopeMode: "all" },

@@ -493,7 +493,12 @@ export async function saveLeadSource(
  * PDVs outside the current manager's authorized operational scope.
  */
 export async function listLeadListFilters(context: PartnerContext) {
-  requirePartnerRole(context, ["super_admin", "partner_admin", "manager"]);
+  requirePartnerRole(context, [
+    "super_admin",
+    "partner_admin",
+    "manager",
+    "management",
+  ]);
   const db = await getV2Db();
   const scope = await scopedPdvIds(db, context);
   if (scope && !scope.length) return { pdvs: [], sellers: [] };

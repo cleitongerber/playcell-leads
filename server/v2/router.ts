@@ -140,6 +140,7 @@ import {
   listAnalyticsReport,
 } from "./analyticsService";
 import {
+  v2LeadManagementReadProcedure,
   v2ManagerProcedure,
   v2PartnerAdminProcedure,
   v2PartnerOrSuperProcedure,
@@ -765,7 +766,7 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .query(({ ctx, input }) => listLeads(ctx.partner, input)),
-    listFilters: v2ManagerProcedure.query(({ ctx }) =>
+    listFilters: v2LeadManagementReadProcedure.query(({ ctx }) =>
       listLeadListFilters(ctx.partner)
     ),
     managementFilters: v2ManagerProcedure

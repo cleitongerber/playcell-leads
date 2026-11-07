@@ -146,6 +146,28 @@ export const v2ManagerProcedure = v2PartnerProcedure.use(
   }
 );
 
+/**
+ * Read-only Leads overview for the corporate Gestão membership. Keep this
+ * deliberately narrower than v2ManagerProcedure: Gestão may inspect its
+ * tenant/PDV-scoped queue, but must never inherit operational mutations.
+ */
+export const v2LeadManagementReadProcedure = v2PartnerProcedure.use(
+  async ({ ctx, next }) => {
+    try {
+      requirePartnerRole(ctx.partner, [
+        "super_admin",
+        "partner_admin",
+        "manager",
+        "management",
+      ]);
+      return next({ ctx });
+    } catch (error) {
+      if (error instanceof PartnerAccessError) throw toTrpcError(error);
+      throw error;
+    }
+  }
+);
+
 export const v2PartnerAdminProcedure = v2PartnerProcedure.use(
   async ({ ctx, next }) => {
     try {

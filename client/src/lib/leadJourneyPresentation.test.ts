@@ -94,4 +94,19 @@ describe("unified lead journey presentation", () => {
       });
     }
   });
+
+  it("keeps Gestão read-only even when the Lead is assigned in its scope", () => {
+    expect(
+      resolveLeadJourneyPermissions({
+        role: "management",
+        membershipId: 81,
+        assignedMembershipId: 81,
+        commercialActionsBlocked: false,
+      })
+    ).toMatchObject({
+      canAssumeLead: false,
+      canOperateOwnLead: false,
+      canStartCommercialWork: false,
+    });
+  });
 });

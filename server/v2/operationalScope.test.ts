@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PartnerAccessError, type PartnerContext } from "./access";
 import { canAccessOperationalPdv, requireMembershipPdvTenant, requireOperationalWrite, requirePdvAdministration } from "./operationalScope";
@@ -41,5 +43,20 @@ describe("V2 operational PDV scope", () => {
   it("treats ALL as a dynamic read scope but never as an operational-write grant", () => {
     expect(canAccessOperationalPdv(managementAll, { pdvPartnerId: 10, pdvIsActive: true, assignment: null })).toBe(true);
     expect(() => requireOperationalWrite(managementAll)).toThrow(PartnerAccessError);
+  });
+
+  it("keeps Gestão out of every generic operational procedure", () => {
+    const trpc = readFileSync(resolve(process.cwd(), "server/v2/trpc.ts"), "utf8");
+    const operational = trpc.slice(
+      trpc.indexOf("export const v2OperationalProcedure"),
+      trpc.indexOf("export const v2PartnerOrSuperProcedure")
+    );
+    const leadRead = trpc.slice(
+      trpc.indexOf("export const v2LeadManagementReadProcedure"),
+      trpc.indexOf("export const v2PartnerAdminProcedure")
+    );
+
+    expect(operational).not.toContain('"management"');
+    expect(leadRead).toContain('"management"');
   });
 });
