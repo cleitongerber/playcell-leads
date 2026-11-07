@@ -258,7 +258,22 @@ async function assertAnalyticsFilters(
         .limit(1)
     )[0];
     if (!row) throw new Error("Campanha indisponível no seu escopo");
-    if (scope.pdvIds) {
+    if (filters.pdvId) {
+      const mapped = (
+        await db
+          .select({ id: campaignPdvs.id })
+          .from(campaignPdvs)
+          .where(
+            and(
+              eq(campaignPdvs.partnerId, context.partnerId),
+              eq(campaignPdvs.campaignId, filters.campaignId),
+              eq(campaignPdvs.pdvId, filters.pdvId)
+            )
+          )
+          .limit(1)
+      )[0];
+      if (!mapped) throw new Error("Campanha indisponível no seu escopo");
+    } else if (scope.pdvIds) {
       const mapped = (
         await db
           .select({ id: campaignPdvs.id })
@@ -301,6 +316,23 @@ async function assertAnalyticsFilters(
         .limit(1)
     )[0];
     if (!seller) throw new Error("Vendedor indisponível no seu escopo");
+    if (filters.pdvId) {
+      const assignment = (
+        await db
+          .select({ id: userPdvAssignments.id })
+          .from(userPdvAssignments)
+          .where(
+            and(
+              eq(userPdvAssignments.partnerId, context.partnerId),
+              eq(userPdvAssignments.membershipId, filters.sellerMembershipId),
+              eq(userPdvAssignments.pdvId, filters.pdvId),
+              eq(userPdvAssignments.isActive, true)
+            )
+          )
+          .limit(1)
+      )[0];
+      if (!assignment) throw new Error("Vendedor indisponível no seu escopo");
+    }
   }
 }
 
@@ -2467,8 +2499,11 @@ export async function getProductivityAnalytics(
   };
 }
 
-export async function listAnalyticsFilters(context: PartnerContext) {
-  const analytics = await createAnalyticsContext(context, {});
+export async function listAnalyticsFilters(
+  context: PartnerContext,
+  filters: Pick<AnalyticsFilters, "pdvId"> = {}
+) {
+  const analytics = await createAnalyticsContext(context, filters);
   const { db, scope, period } = analytics;
   const campaignConditions: SQL[] = [
     eq(campaigns.partnerId, context.partnerId),
@@ -2477,6 +2512,9 @@ export async function listAnalyticsFilters(context: PartnerContext) {
   if (scope.pdvIds) {
     campaignConditions.push(inArray(campaignPdvs.pdvId, scope.pdvIds));
     pdvConditions.push(inArray(pdvs.id, scope.pdvIds));
+  }
+  if (filters.pdvId) {
+    campaignConditions.push(eq(campaignPdvs.pdvId, filters.pdvId));
   }
   const [campaignRows, pdvRows, sellers] = await Promise.all([
     db
@@ -2500,9 +2538,10 @@ export async function listAnalyticsFilters(context: PartnerContext) {
       .from(pdvs)
       .where(and(...pdvConditions))
       .orderBy(asc(pdvs.name)),
-    listAnalyticsSellers(db, context, scope, {}),
+    listAnalyticsSellers(db, context, scope, filters),
   ]);
   return {
+    selectedPdvId: filters.pdvId ?? null,
     timeZone: period.timeZone,
     campaigns: Array.from(
       new Map(campaignRows.map(row => [row.id, row])).values()

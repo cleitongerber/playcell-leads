@@ -40,6 +40,36 @@ export type AnalyticsUiFilters = {
 export const defaultAnalyticsFilters: AnalyticsUiFilters = {
   preset: "this_month",
 };
+
+type AnalyticsFilterOptions = {
+  selectedPdvId: number | null;
+  campaigns: Array<{ id: number; name: string }>;
+  sellers: Array<{ id: number; name: string }>;
+};
+
+/** Drops selections that are no longer available after the PDV changes. */
+export function reconcileAnalyticsDependentFilters(
+  value: AnalyticsUiFilters,
+  options: AnalyticsFilterOptions | undefined
+): AnalyticsUiFilters {
+  if (!options || options.selectedPdvId !== (value.pdvId ?? null)) return value;
+  const campaignIds = new Set(options.campaigns.map(item => item.id));
+  const sellerIds = new Set(options.sellers.map(item => item.id));
+  const campaignId =
+    value.campaignId && !campaignIds.has(value.campaignId)
+      ? undefined
+      : value.campaignId;
+  const sellerMembershipId =
+    value.sellerMembershipId && !sellerIds.has(value.sellerMembershipId)
+      ? undefined
+      : value.sellerMembershipId;
+  if (
+    campaignId === value.campaignId &&
+    sellerMembershipId === value.sellerMembershipId
+  )
+    return value;
+  return { ...value, campaignId, sellerMembershipId };
+}
 const validPresets = new Set<AnalyticsUiFilters["preset"]>([
   "today",
   "yesterday",
@@ -296,12 +326,18 @@ export function AnalyticsFilters({
   /** Lets a parent toolbar place its existing clear action alongside other actions. */
   hideClear?: boolean;
 }) {
-  const filters = v2trpc.analytics.filters.useQuery();
+  const filters = v2trpc.analytics.filters.useQuery(
+    value.pdvId ? { pdvId: value.pdvId } : undefined
+  );
   const access = v2trpc.access.context.useQuery();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const canFilterSeller = includeSeller && access.data?.role !== "seller";
   const patch = (next: Partial<AnalyticsUiFilters>) =>
     onChange({ ...value, ...next });
+  useEffect(() => {
+    const reconciled = reconcileAnalyticsDependentFilters(value, filters.data);
+    if (reconciled !== value) onChange(reconciled);
+  }, [filters.data, onChange, value]);
   const activeCount = useMemo(
     () =>
       [

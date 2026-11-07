@@ -22,7 +22,7 @@ vi.mock("./database", async importOriginal => {
   };
 });
 
-import { listAnalyticsReport } from "./analyticsService";
+import { listAnalyticsFilters, listAnalyticsReport } from "./analyticsService";
 
 const reportTypes: AnalyticsReportType[] = [
   "leads",
@@ -140,6 +140,60 @@ describe("V2 analytics report MySQL/TiDB query execution contract", () => {
     expect(leadQuery?.params).toContain(context.partnerId);
     expect(leadQuery?.params).toContain(901);
     expect(leadQuery?.sql).not.toContain("in ()");
+  });
+
+  it("builds dependent seller and campaign options from the selected authorized PDV", async () => {
+    databaseMock.responses.push([{ id: 901 }], [], [], []);
+
+    const filters = await listAnalyticsFilters(context, { pdvId: 901 });
+
+    expect(filters.selectedPdvId).toBe(901);
+    const campaignQuery = databaseMock.queries.find(query =>
+      query.sql.includes("campaign_pdvs")
+    );
+    const sellerQuery = databaseMock.queries.find(query =>
+      query.sql.includes("user_pdv_assignments")
+    );
+    expect(campaignQuery?.sql).toMatch(/`campaign_pdvs`\.`pdvId` = \?/);
+    expect(campaignQuery?.params).toContain(901);
+    expect(sellerQuery?.sql).toMatch(/`user_pdv_assignments`\.`pdvId` = \?/);
+    expect(sellerQuery?.params).toContain(901);
+    expect(
+      databaseMock.queries.every(query =>
+        query.params.includes(context.partnerId) ||
+        !query.sql.includes("partnerId")
+      )
+    ).toBe(true);
+  });
+
+  it("rejects a manipulated campaign that is not linked to the selected authorized PDV", async () => {
+    databaseMock.responses.push([{ id: 901 }], [{ id: 44 }], []);
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      listAnalyticsReport(context, {
+        ...baseInput,
+        type: "leads",
+        pdvId: 901,
+        campaignId: 44,
+      })
+    ).rejects.toThrow("Campanha indisponível no seu escopo");
+    errorLog.mockRestore();
+  });
+
+  it("rejects a manipulated seller that is not assigned to the selected authorized PDV", async () => {
+    databaseMock.responses.push([{ id: 901 }], [{ id: 22 }], []);
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      listAnalyticsReport(context, {
+        ...baseInput,
+        type: "leads",
+        pdvId: 901,
+        sellerMembershipId: 22,
+      })
+    ).rejects.toThrow("Vendedor indisponível no seu escopo");
+    errorLog.mockRestore();
   });
 
   it("logs a safe operational context and rethrows a query failure", async () => {

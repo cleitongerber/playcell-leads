@@ -1,5 +1,6 @@
 import {
   AnalyticsFilters,
+  type AnalyticsUiFilters,
   useAnalyticsUrlFilters,
 } from "@/components/v2/AnalyticsFilters";
 import { Badge } from "@/components/ui/badge";
@@ -227,6 +228,10 @@ export default function V2Dashboard() {
   const [overviewTab, setOverviewTab] = useState<"campaigns" | "pdvs">(
     "campaigns"
   );
+  const updateFilters = (next: AnalyticsUiFilters) => {
+    setFilters(next);
+    setHealthPage(1);
+  };
   const openHealthDetail = (kind: HealthDetailKind) => {
     setHealthPage(1);
     setHealthDetail(kind);
@@ -269,7 +274,7 @@ export default function V2Dashboard() {
       <AnalyticsFilters
         className="v2-dashboard-filters"
         value={filters}
-        onChange={setFilters}
+        onChange={updateFilters}
       />
       {!canQuery ? (
         <Card>

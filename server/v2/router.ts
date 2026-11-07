@@ -1287,9 +1287,15 @@ export const v2FoundationRouter = v2Router({
       ),
   }),
   analytics: v2Router({
-    filters: v2PartnerProcedure.query(({ ctx }) =>
-      listAnalyticsFilters(ctx.partner)
-    ),
+    filters: v2PartnerProcedure
+      .input(
+        z
+          .object({ pdvId: z.number().int().positive().optional() })
+          .optional()
+      )
+      .query(({ ctx, input }) =>
+        listAnalyticsFilters(ctx.partner, input ?? {})
+      ),
     dashboard: v2PartnerProcedure
       .input(analyticsFiltersInput.optional())
       .query(({ ctx, input }) =>
