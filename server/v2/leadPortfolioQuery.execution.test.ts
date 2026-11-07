@@ -16,7 +16,7 @@ vi.mock("./database", async importOriginal => {
   };
 });
 
-import { listLeads } from "./leadService";
+import { listLeadListFilters, listLeads } from "./leadService";
 
 const context: PartnerContext = {
   partnerId: 41,
@@ -111,5 +111,59 @@ describe("seller portfolio MySQL/TiDB query execution contract", () => {
     expect(listQuery?.sql).toContain("order by `leads`.`receivedAt` desc, `leads`.`id` desc");
     expect(listQuery?.sql).not.toContain("order by case");
     expect(listQuery?.params).toContain(context.partnerId);
+  });
+
+  it("applies commercial status, PDV and assignee filters before pagination in the tenant query", async () => {
+    await listLeads(context, {
+      view: "all",
+      page: 1,
+      pageSize: 25,
+      statusId: 12,
+      pdvId: 31,
+      assignedMembershipId: 44,
+    });
+
+    const listQuery = databaseMock.queries.find(query =>
+      query.sql.includes("order by `leads`.`receivedAt` desc")
+    );
+    expect(listQuery).toBeDefined();
+    expect(listQuery?.sql).toContain("`leads`.`partnerId` = ?");
+    expect(listQuery?.sql).toContain("`leads`.`pdvId` = ?");
+    expect(listQuery?.sql).toContain("`leads`.`statusId` = ?");
+    expect(listQuery?.sql).toContain("`leads`.`assignedMembershipId` = ?");
+    expect(listQuery?.params).toEqual(
+      expect.arrayContaining([context.partnerId, 31, 12, 44])
+    );
+  });
+
+  it("returns management filter options from the current tenant only", async () => {
+    await listLeadListFilters(context);
+
+    const sellerQuery = databaseMock.queries.find(query =>
+      query.sql.includes("`user_partners`.`role` = ?")
+    );
+    expect(sellerQuery).toBeDefined();
+    expect(sellerQuery?.sql).toContain("`user_partners`.`partnerId` = ?");
+    expect(sellerQuery?.sql).toContain(
+      "`user_pdv_assignments`.`partnerId` = ?"
+    );
+    expect(sellerQuery?.params).toEqual(
+      expect.arrayContaining([context.partnerId, "seller"])
+    );
+  });
+
+  it("keeps the assigned view limited to the seller's own portfolio", async () => {
+    await listLeads(
+      { ...context, role: "seller", membershipId: 17, pdvScopeMode: "all" },
+      { view: "assigned", page: 1, pageSize: 25 }
+    );
+
+    const listQuery = databaseMock.queries.find(query =>
+      query.sql.includes("order by `leads`.`receivedAt` desc")
+    );
+    expect(listQuery?.sql).toContain("`leads`.`assignedMembershipId` = ?");
+    expect(listQuery?.params).toEqual(
+      expect.arrayContaining([context.partnerId, 17])
+    );
   });
 });

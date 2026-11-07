@@ -25,10 +25,10 @@ import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
 import { SlidersHorizontal } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 
-type View = "available" | "mine" | "all";
+type View = "available" | "mine" | "all" | "assigned";
 type AssignmentFilter = "assigned" | "unassigned";
 type WorkFilter = "missing" | "recorded";
 type OperationalFilter = "all" | "action" | "unworked" | "returns" | "closed";
@@ -41,6 +41,7 @@ type OperationalPriority =
   | "upcoming"
   | "terminal";
 type CampaignFilterStatus = "active" | "frozen" | "closed" | "archived" | "all";
+type LeadViewOption = View;
 
 type OperationalState = {
   priority: OperationalPriority;
@@ -90,7 +91,8 @@ function readLeadListState(): LeadListState {
     view:
       requestedView === "available" ||
       requestedView === "mine" ||
-      requestedView === "all"
+      requestedView === "all" ||
+      requestedView === "assigned"
         ? requestedView
         : "available",
     page: positiveInteger(params.get("page")) ?? 1,
@@ -277,16 +279,46 @@ export default function V2Leads() {
     operationalFilter,
   } = listState;
   const [portfolioFiltersOpen, setPortfolioFiltersOpen] = useState(false);
+  const [managementFiltersOpen, setManagementFiltersOpen] = useState(false);
   const [portfolioDrawerBoundary, setPortfolioDrawerBoundary] =
     useState<HTMLDivElement | null>(null);
   const [pendingOperationalFilter, setPendingOperationalFilter] =
     useState<OperationalFilter>(operationalFilter);
+  const shouldApplyRoleDefault = useRef(
+    typeof window !== "undefined" &&
+      !new URLSearchParams(window.location.search).has("view")
+  );
   const updateListState = (patch: Partial<LeadListState>) =>
     setListState(current => ({ ...current, ...patch }));
 
   const updateOperationalFilter = (next: OperationalFilter) =>
     updateListState({ operationalFilter: next, page: 1 });
   const campaigns = v2trpc.campaigns.list.useQuery({ includeArchived: true });
+  const access = v2trpc.access.context.useQuery();
+  const configuration = v2trpc.leads.configuration.useQuery();
+  const isManagementView =
+    access.data?.role === "super_admin" ||
+    access.data?.role === "partner_admin" ||
+    access.data?.role === "manager";
+  const managementFilters = v2trpc.leads.listFilters.useQuery(undefined, {
+    enabled: isManagementView,
+  });
+  const activeView: LeadViewOption = view;
+  const resultsTitle =
+    activeView === "available"
+      ? "Leads disponíveis"
+      : activeView === "mine"
+        ? "Minha carteira"
+        : activeView === "assigned"
+          ? "Leads atribuídos"
+          : "Leads no escopo";
+  const eligibleSellers = useMemo(
+    () =>
+      (managementFilters.data?.sellers ?? []).filter(
+        seller => !pdvId || seller.pdvIds.includes(pdvId)
+      ),
+    [managementFilters.data?.sellers, pdvId]
+  );
   const eligibleCampaigns = useMemo(
     () =>
       (campaigns.data ?? []).filter(campaign =>
@@ -306,6 +338,21 @@ export default function V2Leads() {
       updateListState({ campaignId: undefined, page: 1 });
     }
   }, [campaignId, campaigns.isLoading, eligibleCampaigns]);
+
+  useEffect(() => {
+    if (!access.data || !shouldApplyRoleDefault.current) return;
+    shouldApplyRoleDefault.current = false;
+    if (isManagementView) {
+      updateListState({ view: "all", assignment: undefined, page: 1 });
+    }
+  }, [access.data, isManagementView]);
+
+  useEffect(() => {
+    if (!assignedMembershipId || !managementFilters.data) return;
+    if (!eligibleSellers.some(seller => seller.id === assignedMembershipId)) {
+      updateListState({ assignedMembershipId: undefined, page: 1 });
+    }
+  }, [assignedMembershipId, eligibleSellers, managementFilters.data]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -356,7 +403,6 @@ export default function V2Leads() {
     operationalFilter: view === "mine" ? operationalFilter : undefined,
     search: search || undefined,
   });
-  const access = v2trpc.access.context.useQuery();
   const followUpAlerts = v2trpc.followUps.alerts.useQuery();
 
   return (
@@ -385,30 +431,43 @@ export default function V2Leads() {
         <div className="w-full min-w-0 space-y-1.5 md:flex-1">
           <Label>Visão</Label>
           <div className="v2-tab-list" aria-label="Visão de Leads">
-            {(
-              [
-                ["available", "Fila disponível"],
-                ["mine", "Minha carteira"],
-                ...(access.data?.role !== "seller"
-                  ? [["all", "Todos no escopo"]]
-                  : []),
-              ] as Array<[View, string]>
-            ).map(([option, label]) => (
+            {((
+              isManagementView
+                ? [
+                    ["all", "Todos no escopo"],
+                    ["available", "Fila disponível"],
+                    ["assigned", "Atribuídos"],
+                  ]
+                : [
+                    ["available", "Fila disponível"],
+                    ["mine", "Minha carteira"],
+                  ]
+            ) as Array<[LeadViewOption, string]>).map(([option, label]) => (
               <Button
                 key={option}
                 type="button"
                 size="sm"
                 variant="ghost"
-                className={view === option ? "is-active" : undefined}
-                aria-pressed={view === option}
-                onClick={() =>
+                className={activeView === option ? "is-active" : undefined}
+                aria-pressed={activeView === option}
+                onClick={() => {
+                  if (option === "assigned") {
+                    updateListState({
+                      view: "assigned",
+                      assignment: undefined,
+                      page: 1,
+                      operationalFilter: "all",
+                    });
+                    return;
+                  }
                   updateListState({
                     view: option,
+                    assignment: undefined,
                     page: 1,
                     operationalFilter:
                       option === "mine" ? operationalFilter : "all",
-                  })
-                }
+                  });
+                }}
               >
                 {label}
               </Button>
@@ -467,6 +526,151 @@ export default function V2Leads() {
             }
           />
         </div>
+        <div className="w-full min-w-0 space-y-1.5 md:max-w-52">
+          <Label htmlFor="leads-status">Situação comercial</Label>
+          <Select
+            value={statusId ? String(statusId) : "all"}
+            onValueChange={value =>
+              updateListState({
+                statusId: value === "all" ? undefined : Number(value),
+                page: 1,
+              })
+            }
+          >
+            <SelectTrigger id="leads-status"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {(configuration.data?.statuses ?? []).map(status => (
+                <SelectItem key={status.id} value={String(status.id)}>
+                  {status.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {isManagementView && (
+          <>
+            <div className="w-full min-w-0 md:hidden">
+              <Drawer
+                open={managementFiltersOpen}
+                onOpenChange={setManagementFiltersOpen}
+              >
+                <DrawerTrigger asChild>
+                  <Button type="button" variant="outline" className="w-full">
+                    <SlidersHorizontal className="mr-2 size-4" /> Filtros da gestão
+                  </Button>
+                </DrawerTrigger>
+                <DrawerContent className="max-h-[90dvh] overflow-y-auto">
+                  <DrawerHeader>
+                    <DrawerTitle>Filtros da gestão</DrawerTitle>
+                    <DrawerDescription>
+                      Refine os Leads dentro do escopo autorizado.
+                    </DrawerDescription>
+                  </DrawerHeader>
+                  <div className="grid gap-4 px-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="leads-pdv-mobile">PDV</Label>
+                      <Select
+                        value={pdvId ? String(pdvId) : "all"}
+                        onValueChange={value =>
+                          updateListState({
+                            pdvId: value === "all" ? undefined : Number(value),
+                            assignedMembershipId: undefined,
+                            page: 1,
+                          })
+                        }
+                      >
+                        <SelectTrigger id="leads-pdv-mobile"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos os PDVs</SelectItem>
+                          {(managementFilters.data?.pdvs ?? []).map(pdv => (
+                            <SelectItem key={pdv.id} value={String(pdv.id)}>{pdv.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="leads-assignee-mobile">Responsável</Label>
+                      <Select
+                        value={assignedMembershipId ? String(assignedMembershipId) : assignment ?? "all"}
+                        onValueChange={value =>
+                          updateListState({
+                            assignedMembershipId:
+                              value === "all" || value === "unassigned" ? undefined : Number(value),
+                            assignment: value === "unassigned" ? "unassigned" : undefined,
+                            view:
+                              value === "all" || value === "unassigned" ? "all" : view,
+                            page: 1,
+                          })
+                        }
+                      >
+                        <SelectTrigger id="leads-assignee-mobile"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos os responsáveis</SelectItem>
+                          <SelectItem value="unassigned">Sem responsável</SelectItem>
+                          {eligibleSellers.map(seller => (
+                            <SelectItem key={seller.id} value={String(seller.id)}>{seller.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <DrawerFooter>
+                    <Button type="button" onClick={() => setManagementFiltersOpen(false)}>
+                      Aplicar
+                    </Button>
+                  </DrawerFooter>
+                </DrawerContent>
+              </Drawer>
+            </div>
+            <div className="hidden min-w-0 space-y-1.5 md:block md:max-w-52">
+              <Label htmlFor="leads-pdv">PDV</Label>
+              <Select
+                value={pdvId ? String(pdvId) : "all"}
+                onValueChange={value =>
+                  updateListState({
+                    pdvId: value === "all" ? undefined : Number(value),
+                    assignedMembershipId: undefined,
+                    page: 1,
+                  })
+                }
+              >
+                <SelectTrigger id="leads-pdv"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os PDVs</SelectItem>
+                  {(managementFilters.data?.pdvs ?? []).map(pdv => (
+                    <SelectItem key={pdv.id} value={String(pdv.id)}>{pdv.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="hidden min-w-0 space-y-1.5 md:block md:max-w-52">
+              <Label htmlFor="leads-assignee">Responsável</Label>
+              <Select
+                value={assignedMembershipId ? String(assignedMembershipId) : assignment ?? "all"}
+                onValueChange={value =>
+                  updateListState({
+                    assignedMembershipId:
+                      value === "all" || value === "unassigned" ? undefined : Number(value),
+                    assignment: value === "unassigned" ? "unassigned" : undefined,
+                    view:
+                      value === "all" || value === "unassigned" ? "all" : view,
+                    page: 1,
+                  })
+                }
+              >
+                <SelectTrigger id="leads-assignee"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os responsáveis</SelectItem>
+                  <SelectItem value="unassigned">Sem responsável</SelectItem>
+                  {eligibleSellers.map(seller => (
+                    <SelectItem key={seller.id} value={String(seller.id)}>{seller.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
         {view === "mine" && (
           <>
             <div className="w-full min-w-0 md:hidden">
@@ -647,13 +851,7 @@ export default function V2Leads() {
 
       <Card className="v2-section-card v2-leads-results">
         <CardHeader>
-          <CardTitle>
-            {view === "available"
-              ? "Leads disponíveis"
-              : view === "mine"
-                ? "Minha carteira"
-                : "Leads no escopo"}
-          </CardTitle>
+          <CardTitle>{resultsTitle}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {list.isLoading ? (

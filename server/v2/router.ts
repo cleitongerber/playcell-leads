@@ -23,6 +23,7 @@ import {
   getLeadDetail,
   initializeLeadConfiguration,
   listLeadConfiguration,
+  listLeadListFilters,
   listLeads,
   saveLeadSource,
   saveLeadStatus,
@@ -745,7 +746,7 @@ export const v2FoundationRouter = v2Router({
     list: v2PartnerProcedure
       .input(
         z.object({
-          view: z.enum(["available", "mine", "all"]).default("all"),
+          view: z.enum(["available", "mine", "all", "assigned"]).default("all"),
           page: z.number().int().min(1).default(1),
           pageSize: z.number().int().min(1).max(100).default(25),
           campaignId: z.number().int().positive().optional(),
@@ -764,6 +765,9 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .query(({ ctx, input }) => listLeads(ctx.partner, input)),
+    listFilters: v2ManagerProcedure.query(({ ctx }) =>
+      listLeadListFilters(ctx.partner)
+    ),
     managementFilters: v2ManagerProcedure
       .input(z.object({ campaignId: z.number().int().positive() }))
       .query(({ ctx, input }) =>

@@ -117,6 +117,21 @@ describe("FLUXO visual system experience contracts", () => {
     expect(leads).toContain("Consulta");
   });
 
+  it("keeps commercial and management Lead filters compact, contextual and server-backed", () => {
+    expect(leads).toContain("Situação comercial");
+    expect(leads).toContain("v2trpc.leads.configuration.useQuery()");
+    expect(leads).toContain("v2trpc.leads.listFilters.useQuery");
+    expect(leads).toContain("Todos no escopo");
+    expect(leads).toContain("Atribuídos");
+    expect(leads).toContain("Todos os PDVs");
+    expect(leads).toContain("Todos os responsáveis");
+    expect(leads).toContain("Sem responsável");
+    expect(leads).toContain("Filtros da gestão");
+    expect(leads).toContain("seller.pdvIds.includes(pdvId)");
+    expect(leads).toContain('view: "assigned"');
+    expect(leads).toContain('value === "unassigned" ? "unassigned" : undefined');
+  });
+
   it("keeps inactive campaign leads consultable without commercial actions", () => {
     expect(journey).toContain("Campanha ativa · congelada");
     expect(journey).toContain("Campanha fechada");

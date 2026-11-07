@@ -487,10 +487,73 @@ export async function saveLeadSource(
   });
 }
 
+/**
+ * Read-only options used by the management Leads view. The query is scoped
+ * exactly like the list itself so the selector can never disclose sellers or
+ * PDVs outside the current manager's authorized operational scope.
+ */
+export async function listLeadListFilters(context: PartnerContext) {
+  requirePartnerRole(context, ["super_admin", "partner_admin", "manager"]);
+  const db = await getV2Db();
+  const scope = await scopedPdvIds(db, context);
+  if (scope && !scope.length) return { pdvs: [], sellers: [] };
+
+  const pdvConditions = [
+    eq(pdvs.partnerId, context.partnerId),
+    eq(pdvs.isActive, true),
+  ];
+  if (scope) pdvConditions.push(inArray(pdvs.id, scope));
+
+  const sellerConditions = [
+    eq(userPartners.partnerId, context.partnerId),
+    eq(userPartners.role, "seller"),
+    eq(userPartners.isActive, true),
+    eq(users.isActive, true),
+    eq(userPdvAssignments.partnerId, context.partnerId),
+    eq(userPdvAssignments.isActive, true),
+  ];
+  if (scope) sellerConditions.push(inArray(userPdvAssignments.pdvId, scope));
+
+  const [availablePdvs, sellerRows] = await Promise.all([
+    db
+      .select({ id: pdvs.id, name: pdvs.name })
+      .from(pdvs)
+      .where(and(...pdvConditions))
+      .orderBy(asc(pdvs.name)),
+    db
+      .select({
+        membershipId: userPartners.id,
+        name: users.name,
+        pdvId: userPdvAssignments.pdvId,
+      })
+      .from(userPartners)
+      .innerJoin(users, eq(users.id, userPartners.userId))
+      .innerJoin(
+        userPdvAssignments,
+        eq(userPdvAssignments.membershipId, userPartners.id)
+      )
+      .where(and(...sellerConditions))
+      .orderBy(asc(users.name)),
+  ]);
+
+  const sellers = new Map<number, { id: number; name: string; pdvIds: number[] }>();
+  for (const row of sellerRows) {
+    const seller = sellers.get(row.membershipId) ?? {
+      id: row.membershipId,
+      name: row.name,
+      pdvIds: [],
+    };
+    if (!seller.pdvIds.includes(row.pdvId)) seller.pdvIds.push(row.pdvId);
+    sellers.set(row.membershipId, seller);
+  }
+
+  return { pdvs: availablePdvs, sellers: Array.from(sellers.values()) };
+}
+
 export async function listLeads(
   context: PartnerContext,
   input: {
-    view: "available" | "mine" | "all";
+    view: "available" | "mine" | "all" | "assigned";
     page: number;
     pageSize: number;
     campaignId?: number;
@@ -518,6 +581,13 @@ export async function listLeads(
     conditions.push(isNull(leads.assignedMembershipId));
   if (input.view === "mine")
     conditions.push(eq(leads.assignedMembershipId, context.membershipId!));
+  if (input.view === "assigned") {
+    conditions.push(
+      context.role === "seller"
+        ? eq(leads.assignedMembershipId, context.membershipId!)
+        : isNotNull(leads.assignedMembershipId)
+    );
+  }
   if (input.view === "all" && context.role === "seller")
     conditions.push(
       or(
