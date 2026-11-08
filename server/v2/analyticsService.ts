@@ -4209,6 +4209,31 @@ export const productivityExportColumns: AnalyticsReportColumn[] = [
   { key: "lastActivityAt", label: "Última atividade (período)" },
 ];
 
+// CSV keeps the complete tabular contract: each row is self-describing when it
+// is opened without the companion information sheet. These are the ten fields
+// shared by every row; the Excel report presents them once in "Informações".
+export const productivityExportContextKeys = [
+  "report",
+  "reportVersion",
+  "partner",
+  "filterCampaign",
+  "filterPdv",
+  "filterSeller",
+  "periodStart",
+  "periodEnd",
+  "timeZone",
+  "generatedAt",
+] as const;
+const productivityExportContextKeySet = new Set<string>(
+  productivityExportContextKeys
+);
+
+// The Excel grid is intentionally seller-focused: seller + PDVs + 27 official
+// productivity indicators, in the same order and with the same values as CSV.
+export const productivityXlsxColumns = productivityExportColumns.filter(
+  column => !productivityExportContextKeySet.has(column.key)
+);
+
 function rateAsPercentage(value: number | null) {
   return value == null ? null : value * 100;
 }
@@ -4319,8 +4344,7 @@ export async function formatProductivityXlsx(
   metadata: ProductivityExportMetadata
 ) {
   const rows = buildProductivityExportRows(analytics, metadata);
-  const columnCount = productivityExportColumns.length;
-  const lastColumn = "AM";
+  const lastColumn = "AC";
   const lastRow = Math.max(rows.length + 1, 1);
   const output = new PassThrough();
   const chunks: Buffer[] = [];
@@ -4334,7 +4358,7 @@ export async function formatProductivityXlsx(
   const productivitySheet = workbook.addWorksheet("Produtividade", {
     views: [{ state: "frozen", xSplit: 2, ySplit: 1, topLeftCell: "C2" }],
   });
-  productivitySheet.columns = productivityExportColumns.map(column => ({
+  productivitySheet.columns = productivityXlsxColumns.map(column => ({
     header: column.label,
     key: column.key,
     width:
@@ -4358,9 +4382,9 @@ export async function formatProductivityXlsx(
 
   for (const row of rows) {
     const worksheetRow = productivitySheet.addRow(
-      productivityExportColumns.map(column => productivityXlsxCell(row[column.key]))
+      productivityXlsxColumns.map(column => productivityXlsxCell(row[column.key]))
     );
-    productivityExportColumns.forEach((column, index) => {
+    productivityXlsxColumns.forEach((column, index) => {
       const format = productivityXlsxNumberFormat(column);
       const cell = worksheetRow.getCell(index + 1);
       if (format && typeof cell.value === "number") cell.numFmt = format;

@@ -8,6 +8,8 @@ import {
   PRODUCTIVITY_XLSX_EXPORT_GLOBAL_MAX,
   ProductivityXlsxConcurrencyError,
   productivityExportColumns,
+  productivityExportContextKeys,
+  productivityXlsxColumns,
   type ProductivityAnalytics,
   withProductivityXlsxExportSlot,
 } from "./analyticsService";
@@ -149,6 +151,7 @@ describe("V2 productivity export", () => {
     const csv = formatProductivityCsv(analytics, metadata);
 
     expect(csv.startsWith("\ufeff")).toBe(true);
+    expect(productivityExportColumns).toHaveLength(39);
     expect(csv).toContain('"Carteira atual (snapshot)"');
     expect(csv).toContain('"Tentativas (período)"');
     expect(csv).toContain('"\'=Vendedor de teste"');
@@ -164,12 +167,29 @@ describe("V2 productivity export", () => {
     expect(workbook.SheetNames).toEqual(["Produtividade", "Informações"]);
     const sheet = workbook.Sheets.Produtividade;
     expect(XLSX.utils.sheet_to_json(sheet, { header: 1 })[0]).toEqual(
-      productivityExportColumns.map(column => column.label)
+      productivityXlsxColumns.map(column => column.label)
     );
-    expect(sheet.A2?.v).toBe("Produtividade por vendedor");
-    expect(sheet.K2?.v).toBe("'=Vendedor de teste");
-    expect(sheet.Q2?.v).toBe(40);
-    expect(sheet.Q2?.z).toBe('0.00"%"');
+    expect(productivityXlsxColumns).toHaveLength(29);
+    expect(productivityExportContextKeys).toEqual([
+      "report",
+      "reportVersion",
+      "partner",
+      "filterCampaign",
+      "filterPdv",
+      "filterSeller",
+      "periodStart",
+      "periodEnd",
+      "timeZone",
+      "generatedAt",
+    ]);
+    expect(productivityXlsxColumns.slice(0, 2).map(column => column.key)).toEqual([
+      "seller",
+      "pdvs",
+    ]);
+    expect(sheet.A2?.v).toBe("'=Vendedor de teste");
+    expect(sheet.C2?.v).toBe(5);
+    expect(sheet.G2?.v).toBe(40);
+    expect(sheet.G2?.z).toBe('0.00"%"');
     expect(workbook.Sheets.Informações.B13?.v).toContain("intervalo selecionado");
     expect(workbook.Sheets.Informações.B14?.v).toContain("estado atual");
   });
@@ -183,7 +203,7 @@ describe("V2 productivity export", () => {
     expect(workbookXml).toMatch(/<sheet[^>]*name="Produtividade"/);
     expect(workbookXml).toMatch(/<sheet[^>]*name="Informações"/);
     expect(sheetXml).toContain('<pane xSplit="2" ySplit="1" topLeftCell="C2" activePane="bottomRight" state="frozen"/>');
-    expect(sheetXml).toContain('<autoFilter ref="A1:AM2"/>');
+    expect(sheetXml).toContain('<autoFilter ref="A1:AC2"/>');
     expect(sheetXml).toContain('<cols>');
     expect(sheetXml).toMatch(/<c r="A1" s="\d+"/);
     expect(stylesXml).toContain('FF0F4C5C');
@@ -204,8 +224,8 @@ describe("V2 productivity export", () => {
 
     expect(csv).toContain("'\t=SUM(1,1)");
     expect(csv).toContain("' \r\n@partner");
-    expect(workbook.Sheets.Produtividade.K2?.v).toBe("'\t=SUM(1,1)");
-    expect(workbook.Sheets.Produtividade.C2?.v).toBe("' \r\n@partner");
+    expect(workbook.Sheets.Produtividade.A2?.v).toBe("'\t=SUM(1,1)");
+    expect(workbook.Sheets.Informações.B4?.v).toBe("' \r\n@partner");
     const archiveXml = [...entries.values()].join("\n");
     expect(archiveXml).not.toMatch(/<f(?:\s|>)/);
     expect(archiveXml).not.toContain("<hyperlink");
