@@ -1318,6 +1318,11 @@ export const v2FoundationRouter = v2Router({
         .mutation(({ ctx, input }) =>
           exportProductivityAnalytics(ctx.partner, input ?? {})
         ),
+      exportXlsx: v2PartnerProcedure
+        .input(analyticsFiltersInput.optional())
+        .mutation(({ ctx, input }) =>
+          exportProductivityAnalytics(ctx.partner, input ?? {}, "xlsx")
+        ),
     }),
     reports: v2Router({
       list: v2PartnerProcedure

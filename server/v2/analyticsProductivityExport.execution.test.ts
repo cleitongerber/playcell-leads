@@ -51,6 +51,23 @@ describe("V2 productivity export execution contract", () => {
     databaseMock.database = createDialectDatabase();
   });
 
+  function queueAuthorizedAnalytics() {
+    databaseMock.responses.push(
+      [{ timezone: "America/Sao_Paulo", stale: 1440 }],
+      [
+        {
+          membershipId: 17,
+          name: "Vendedor autorizado",
+          pdvId: 901,
+          pdvName: "PDV autorizado",
+        },
+      ],
+      ...Array.from({ length: 16 }, () => []),
+      [{ name: "Parceiro autorizado" }],
+      []
+    );
+  }
+
   it("exports the complete authorized seller result and records a sanitized audit event", async () => {
     databaseMock.responses.push(
       [{ timezone: "America/Sao_Paulo", stale: 1440 }],
@@ -85,6 +102,64 @@ describe("V2 productivity export execution contract", () => {
     expect(auditQuery?.params).toContain(context.partnerId);
     expect(auditQuery?.params).toContain(context.userId);
     expect(JSON.stringify(auditQuery?.params)).not.toContain("Vendedor autorizado");
+  });
+
+  it("exports XLSX through the same authorized calculation and audits the selected format", async () => {
+    queueAuthorizedAnalytics();
+
+    const result = await exportProductivityAnalytics(
+      context,
+      { preset: "custom", fromDate: "2026-11-01", toDate: "2026-11-07" },
+      "xlsx"
+    );
+
+    expect(result.fileName).toBe("fluxo-produtividade-2026-11-01-2026-11-07.xlsx");
+    expect(result.encoding).toBe("base64");
+    expect(result.mimeType).toContain("spreadsheetml.sheet");
+    expect(result.content.length).toBeGreaterThan(100);
+    const auditQuery = databaseMock.queries.find(query =>
+      query.sql.includes("audit_logs")
+    );
+    expect(
+      auditQuery?.params.some(param => String(param).includes('"format":"xlsx"'))
+    ).toBe(true);
+  });
+
+  it("does not record a successful audit event when XLSX generation fails", async () => {
+    queueAuthorizedAnalytics();
+
+    await expect(
+      exportProductivityAnalytics(
+        context,
+        { preset: "custom", fromDate: "2026-11-01", toDate: "2026-11-07" },
+        "xlsx",
+        { generateXlsx: async () => Promise.reject(new Error("XLSX unavailable")) }
+      )
+    ).rejects.toThrow("XLSX unavailable");
+    expect(
+      databaseMock.queries.some(query => query.sql.includes("audit_logs"))
+    ).toBe(false);
+  });
+
+  it("propagates an audit persistence failure after generation instead of reporting export success", async () => {
+    queueAuthorizedAnalytics();
+    let generated = false;
+
+    await expect(
+      exportProductivityAnalytics(
+        context,
+        { preset: "custom", fromDate: "2026-11-01", toDate: "2026-11-07" },
+        "xlsx",
+        {
+          generateXlsx: async () => {
+            generated = true;
+            return "xlsx-content";
+          },
+          writeAudit: async () => Promise.reject(new Error("Audit unavailable")),
+        }
+      )
+    ).rejects.toThrow("Audit unavailable");
+    expect(generated).toBe(true);
   });
 
   it("rejects a manipulated PDV before producing a file or audit event", async () => {

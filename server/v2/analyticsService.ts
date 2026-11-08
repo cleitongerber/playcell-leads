@@ -17,6 +17,9 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
+import ExcelJS from "exceljs-hardened";
+import { PassThrough } from "node:stream";
+import { finished } from "node:stream/promises";
 import {
   campaignPdvs,
   campaigns,
@@ -62,6 +65,10 @@ import { resolvePdvScope } from "./pdvScope";
 const REPORT_PAGE_MAX = 100;
 const EXPORT_ROW_MAX = 25_000;
 export const PRODUCTIVITY_EXPORT_ROW_MAX = 10_000;
+export const PRODUCTIVITY_XLSX_EXPORT_GLOBAL_MAX = 2;
+export const PRODUCTIVITY_XLSX_EXPORT_PER_USER_MAX = 1;
+let productivityXlsxExportsInFlight = 0;
+const productivityXlsxExportsByUser = new Map<number, number>();
 const OPERATION_EVENT_TYPES = [
   "contact_attempted",
   "effective_contact_recorded",
@@ -4098,9 +4105,15 @@ export async function listAnalyticsReport(
   }
 }
 
+function spreadsheetSafeText(value: string) {
+  // Excel may ignore leading controls or whitespace before evaluating a formula.
+  return /^[\u0000-\u0020\u007f\u00a0\ufeff]*[=+\-@]/.test(value)
+    ? `'${value}`
+    : value;
+}
+
 function csvCell(value: string | number | null | undefined) {
-  let text = value == null ? "" : String(value);
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  const text = value == null ? "" : spreadsheetSafeText(String(value));
   return `"${text.replaceAll('"', '""')}"`;
 }
 
@@ -4126,7 +4139,7 @@ type ProductivityExportMetadata = {
   generatedAt: string;
 };
 
-const productivityExportColumns: AnalyticsReportColumn[] = [
+export const productivityExportColumns: AnalyticsReportColumn[] = [
   { key: "report", label: "Relatório" },
   { key: "reportVersion", label: "Versão do relatório" },
   { key: "partner", label: "Parceiro" },
@@ -4251,6 +4264,170 @@ export function formatProductivityCsv(
   );
 }
 
+const PRODUCTIVITY_XLSX_MIME_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+function productivityXlsxCell(value: string | number | null | undefined) {
+  return typeof value === "string" ? spreadsheetSafeText(value) : value;
+}
+
+function productivityXlsxNumberFormat(column: AnalyticsReportColumn) {
+  if (column.key.endsWith("Rate") || column.key === "workCoverage") {
+    // Export rows already carry percentage points (for example, 40 = 40%).
+    return '0.00"%"';
+  }
+  if (column.key === "attemptsPerLead") return "0.00";
+  if (column.key.endsWith("AverageSeconds")) return '#,##0" s"';
+  if (
+    [
+      "portfolio",
+      "assignedInPeriod",
+      "withoutWork",
+      "worked",
+      "leadsWithAttempt",
+      "attempts",
+      "effectiveContacts",
+      "leadsWithEffectiveContact",
+      "interested",
+      "conversions",
+      "leadsConverted",
+      "followUpsCreated",
+      "followUpsCompleted",
+      "followUpsOverdue",
+      "followUpsPending",
+      "followUpsFromAttempts",
+      "followUpsFromTreatments",
+      "followUpsIndependent",
+      "governanceComplete",
+      "governancePending",
+    ].includes(column.key)
+  ) {
+    return "#,##0";
+  }
+  return undefined;
+}
+
+export async function formatProductivityXlsx(
+  analytics: ProductivityAnalytics,
+  metadata: ProductivityExportMetadata
+) {
+  const rows = buildProductivityExportRows(analytics, metadata);
+  const columnCount = productivityExportColumns.length;
+  const lastColumn = "AM";
+  const lastRow = Math.max(rows.length + 1, 1);
+  const output = new PassThrough();
+  const chunks: Buffer[] = [];
+  output.on("data", chunk => chunks.push(Buffer.from(chunk)));
+  const outputFinished = finished(output);
+  const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+    stream: output,
+    useStyles: true,
+    useSharedStrings: false,
+  });
+  const productivitySheet = workbook.addWorksheet("Produtividade", {
+    views: [{ state: "frozen", xSplit: 2, ySplit: 1, topLeftCell: "C2" }],
+  });
+  productivitySheet.columns = productivityExportColumns.map(column => ({
+    header: column.label,
+    key: column.key,
+    width:
+      column.key === "pdvs" || column.key.startsWith("filter")
+        ? 28
+        : column.key === "seller" || column.key === "partner"
+          ? 24
+          : column.key === "lastActivityAt" || column.key === "generatedAt"
+            ? 22
+            : 16,
+  }));
+  productivitySheet.autoFilter = `A1:${lastColumn}${lastRow}`;
+  const header = productivitySheet.getRow(1);
+  header.height = 34;
+  header.eachCell(cell => {
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F4C5C" } };
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+  });
+  header.commit();
+
+  for (const row of rows) {
+    const worksheetRow = productivitySheet.addRow(
+      productivityExportColumns.map(column => productivityXlsxCell(row[column.key]))
+    );
+    productivityExportColumns.forEach((column, index) => {
+      const format = productivityXlsxNumberFormat(column);
+      const cell = worksheetRow.getCell(index + 1);
+      if (format && typeof cell.value === "number") cell.numFmt = format;
+    });
+    worksheetRow.commit();
+  }
+
+  const informationSheet = workbook.addWorksheet("Informações", {
+    views: [{ state: "frozen", ySplit: 1, topLeftCell: "A2" }],
+  });
+  informationSheet.columns = [{ width: 24 }, { width: 92 }];
+  const informationRows = [
+    ["Informações do relatório", ""],
+    ["Relatório", "Produtividade por vendedor"],
+    ["Versão", "v1"],
+    ["Parceiro", productivityXlsxCell(metadata.partner)],
+    ["Período inicial", metadata.periodStart],
+    ["Período final", metadata.periodEnd],
+    ["Campanha filtrada", productivityXlsxCell(metadata.campaign)],
+    ["PDV filtrado", productivityXlsxCell(metadata.pdv)],
+    ["Vendedor filtrado", productivityXlsxCell(metadata.seller)],
+    ["Fuso horário", metadata.timeZone],
+    ["Gerado em", metadata.generatedAt],
+    ["Origem", "Extração oficial do FLUXO"],
+    ["Definição", "Indicadores de período medem eventos no intervalo selecionado."],
+    ["Snapshots", "Carteira, leads sem trabalho e follow-ups representam o estado atual."],
+  ];
+  for (let index = 0; index < informationRows.length; index += 1) {
+    const values = informationRows[index];
+    const row = informationSheet.addRow(values);
+    if (index === 0) {
+      row.eachCell(cell => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F4C5C" } };
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      });
+    } else {
+      row.getCell(1).font = { bold: true, color: { argb: "FF1F2937" } };
+    }
+    row.commit();
+  }
+
+  await workbook.commit();
+  await outputFinished;
+  return Buffer.concat(chunks).toString("base64");
+}
+
+export async function withProductivityXlsxExportSlot<T>(
+  context: Pick<PartnerContext, "userId">,
+  operation: () => Promise<T>
+) {
+  const exportsForUser = productivityXlsxExportsByUser.get(context.userId) ?? 0;
+  if (exportsForUser >= PRODUCTIVITY_XLSX_EXPORT_PER_USER_MAX) {
+    throw new Error("Uma exportação Excel já está em andamento para este usuário.");
+  }
+  if (productivityXlsxExportsInFlight >= PRODUCTIVITY_XLSX_EXPORT_GLOBAL_MAX) {
+    throw new Error("Muitas exportações Excel estão em andamento. Tente novamente em instantes.");
+  }
+
+  productivityXlsxExportsInFlight += 1;
+  productivityXlsxExportsByUser.set(context.userId, exportsForUser + 1);
+  try {
+    return await operation();
+  } finally {
+    productivityXlsxExportsInFlight -= 1;
+    const remainingForUser =
+      (productivityXlsxExportsByUser.get(context.userId) ?? 1) - 1;
+    if (remainingForUser <= 0) {
+      productivityXlsxExportsByUser.delete(context.userId);
+    } else {
+      productivityXlsxExportsByUser.set(context.userId, remainingForUser);
+    }
+  }
+}
+
 export function assertProductivityExportLimit(count: number) {
   if (count > PRODUCTIVITY_EXPORT_ROW_MAX) {
     throw new Error(
@@ -4323,39 +4500,61 @@ async function resolveProductivityExportMetadata(
   };
 }
 
+type ProductivityExportDependencies = {
+  generateXlsx?: typeof formatProductivityXlsx;
+  writeAudit?: typeof writeV2Audit;
+};
+
 export async function exportProductivityAnalytics(
   context: PartnerContext,
-  filters: AnalyticsFilters
+  filters: AnalyticsFilters,
+  format: "csv" | "xlsx" = "csv",
+  dependencies: ProductivityExportDependencies = {}
 ) {
-  const analytics = await getProductivityAnalytics(context, filters);
-  assertProductivityExportLimit(analytics.sellers.length);
-  const metadata = await resolveProductivityExportMetadata(
-    context,
-    filters,
-    analytics
-  );
-  const db = await getV2Db();
-  await writeV2Audit(db, {
-    partnerId: context.partnerId,
-    actorUserId: context.userId,
-    actorMembershipId: context.membershipId,
-    action: "analytics_productivity_exported",
-    entityType: "analytics_productivity",
-    metadata: {
-      campaignId: filters.campaignId ?? null,
-      pdvId: filters.pdvId ?? null,
-      sellerMembershipId: filters.sellerMembershipId ?? null,
-      periodStart: analytics.period.start.toISOString(),
-      periodEnd: analytics.period.end.toISOString(),
-      exportedCount: analytics.sellers.length,
-      reportVersion: "v1",
-    },
-  });
-  return {
-    fileName: `fluxo-produtividade-${metadata.periodStart}-${metadata.periodEnd}.csv`,
-    content: formatProductivityCsv(analytics, metadata),
-    total: analytics.sellers.length,
+  const execute = async () => {
+    const analytics = await getProductivityAnalytics(context, filters);
+    assertProductivityExportLimit(analytics.sellers.length);
+    const metadata = await resolveProductivityExportMetadata(
+      context,
+      filters,
+      analytics
+    );
+    const xlsx = format === "xlsx";
+    const content = xlsx
+      ? await (dependencies.generateXlsx ?? formatProductivityXlsx)(analytics, metadata)
+      : formatProductivityCsv(analytics, metadata);
+    const db = await getV2Db();
+    await (dependencies.writeAudit ?? writeV2Audit)(db, {
+      partnerId: context.partnerId,
+      actorUserId: context.userId,
+      actorMembershipId: context.membershipId,
+      action: "analytics_productivity_exported",
+      entityType: "analytics_productivity",
+      metadata: {
+        campaignId: filters.campaignId ?? null,
+        pdvId: filters.pdvId ?? null,
+        sellerMembershipId: filters.sellerMembershipId ?? null,
+        periodStart: analytics.period.start.toISOString(),
+        periodEnd: analytics.period.end.toISOString(),
+        exportedCount: analytics.sellers.length,
+        reportVersion: "v1",
+        format,
+      },
+    });
+    const encoding: "base64" | "utf8" = xlsx ? "base64" : "utf8";
+    return {
+      fileName: `fluxo-produtividade-${metadata.periodStart}-${metadata.periodEnd}.${
+        xlsx ? "xlsx" : "csv"
+      }`,
+      content,
+      mimeType: xlsx ? PRODUCTIVITY_XLSX_MIME_TYPE : "text/csv;charset=utf-8",
+      encoding,
+      total: analytics.sellers.length,
+    };
   };
+  return format === "xlsx"
+    ? withProductivityXlsxExportSlot(context, execute)
+    : execute();
 }
 
 export async function exportAnalyticsReport(

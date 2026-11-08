@@ -6,6 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Drawer,
   DrawerContent,
   DrawerDescription,
@@ -23,7 +29,13 @@ import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
-import { ArrowDown, ArrowUp, ArrowUpDown, Download } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
+  Download,
+} from "lucide-react";
 import { Link } from "wouter";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -167,20 +179,37 @@ export default function V2Productivity() {
   const productivity = v2trpc.analytics.productivity.list.useQuery(filters, {
     enabled: canQuery,
   });
-  const exportProductivity = v2trpc.analytics.productivity.export.useMutation({
+  const downloadProductivityExport = (result: {
+    content: string;
+    fileName: string;
+    mimeType: string;
+    encoding: "utf8" | "base64";
+    total: number;
+  }) => {
+    const payload =
+      result.encoding === "base64"
+        ? Uint8Array.from(atob(result.content), character => character.charCodeAt(0))
+        : result.content;
+    const href = URL.createObjectURL(new Blob([payload], { type: result.mimeType }));
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = result.fileName;
+    anchor.click();
+    URL.revokeObjectURL(href);
+    toast.success(`${result.total} vendedor(es) exportado(s).`);
+  };
+  const exportProductivityCsv = v2trpc.analytics.productivity.export.useMutation({
     onSuccess: result => {
-      const href = URL.createObjectURL(
-        new Blob([result.content], { type: "text/csv;charset=utf-8" })
-      );
-      const anchor = document.createElement("a");
-      anchor.href = href;
-      anchor.download = result.fileName;
-      anchor.click();
-      URL.revokeObjectURL(href);
-      toast.success(`${result.total} vendedor(es) exportado(s).`);
+      downloadProductivityExport(result);
     },
     onError: error => toast.error(error.message),
   });
+  const exportProductivityXlsx = v2trpc.analytics.productivity.exportXlsx.useMutation({
+    onSuccess: result => downloadProductivityExport(result),
+    onError: error => toast.error(error.message),
+  });
+  const isExporting =
+    exportProductivityCsv.isPending || exportProductivityXlsx.isPending;
   const sellers = (productivity.data?.sellers ?? []) as SellerRow[];
   const selectedSeller = sellers.find(
     seller => seller.membershipId === selectedSellerId
@@ -226,17 +255,23 @@ export default function V2Productivity() {
         title="Produtividade"
         description="Esforço, contato efetivo, disciplina de follow-up e resultado por vendedor."
         actions={
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!canQuery || exportProductivity.isPending}
-            onClick={() => exportProductivity.mutate(filters)}
-          >
-            <Download className="mr-2 size-4" />
-            {exportProductivity.isPending
-              ? "Exportando…"
-              : "Exportar produtividade"}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" disabled={!canQuery || isExporting}>
+                <Download className="mr-2 size-4" />
+                {isExporting ? "Exportando…" : "Exportar produtividade"}
+                <ChevronDown className="ml-2 size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => exportProductivityXlsx.mutate(filters)}>
+                Exportar Excel (.xlsx)
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => exportProductivityCsv.mutate(filters)}>
+                Exportar CSV (.csv)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         }
       />
       <AnalyticsFilters
