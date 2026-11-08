@@ -23,9 +23,10 @@ import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
 import { buildV2Path, currentV2Path } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Download } from "lucide-react";
 import { Link } from "wouter";
 import { useMemo, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 
 function number(value: number | undefined | null) {
   return new Intl.NumberFormat("pt-BR").format(value ?? 0);
@@ -163,8 +164,22 @@ export default function V2Productivity() {
   }>({ key: "workCoverage", direction: "asc" });
   const canQuery =
     filters.preset !== "custom" || Boolean(filters.fromDate && filters.toDate);
-  const productivity = v2trpc.analytics.productivity.useQuery(filters, {
+  const productivity = v2trpc.analytics.productivity.list.useQuery(filters, {
     enabled: canQuery,
+  });
+  const exportProductivity = v2trpc.analytics.productivity.export.useMutation({
+    onSuccess: result => {
+      const href = URL.createObjectURL(
+        new Blob([result.content], { type: "text/csv;charset=utf-8" })
+      );
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = result.fileName;
+      anchor.click();
+      URL.revokeObjectURL(href);
+      toast.success(`${result.total} vendedor(es) exportado(s).`);
+    },
+    onError: error => toast.error(error.message),
   });
   const sellers = (productivity.data?.sellers ?? []) as SellerRow[];
   const selectedSeller = sellers.find(
@@ -210,6 +225,19 @@ export default function V2Productivity() {
         eyebrow="Gestão"
         title="Produtividade"
         description="Esforço, contato efetivo, disciplina de follow-up e resultado por vendedor."
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!canQuery || exportProductivity.isPending}
+            onClick={() => exportProductivity.mutate(filters)}
+          >
+            <Download className="mr-2 size-4" />
+            {exportProductivity.isPending
+              ? "Exportando…"
+              : "Exportar produtividade"}
+          </Button>
+        }
       />
       <AnalyticsFilters
         className="v2-productivity-filters"

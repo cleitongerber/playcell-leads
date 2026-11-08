@@ -32,6 +32,7 @@ import {
   leadTimelineEvents,
   leadTreatmentGovernance,
   leads,
+  partners,
   partnerSettings,
   pdvs,
   userPartners,
@@ -60,6 +61,7 @@ import { resolvePdvScope } from "./pdvScope";
 
 const REPORT_PAGE_MAX = 100;
 const EXPORT_ROW_MAX = 25_000;
+export const PRODUCTIVITY_EXPORT_ROW_MAX = 10_000;
 const OPERATION_EVENT_TYPES = [
   "contact_attempted",
   "effective_contact_recorded",
@@ -1701,7 +1703,7 @@ async function listAnalyticsSellers(
   return Array.from(grouped.values());
 }
 
-type ProductivityRow = {
+export type ProductivityRow = {
   membershipId: number;
   name: string;
   pdvIds: number[];
@@ -1781,7 +1783,7 @@ function mutateRows<T extends { membershipId: number }>(
   }
 }
 
-type ProductivityDailyPoint = {
+export type ProductivityDailyPoint = {
   date: string;
   leadsWorked: number;
   leadsWithAttempt: number;
@@ -2045,11 +2047,41 @@ async function queryProductivityTeamFacts(
   };
 }
 
+export type ProductivityAnalytics = {
+  period: {
+    start: Date;
+    end: Date;
+    timeZone: string;
+    label: string;
+  };
+  totals: {
+    sellers: number;
+    portfolio: number;
+    attempts: number;
+    leadsWithAttempt: number;
+    attemptsPerLead: number | null;
+    effectiveContacts: number;
+    leadsWithEffectiveContact: number;
+    worked: number;
+    workCoverage: number | null;
+    effectiveContactRate: number | null;
+    conversions: number;
+    leadsConverted: number;
+    conversionRate: number | null;
+    firstAttemptAverageSeconds: number | null;
+    firstEffectiveContactAverageSeconds: number | null;
+    followUpsOverdue: number;
+    followUpsCompleted: number;
+  };
+  sellers: ProductivityRow[];
+  daily: ProductivityDailyPoint[];
+};
+
 /** Per-seller SQL aggregation for effort, quality and commercial outcome. */
 export async function getProductivityAnalytics(
   context: PartnerContext,
   filters: AnalyticsFilters
-) {
+): Promise<ProductivityAnalytics> {
   const analytics = await createAnalyticsContext(context, filters);
   const { db, scope, period, now } = analytics;
   const sellers = await listAnalyticsSellers(db, context, scope, filters);
@@ -4081,6 +4113,249 @@ export function formatAnalyticsCsv(
     columns.map(column => csvCell(row[column.key])).join(",")
   );
   return `\ufeff${[header, ...body].join("\r\n")}\r\n`;
+}
+
+type ProductivityExportMetadata = {
+  partner: string;
+  campaign: string;
+  pdv: string;
+  seller: string;
+  periodStart: string;
+  periodEnd: string;
+  timeZone: string;
+  generatedAt: string;
+};
+
+const productivityExportColumns: AnalyticsReportColumn[] = [
+  { key: "report", label: "Relatório" },
+  { key: "reportVersion", label: "Versão do relatório" },
+  { key: "partner", label: "Parceiro" },
+  { key: "filterCampaign", label: "Filtro: campanha" },
+  { key: "filterPdv", label: "Filtro: PDV" },
+  { key: "filterSeller", label: "Filtro: vendedor" },
+  { key: "periodStart", label: "Período: início" },
+  { key: "periodEnd", label: "Período: fim" },
+  { key: "timeZone", label: "Fuso horário" },
+  { key: "generatedAt", label: "Gerado em" },
+  { key: "seller", label: "Vendedor" },
+  { key: "pdvs", label: "PDVs vinculados" },
+  { key: "portfolio", label: "Carteira atual (snapshot)" },
+  { key: "assignedInPeriod", label: "Leads atribuídos (período)" },
+  { key: "withoutWork", label: "Leads sem trabalho (snapshot)" },
+  { key: "worked", label: "Leads trabalhados (período)" },
+  { key: "workCoverage", label: "Cobertura (%)" },
+  { key: "leadsWithAttempt", label: "Leads com tentativa (período)" },
+  { key: "attempts", label: "Tentativas (período)" },
+  { key: "attemptsPerLead", label: "Tentativas por lead" },
+  { key: "effectiveContacts", label: "Contatos efetivos (período)" },
+  {
+    key: "leadsWithEffectiveContact",
+    label: "Leads com contato efetivo (período)",
+  },
+  { key: "interested", label: "Interessados (período)" },
+  { key: "conversions", label: "Conversões (período)" },
+  { key: "leadsConverted", label: "Leads convertidos (período)" },
+  { key: "effectiveContactRate", label: "Taxa de contato (%)" },
+  { key: "conversionRate", label: "Taxa de conversão (%)" },
+  {
+    key: "firstAttemptAverageSeconds",
+    label: "Tempo médio até 1ª tentativa (segundos)",
+  },
+  {
+    key: "firstEffectiveContactAverageSeconds",
+    label: "Tempo médio até 1º contato efetivo (segundos)",
+  },
+  { key: "followUpsCreated", label: "Follow-ups criados (período)" },
+  {
+    key: "followUpsCompleted",
+    label: "Follow-ups concluídos (período)",
+  },
+  { key: "followUpsOverdue", label: "Follow-ups vencidos (snapshot)" },
+  { key: "followUpsPending", label: "Follow-ups pendentes (snapshot)" },
+  {
+    key: "followUpsFromAttempts",
+    label: "Follow-ups originados em tentativas (snapshot)",
+  },
+  {
+    key: "followUpsFromTreatments",
+    label: "Follow-ups originados em tratativas (snapshot)",
+  },
+  {
+    key: "followUpsIndependent",
+    label: "Follow-ups independentes (snapshot)",
+  },
+  { key: "governanceComplete", label: "Governança completa (snapshot)" },
+  { key: "governancePending", label: "Governança pendente (snapshot)" },
+  { key: "lastActivityAt", label: "Última atividade (período)" },
+];
+
+function rateAsPercentage(value: number | null) {
+  return value == null ? null : value * 100;
+}
+
+export function buildProductivityExportRows(
+  analytics: ProductivityAnalytics,
+  metadata: ProductivityExportMetadata
+): AnalyticsReportRow[] {
+  return analytics.sellers.map(seller => ({
+    report: "Produtividade por vendedor",
+    reportVersion: "v1",
+    partner: metadata.partner,
+    filterCampaign: metadata.campaign,
+    filterPdv: metadata.pdv,
+    filterSeller: metadata.seller,
+    periodStart: metadata.periodStart,
+    periodEnd: metadata.periodEnd,
+    timeZone: metadata.timeZone,
+    generatedAt: metadata.generatedAt,
+    seller: seller.name,
+    pdvs: seller.pdvNames.join(", "),
+    portfolio: seller.leadsInPortfolio,
+    assignedInPeriod: seller.leadsAssignedInPeriod,
+    withoutWork: seller.leadsWithoutWork,
+    worked: seller.leadsWorked,
+    workCoverage: rateAsPercentage(seller.workCoverage),
+    leadsWithAttempt: seller.leadsWithAttempt,
+    attempts: seller.attempts,
+    attemptsPerLead: seller.attemptsPerLead,
+    effectiveContacts: seller.effectiveContacts,
+    leadsWithEffectiveContact: seller.leadsWithEffectiveContact,
+    interested: seller.interested,
+    conversions: seller.conversions,
+    leadsConverted: seller.leadsConverted,
+    effectiveContactRate: rateAsPercentage(seller.effectiveContactRate),
+    conversionRate: rateAsPercentage(seller.conversionRate),
+    firstAttemptAverageSeconds: seller.firstAttemptAverageSeconds,
+    firstEffectiveContactAverageSeconds:
+      seller.firstEffectiveContactAverageSeconds,
+    followUpsCreated: seller.followUpsCreated,
+    followUpsCompleted: seller.followUpsCompleted,
+    followUpsOverdue: seller.followUpsOverdue,
+    followUpsPending: seller.followUpsPending,
+    followUpsFromAttempts: seller.followUpsFromAttempts,
+    followUpsFromTreatments: seller.followUpsFromTreatments,
+    followUpsIndependent: seller.followUpsIndependent,
+    governanceComplete: seller.governanceComplete,
+    governancePending: seller.governancePending,
+    lastActivityAt: valueOfDate(seller.lastActivityAt),
+  }));
+}
+
+export function formatProductivityCsv(
+  analytics: ProductivityAnalytics,
+  metadata: ProductivityExportMetadata
+) {
+  return formatAnalyticsCsv(
+    productivityExportColumns,
+    buildProductivityExportRows(analytics, metadata)
+  );
+}
+
+export function assertProductivityExportLimit(count: number) {
+  if (count > PRODUCTIVITY_EXPORT_ROW_MAX) {
+    throw new Error(
+      `A exportação encontrou mais de ${PRODUCTIVITY_EXPORT_ROW_MAX} vendedores. Refine os filtros antes de exportar.`
+    );
+  }
+}
+
+async function resolveProductivityExportMetadata(
+  context: PartnerContext,
+  filters: AnalyticsFilters,
+  analytics: ProductivityAnalytics
+): Promise<ProductivityExportMetadata> {
+  const db = await getV2Db();
+  const [partnerRow, campaignRow, pdvRow, sellerRow] = await Promise.all([
+    db
+      .select({ name: partners.name })
+      .from(partners)
+      .where(eq(partners.id, context.partnerId))
+      .limit(1),
+    filters.campaignId
+      ? db
+          .select({ name: campaigns.name })
+          .from(campaigns)
+          .where(
+            and(
+              eq(campaigns.id, filters.campaignId),
+              eq(campaigns.partnerId, context.partnerId)
+            )
+          )
+          .limit(1)
+      : Promise.resolve([]),
+    filters.pdvId
+      ? db
+          .select({ name: pdvs.name })
+          .from(pdvs)
+          .where(
+            and(eq(pdvs.id, filters.pdvId), eq(pdvs.partnerId, context.partnerId))
+          )
+          .limit(1)
+      : Promise.resolve([]),
+    filters.sellerMembershipId
+      ? db
+          .select({ name: users.name })
+          .from(userPartners)
+          .innerJoin(users, eq(users.id, userPartners.userId))
+          .where(
+            and(
+              eq(userPartners.id, filters.sellerMembershipId),
+              eq(userPartners.partnerId, context.partnerId)
+            )
+          )
+          .limit(1)
+      : Promise.resolve([]),
+  ]);
+  const date = (value: Date) => dateForAnalyticsInput(value, analytics.period.timeZone);
+  return {
+    partner: partnerRow[0]?.name ?? `Parceiro ${context.partnerId}`,
+    campaign: campaignRow[0]?.name ?? "Todas as campanhas autorizadas",
+    pdv: pdvRow[0]?.name ?? "Todos os PDVs autorizados",
+    seller: sellerRow[0]?.name ?? "Todos os vendedores autorizados",
+    periodStart: date(analytics.period.start),
+    periodEnd: date(new Date(analytics.period.end.getTime() - 1)),
+    timeZone: analytics.period.timeZone,
+    generatedAt: new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "medium",
+      timeZone: analytics.period.timeZone,
+    }).format(new Date()),
+  };
+}
+
+export async function exportProductivityAnalytics(
+  context: PartnerContext,
+  filters: AnalyticsFilters
+) {
+  const analytics = await getProductivityAnalytics(context, filters);
+  assertProductivityExportLimit(analytics.sellers.length);
+  const metadata = await resolveProductivityExportMetadata(
+    context,
+    filters,
+    analytics
+  );
+  const db = await getV2Db();
+  await writeV2Audit(db, {
+    partnerId: context.partnerId,
+    actorUserId: context.userId,
+    actorMembershipId: context.membershipId,
+    action: "analytics_productivity_exported",
+    entityType: "analytics_productivity",
+    metadata: {
+      campaignId: filters.campaignId ?? null,
+      pdvId: filters.pdvId ?? null,
+      sellerMembershipId: filters.sellerMembershipId ?? null,
+      periodStart: analytics.period.start.toISOString(),
+      periodEnd: analytics.period.end.toISOString(),
+      exportedCount: analytics.sellers.length,
+      reportVersion: "v1",
+    },
+  });
+  return {
+    fileName: `fluxo-produtividade-${metadata.periodStart}-${metadata.periodEnd}.csv`,
+    content: formatProductivityCsv(analytics, metadata),
+    total: analytics.sellers.length,
+  };
 }
 
 export async function exportAnalyticsReport(

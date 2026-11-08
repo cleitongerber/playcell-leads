@@ -133,6 +133,7 @@ import {
 } from "./managementService";
 import {
   exportAnalyticsReport,
+  exportProductivityAnalytics,
   getDashboardAnalytics,
   getProductivityAnalytics,
   listAnalyticsFilters,
@@ -1306,11 +1307,18 @@ export const v2FoundationRouter = v2Router({
       .query(({ ctx, input }) =>
         listAnalyticsHealthDetails(ctx.partner, input)
       ),
-    productivity: v2PartnerProcedure
-      .input(analyticsFiltersInput.optional())
-      .query(({ ctx, input }) =>
-        getProductivityAnalytics(ctx.partner, input ?? {})
-      ),
+    productivity: v2Router({
+      list: v2PartnerProcedure
+        .input(analyticsFiltersInput.optional())
+        .query(({ ctx, input }) =>
+          getProductivityAnalytics(ctx.partner, input ?? {})
+        ),
+      export: v2PartnerProcedure
+        .input(analyticsFiltersInput.optional())
+        .mutation(({ ctx, input }) =>
+          exportProductivityAnalytics(ctx.partner, input ?? {})
+        ),
+    }),
     reports: v2Router({
       list: v2PartnerProcedure
         .input(analyticsReportInput)

@@ -283,6 +283,9 @@ describe("FLUXO visual system experience contracts", () => {
     expect(productivity).toContain('title="Velocidade"');
     expect(productivity).toContain('title="Disciplina"');
     expect(productivity).toContain("Ver evolução individual");
+    expect(productivity).toContain("Exportar produtividade");
+    expect(productivity).toContain("analytics.productivity.export.useMutation");
+    expect(productivity).toContain("analytics.productivity.list.useQuery");
     expect(productivity).toContain('className="v2-productivity-daily-bar"');
     expect(productivity).toContain("value > 0 && <b>{number(value)}</b>");
     expect(productivity).toContain("metricName");
