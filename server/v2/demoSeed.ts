@@ -21,7 +21,7 @@ import {
   transitionCampaign,
 } from "./campaignService";
 import { getV2Db, type V2Database } from "./database";
-import { completeFollowUp, createFollowUp } from "./followUpService";
+import { createFollowUp } from "./followUpService";
 import { updatePartnerGovernance } from "./governanceService";
 import { mappingFingerprint, type ImportMapping } from "./importDomain";
 import { saveCustomField } from "./importService";
@@ -43,6 +43,14 @@ import { createPartnerUser } from "./userService";
 const DEMO_CONFIRMATION = "PLAYCELL_V2_DEMO";
 const DEMO_PARTNER_CODE = "demo-playcell";
 const DEMO_PARTNER_NAME = "DEMO — Playcell Homologação";
+const DEMO_ATTEMPT_CHANNEL = "whatsapp";
+const DEMO_EFFECTIVE_CONTACT_CHANNEL = "ligação";
+
+/** Channels exercised by the synthetic operational scenarios below. */
+export const demoSeedGovernanceChannels = [
+  DEMO_ATTEMPT_CHANNEL,
+  DEMO_EFFECTIVE_CONTACT_CHANNEL,
+] as const;
 
 type DemoSeedConfig = {
   superAdminEmail: string;
@@ -528,7 +536,7 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     evidenceRequiredChannels: null,
     noteRequired: false,
     followUpRequired: false,
-    allowedChannels: ["whatsapp", "telefone", "email"],
+    allowedChannels: [...demoSeedGovernanceChannels],
     allowedOutcomes: [
       "interested",
       "return_later",
@@ -665,21 +673,6 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     },
     receivedAt: new Date(now.getTime() - 4 * 60 * 60 * 1000),
   });
-  const completed = await ensureLead(db, superAdminContext, {
-    campaignId: activeCampaignId,
-    pdvId: cacadorPdvId,
-    statusId: requiredStatus("new"),
-    sourceId: requiredSource("manual"),
-    name: "Cliente DEMO Concluído",
-    phone: "(47) 90000-1005",
-    email: "concluido@demo.example",
-    customData: {
-      documento: "DEMO-005",
-      produto: "Acessório DEMO",
-      demoSeed: true,
-    },
-    receivedAt: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000),
-  });
   const distributionLeads = await Promise.all(
     [
       ["Cliente DEMO Base Videira 01", videiraPdvId, "(47) 90000-1101"],
@@ -713,7 +706,7 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     await assumeLead(sellerOneContext, overdue.id);
     const attempt = await registerAttempt(sellerOneContext, {
       leadId: overdue.id,
-      channel: "whatsapp",
+      channel: DEMO_ATTEMPT_CHANNEL,
       resultId: requiredResult("attempt", "message_sent"),
       summary: "Contato DEMO sem resposta; retorno pendente.",
       requestKey: `demo-attempt-overdue-${overdue.id}`,
@@ -731,7 +724,7 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
     await assumeLead(sellerOneContext, upcoming.id);
     await recordEffectiveContact(sellerOneContext, {
       leadId: upcoming.id,
-      channel: "telefone",
+      channel: DEMO_EFFECTIVE_CONTACT_CHANNEL,
       resultId: requiredResult("effective_contact", "interested"),
       summary: "Cliente DEMO interessado; próximo contato programado.",
       finalStatusId: requiredStatus("qualified"),
@@ -760,26 +753,6 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
       note: "DEMO — follow-up para hoje",
     });
   }
-  if (completed.created) {
-    await assumeLead(sellerTwoContext, completed.id);
-    await recordEffectiveContact(sellerTwoContext, {
-      leadId: completed.id,
-      channel: "email",
-      resultId: requiredResult("effective_contact", "sale_completed"),
-      summary: "Conversão DEMO registrada para exibir a timeline concluída.",
-      finalStatusId: requiredStatus("converted"),
-      requestKey: `demo-effective-conversion-${completed.id}`,
-    });
-    const completedFollowUpId = await createFollowUp(sellerTwoContext, {
-      leadId: completed.id,
-      dueAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
-      note: "DEMO — tarefa concluída",
-    });
-    await completeFollowUp(sellerTwoContext, completedFollowUpId, {
-      reason: "DEMO — retorno concluído após conferência operacional.",
-    });
-  }
-
   const templateVersionId = await ensureImportTemplate(
     db,
     superAdminContext,
@@ -810,7 +783,6 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
       overdue,
       upcoming,
       today,
-      completed,
       ...distributionLeads,
     ].filter(lead => lead.created).length,
   };
