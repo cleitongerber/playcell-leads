@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { getSessionCookieOptions } from "../_core/cookies";
 import { loginV2WithPassword } from "./auth";
 import {
@@ -134,6 +135,7 @@ import {
 import {
   exportAnalyticsReport,
   exportProductivityAnalytics,
+  ProductivityXlsxConcurrencyError,
   getDashboardAnalytics,
   getProductivityAnalytics,
   listAnalyticsFilters,
@@ -1320,9 +1322,19 @@ export const v2FoundationRouter = v2Router({
         ),
       exportXlsx: v2PartnerProcedure
         .input(analyticsFiltersInput.optional())
-        .mutation(({ ctx, input }) =>
-          exportProductivityAnalytics(ctx.partner, input ?? {}, "xlsx")
-        ),
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await exportProductivityAnalytics(ctx.partner, input ?? {}, "xlsx");
+          } catch (error) {
+            if (error instanceof ProductivityXlsxConcurrencyError) {
+              throw new TRPCError({
+                code: "TOO_MANY_REQUESTS",
+                message: error.message,
+              });
+            }
+            throw error;
+          }
+        }),
     }),
     reports: v2Router({
       list: v2PartnerProcedure

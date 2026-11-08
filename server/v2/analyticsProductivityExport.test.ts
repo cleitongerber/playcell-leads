@@ -6,6 +6,7 @@ import {
   formatProductivityCsv,
   PRODUCTIVITY_EXPORT_ROW_MAX,
   PRODUCTIVITY_XLSX_EXPORT_GLOBAL_MAX,
+  ProductivityXlsxConcurrencyError,
   productivityExportColumns,
   type ProductivityAnalytics,
   withProductivityXlsxExportSlot,
@@ -251,7 +252,7 @@ describe("V2 productivity export", () => {
     await Promise.resolve();
     await expect(
       withProductivityXlsxExportSlot({ userId: 801 }, async () => undefined)
-    ).rejects.toThrow("já está em andamento para este usuário");
+    ).rejects.toBeInstanceOf(ProductivityXlsxConcurrencyError);
 
     const second = withProductivityXlsxExportSlot({ userId: 802 }, () =>
       new Promise<void>(resolve => {
@@ -262,7 +263,7 @@ describe("V2 productivity export", () => {
     expect(PRODUCTIVITY_XLSX_EXPORT_GLOBAL_MAX).toBe(2);
     await expect(
       withProductivityXlsxExportSlot({ userId: 803 }, async () => undefined)
-    ).rejects.toThrow("Muitas exportações Excel");
+    ).rejects.toBeInstanceOf(ProductivityXlsxConcurrencyError);
 
     releaseFirst?.();
     releaseSecond?.();

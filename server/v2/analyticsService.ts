@@ -69,6 +69,13 @@ export const PRODUCTIVITY_XLSX_EXPORT_GLOBAL_MAX = 2;
 export const PRODUCTIVITY_XLSX_EXPORT_PER_USER_MAX = 1;
 let productivityXlsxExportsInFlight = 0;
 const productivityXlsxExportsByUser = new Map<number, number>();
+
+export class ProductivityXlsxConcurrencyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductivityXlsxConcurrencyError";
+  }
+}
 const OPERATION_EVENT_TYPES = [
   "contact_attempted",
   "effective_contact_recorded",
@@ -4406,10 +4413,14 @@ export async function withProductivityXlsxExportSlot<T>(
 ) {
   const exportsForUser = productivityXlsxExportsByUser.get(context.userId) ?? 0;
   if (exportsForUser >= PRODUCTIVITY_XLSX_EXPORT_PER_USER_MAX) {
-    throw new Error("Uma exportação Excel já está em andamento para este usuário.");
+    throw new ProductivityXlsxConcurrencyError(
+      "Já existe uma exportação Excel em andamento. Tente novamente em instantes."
+    );
   }
   if (productivityXlsxExportsInFlight >= PRODUCTIVITY_XLSX_EXPORT_GLOBAL_MAX) {
-    throw new Error("Muitas exportações Excel estão em andamento. Tente novamente em instantes.");
+    throw new ProductivityXlsxConcurrencyError(
+      "O servidor atingiu o limite de exportações Excel. Tente novamente em instantes."
+    );
   }
 
   productivityXlsxExportsInFlight += 1;
