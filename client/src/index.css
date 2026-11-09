@@ -190,6 +190,13 @@
   .v2-section-card > [data-slot="card-content"] { padding:1.125rem 1.25rem 1.25rem; }
   .v2-page-toolbar { display:flex; flex-wrap:wrap; align-items:end; gap:.75rem 1rem; border:1px solid #e7ecef; border-radius:.75rem; background:var(--card); padding:.875rem 1rem; box-shadow:0 1px 2px rgb(15 76 92 / .02); }
   .v2-page-toolbar [data-slot="card-content"] { display:flex; width:100%; flex-wrap:wrap; align-items:end; gap:.75rem 1rem; padding:0; }
+  /* Leads keeps the view switcher separate from the filter grid. This prevents
+     management-only fields from competing with the view buttons for the same
+     flex row at intermediate desktop widths. */
+  .v2-leads-toolbar { display:grid; align-items:stretch; gap:1rem; }
+  .v2-leads-view-block,.v2-leads-filter-grid > * { min-width:0; }
+  .v2-leads-filter-grid { display:grid; min-width:0; grid-template-columns:minmax(0,1fr); align-items:end; gap:.75rem 1rem; }
+  .v2-leads-filter-grid [data-slot="select-trigger"],.v2-leads-filter-grid [data-slot="input"] { width:100%; min-width:0; }
   .v2-filter-panel { border-color:#e7ecef; border-radius:.75rem; background:var(--card); box-shadow:0 1px 2px rgb(15 76 92 / .02); }
   .v2-filter-panel [data-slot="card-content"] { padding:.875rem 1rem; }
   .v2-filter-panel label,.v2-page-toolbar label { color:#4b5563; font-size:.75rem; font-weight:600; }
@@ -429,6 +436,7 @@
   @media (min-width:640px) {
     .container { padding-inline:1.5rem; }
     .v2-page { padding:2rem 1.5rem 3rem; }
+    .v2-leads-filter-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .v2-offline-banner,.v2-update-banner { left:auto; width:min(28rem,calc(100vw - 2rem)); }
   }
   @media (min-width:768px) {
@@ -436,6 +444,7 @@
     .v2-dashboard-summary-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
     .v2-health-list { grid-template-columns:repeat(3,minmax(0,1fr)); }
     .v2-productivity-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .v2-leads-filter-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
 
     /* Desktop reports are one toolbar with two deliberate rows. The wrappers
        remain in the DOM for mobile/drawer behavior, but their fields participate
@@ -472,6 +481,9 @@
   }
   @media (min-width:1280px) {
     .v2-health-list { grid-template-columns:repeat(5,minmax(0,1fr)); }
+  }
+  @media (min-width:1440px) {
+    .v2-leads-filter-grid { grid-template-columns:repeat(6,minmax(0,1fr)); }
   }
   @media (min-width:1280px) {
     .v2-dashboard-filters .v2-analytics-desktop-grid { grid-template-columns:8.75rem minmax(11.25rem,1.2fr) minmax(10rem,.85fr) minmax(12.5rem,1.2fr) max-content; align-items:end; gap:.375rem .625rem; }

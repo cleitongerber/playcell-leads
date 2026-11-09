@@ -429,7 +429,7 @@ export default function V2Leads() {
       />
 
       <PageToolbar className="v2-leads-toolbar">
-        <div className="w-full min-w-0 space-y-1.5 md:flex-1">
+        <div className="v2-leads-view-block space-y-1.5">
           <Label>Visão</Label>
           <div className="v2-tab-list" aria-label="Visão de Leads">
             {((
@@ -475,7 +475,8 @@ export default function V2Leads() {
             ))}
           </div>
         </div>
-        <div className="w-full min-w-0 space-y-1.5 md:max-w-44">
+        <div className="v2-leads-filter-grid">
+        <div className="min-w-0 space-y-1.5">
           <Label htmlFor="leads-campaign-status">Status da campanha</Label>
           <Select
             value={campaignStatus}
@@ -495,7 +496,7 @@ export default function V2Leads() {
             </SelectContent>
           </Select>
         </div>
-        <div className="w-full min-w-0 space-y-1.5 md:max-w-64">
+        <div className="min-w-0 space-y-1.5">
           <Label htmlFor="leads-campaign">Campanha</Label>
           <Select
             value={campaignId ? String(campaignId) : "all"}
@@ -515,11 +516,11 @@ export default function V2Leads() {
             </SelectContent>
           </Select>
         </div>
-        <div className="w-full min-w-0 space-y-1.5 md:flex-1">
+        <div className="min-w-0 space-y-1.5">
           <Label htmlFor="leads-search">Busca</Label>
           <Input
             id="leads-search"
-            className="w-full max-w-none md:max-w-md"
+            className="w-full"
             placeholder="Buscar nome ou telefone"
             value={search}
             onChange={event =>
@@ -527,7 +528,7 @@ export default function V2Leads() {
             }
           />
         </div>
-        <div className="w-full min-w-0 space-y-1.5 md:max-w-52">
+        <div className="min-w-0 space-y-1.5">
           <Label htmlFor="leads-status">Situação comercial</Label>
           <Select
             value={statusId ? String(statusId) : "all"}
@@ -624,7 +625,7 @@ export default function V2Leads() {
                 </DrawerContent>
               </Drawer>
             </div>
-            <div className="hidden min-w-0 space-y-1.5 md:block md:max-w-52">
+            <div className="hidden min-w-0 space-y-1.5 md:block">
               <Label htmlFor="leads-pdv">PDV</Label>
               <Select
                 value={pdvId ? String(pdvId) : "all"}
@@ -645,7 +646,7 @@ export default function V2Leads() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="hidden min-w-0 space-y-1.5 md:block md:max-w-52">
+            <div className="hidden min-w-0 space-y-1.5 md:block">
               <Label htmlFor="leads-assignee">Responsável</Label>
               <Select
                 value={assignedMembershipId ? String(assignedMembershipId) : assignment ?? "all"}
@@ -770,7 +771,7 @@ export default function V2Leads() {
                 </Drawer>
               </div>
             </div>
-            <div className="hidden min-w-0 flex-1 space-y-1.5 md:block">
+            <div className="hidden min-w-0 space-y-1.5 md:block">
               <Label>Prioridade operacional</Label>
               <div
                 className="v2-tab-list"
@@ -797,6 +798,7 @@ export default function V2Leads() {
             </div>
           </>
         )}
+        </div>
       </PageToolbar>
 
       {(campaignId ||

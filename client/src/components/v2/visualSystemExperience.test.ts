@@ -60,11 +60,14 @@ describe("FLUXO visual system experience contracts", () => {
   });
 
   it("keeps Minha carteira operational without changing the available queue", () => {
+    const portfolioSectionStart = leads.indexOf('{view === "mine" && (');
     const mobileFilterStart = leads.indexOf(
-      'className="w-full min-w-0 md:hidden"'
+      'className="w-full min-w-0 md:hidden"',
+      portfolioSectionStart
     );
     const desktopFilterStart = leads.indexOf(
-      'className="hidden min-w-0 flex-1 space-y-1.5 md:block"'
+      'className="hidden min-w-0 space-y-1.5 md:block"',
+      mobileFilterStart
     );
     const mobilePortfolioFilter = leads.slice(
       mobileFilterStart,
@@ -75,7 +78,7 @@ describe("FLUXO visual system experience contracts", () => {
     expect(leads).toContain("Filtros da carteira");
     expect(leads).toContain("Prioridade: {operationalFilterLabels[operationalFilter]}");
     expect(leads).toContain("<SlidersHorizontal className=\"mr-2 size-4\" /> Ajustar");
-    expect(leads).toContain('className="hidden min-w-0 flex-1 space-y-1.5 md:block"');
+    expect(leads).toContain('className="hidden min-w-0 space-y-1.5 md:block"');
     expect(leads).toContain('className="w-full min-w-0 md:hidden"');
     expect(leads).toContain('updateOperationalFilter("all")');
     expect(leads).toContain('option === "mine" ? operationalFilter : "all"');
@@ -118,6 +121,11 @@ describe("FLUXO visual system experience contracts", () => {
   });
 
   it("keeps commercial and management Lead filters compact, contextual and server-backed", () => {
+    expect(leads).toContain('className="v2-leads-view-block space-y-1.5"');
+    expect(leads).toContain('className="v2-leads-filter-grid"');
+    expect(styles).toContain('.v2-leads-toolbar { display:grid; align-items:stretch; gap:1rem; }');
+    expect(styles).toMatch(/@media \(min-width:1440px\)\s*\{\s*\.v2-leads-filter-grid \{ grid-template-columns:repeat\(6,minmax\(0,1fr\)\); \}/);
+    expect(styles).toMatch(/@media \(min-width:768px\)\s*\{[\s\S]*?\.v2-leads-filter-grid \{ grid-template-columns:repeat\(3,minmax\(0,1fr\)\); \}/);
     expect(leads).toContain("Situação comercial");
     expect(leads).toContain("v2trpc.leads.configuration.useQuery()");
     expect(leads).toContain("v2trpc.leads.listFilters.useQuery");
