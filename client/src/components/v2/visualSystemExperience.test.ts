@@ -29,6 +29,7 @@ describe("FLUXO visual system experience contracts", () => {
   const backButton = readProjectFile(
     "client/src/components/v2/V2BackButton.tsx"
   );
+  const app = readProjectFile("client/src/App.tsx");
 
   it("keeps the shared visual tokens and responsive shell centralized", () => {
     for (const token of [
@@ -82,15 +83,21 @@ describe("FLUXO visual system experience contracts", () => {
 
     expect(leads).toContain("Prioridade operacional");
     expect(leads).toContain("Filtros da carteira");
-    expect(leads).toContain("Prioridade: {operationalFilterLabels[operationalFilter]}");
-    expect(leads).toContain("<SlidersHorizontal className=\"mr-2 size-4\" /> Ajustar");
+    expect(leads).toContain(
+      "Prioridade: {operationalFilterLabels[operationalFilter]}"
+    );
+    expect(leads).toContain(
+      '<SlidersHorizontal className="mr-2 size-4" /> Ajustar'
+    );
     expect(leads).toContain('className="hidden min-w-0 space-y-1.5 md:block"');
     expect(leads).toContain('className="w-full min-w-0 md:hidden"');
     expect(leads).toContain('updateOperationalFilter("all")');
     expect(leads).toContain('option === "mine" ? operationalFilter : "all"');
     expect(leads).toContain('view === "mine" || operationalFilter === "all"');
     expect(mobilePortfolioFilter).toContain("<Select");
-    expect(mobilePortfolioFilter).toContain("<SelectItem key={option} value={option}>");
+    expect(mobilePortfolioFilter).toContain(
+      "<SelectItem key={option} value={option}>"
+    );
     expect(mobilePortfolioFilter).toContain('side="bottom"');
     expect(mobilePortfolioFilter).toContain('align="start"');
     expect(mobilePortfolioFilter).toContain("collisionBoundary={");
@@ -114,12 +121,18 @@ describe("FLUXO visual system experience contracts", () => {
   });
 
   it("keeps campaign availability filters server-backed and compact", () => {
-    expect(leads).toContain('type CampaignFilterStatus = "active" | "frozen" | "closed" | "archived" | "all"');
+    expect(leads).toContain(
+      'type CampaignFilterStatus = "active" | "frozen" | "closed" | "archived" | "all"'
+    );
     expect(leads).toContain('campaignStatus: "active"');
-    expect(leads).toContain('v2trpc.campaigns.list.useQuery({ includeArchived: true })');
-    expect(leads).toContain('campaignId: undefined');
-    expect(leads).toContain('campaignStatus: value as CampaignFilterStatus');
-    expect(leads).toContain('campaignStatus: campaignStatus === "active" ? undefined : campaignStatus');
+    expect(leads).toContain(
+      "v2trpc.campaigns.list.useQuery({ includeArchived: true })"
+    );
+    expect(leads).toContain("campaignId: undefined");
+    expect(leads).toContain("campaignStatus: value as CampaignFilterStatus");
+    expect(leads).toContain(
+      'campaignStatus: campaignStatus === "active" ? undefined : campaignStatus'
+    );
     expect(leads).toContain("Status da campanha");
     expect(leads).toContain("Todas as campanhas");
     expect(leads).toContain("campaignFrozen");
@@ -129,9 +142,15 @@ describe("FLUXO visual system experience contracts", () => {
   it("keeps commercial and management Lead filters compact, contextual and server-backed", () => {
     expect(leads).toContain('className="v2-leads-view-block space-y-1.5"');
     expect(leads).toContain('className="v2-leads-filter-grid"');
-    expect(styles).toContain('.v2-leads-toolbar { display:grid; align-items:stretch; gap:1rem; }');
-    expect(styles).toMatch(/@media \(min-width:1440px\)\s*\{\s*\.v2-leads-filter-grid \{ grid-template-columns:repeat\(6,minmax\(0,1fr\)\); \}/);
-    expect(styles).toMatch(/@media \(min-width:768px\)\s*\{[\s\S]*?\.v2-leads-filter-grid \{ grid-template-columns:repeat\(3,minmax\(0,1fr\)\); \}/);
+    expect(styles).toContain(
+      ".v2-leads-toolbar { display:grid; align-items:stretch; gap:1rem; }"
+    );
+    expect(styles).toMatch(
+      /@media \(min-width:1440px\)\s*\{\s*\.v2-leads-filter-grid \{ grid-template-columns:repeat\(6,minmax\(0,1fr\)\); \}/
+    );
+    expect(styles).toMatch(
+      /@media \(min-width:768px\)\s*\{[\s\S]*?\.v2-leads-filter-grid \{ grid-template-columns:repeat\(3,minmax\(0,1fr\)\); \}/
+    );
     expect(leads).toContain("Situação comercial");
     expect(leads).toContain("v2trpc.leads.configuration.useQuery()");
     expect(leads).toContain("v2trpc.leads.listFilters.useQuery");
@@ -144,7 +163,9 @@ describe("FLUXO visual system experience contracts", () => {
     expect(leads).toContain("Filtros da gestão");
     expect(leads).toContain("seller.pdvIds.includes(pdvId)");
     expect(leads).toContain('view: "assigned"');
-    expect(leads).toContain('value === "unassigned" ? "unassigned" : undefined');
+    expect(leads).toContain(
+      'value === "unassigned" ? "unassigned" : undefined'
+    );
   });
 
   it("keeps inactive campaign leads consultable without commercial actions", () => {
@@ -190,7 +211,9 @@ describe("FLUXO visual system experience contracts", () => {
   });
 
   it("keeps lead custom data dynamic and read-only in the existing detail section", () => {
-    expect(journey).toContain('import { presentLeadCustomData } from "@/lib/leadDetailPresentation"');
+    expect(journey).toContain(
+      'import { presentLeadCustomData } from "@/lib/leadDetailPresentation"'
+    );
     expect(journey).toContain("const customLeadData = useMemo(");
     expect(journey).toContain("definitions: detail.data?.customFields");
     expect(journey).toContain("customLeadData.map(field => (");
@@ -202,15 +225,27 @@ describe("FLUXO visual system experience contracts", () => {
     expect(journey).toContain("v2trpc.salesScripts.forLead.useQuery");
     expect(journey).toContain("navigator.clipboard.writeText");
     expect(journey).toContain("Nenhum script disponível para esta campanha.");
-    expect(journey).toContain("Revise antes de enviar e personalize os campos entre [colchetes].");
-    expect(journey).not.toContain("Use como apoio à conversa. Revise antes de enviar e personalize os campos entre [colchetes].");
-    expect(journey).toContain('className="w-full sm:w-[220px]" aria-label="Filtrar scripts por categoria"');
-    expect(journey).toContain('className="mx-auto min-h-0 w-full max-w-2xl flex-1 overflow-y-auto px-4 pb-6"');
+    expect(journey).toContain(
+      "Revise antes de enviar e personalize os campos entre [colchetes]."
+    );
+    expect(journey).not.toContain(
+      "Use como apoio à conversa. Revise antes de enviar e personalize os campos entre [colchetes]."
+    );
+    expect(journey).toContain(
+      'className="w-full sm:w-[220px]" aria-label="Filtrar scripts por categoria"'
+    );
+    expect(journey).toContain(
+      'className="mx-auto min-h-0 w-full max-w-2xl flex-1 overflow-y-auto px-4 pb-6"'
+    );
     expect(journey).toContain('introduction: "Apresentação"');
-    expect(journey).toContain('<Badge variant="secondary">{salesScriptCategoryLabel[script.category]');
+    expect(journey).toContain(
+      '<Badge variant="secondary">{salesScriptCategoryLabel[script.category]'
+    );
     expect(journey).not.toContain("salesScripts.copy.useMutation");
     expect(administration).toContain("Mensagem inicial do WhatsApp");
-    expect(administration).toContain("Conteúdos de apoio disponíveis aos vendedores");
+    expect(administration).toContain(
+      "Conteúdos de apoio disponíveis aos vendedores"
+    );
     expect(administration.indexOf("Mensagem inicial do WhatsApp")).toBeLessThan(
       administration.indexOf("Scripts de venda")
     );
@@ -218,7 +253,9 @@ describe("FLUXO visual system experience contracts", () => {
 
   it("keeps the new presentation category available to administration without changing WhatsApp configuration", () => {
     expect(administration).toContain('introduction: "Apresentação"');
-    expect(administration).toContain('"opening" | "introduction" | "discovery"');
+    expect(administration).toContain(
+      '"opening" | "introduction" | "discovery"'
+    );
     expect(administration).toContain("Mensagem inicial do WhatsApp");
   });
 
@@ -256,12 +293,12 @@ describe("FLUXO visual system experience contracts", () => {
     expect(dashboard).not.toContain("Leads trabalhados na operação");
     expect(dashboard).toContain("Leads com tentativa");
     expect(dashboard).toContain("Evidências nas tentativas");
-    expect(dashboard).toContain('Base atual');
-    expect(dashboard).toContain('Tx. contato');
+    expect(dashboard).toContain("Base atual");
+    expect(dashboard).toContain("Tx. contato");
     expect(dashboard).not.toContain("Funil da coorte do período");
     expect(dashboard).toContain("JourneyStage");
-    expect(dashboard).toContain("openHealthDetail(\"assigned_without_work\")");
-    expect(dashboard).toContain("openHealthDetail(\"follow_ups_overdue\")");
+    expect(dashboard).toContain('openHealthDetail("assigned_without_work")');
+    expect(dashboard).toContain('openHealthDetail("follow_ups_overdue")');
     expect(dashboard).toContain('className="v2-metric-card-header"');
     expect(dashboard).toContain("v2-metric-icon");
     expect(dashboard).toContain("function compactDelta(");
@@ -301,7 +338,9 @@ describe("FLUXO visual system experience contracts", () => {
     expect(productivity).toContain("Exportar Excel (.xlsx)");
     expect(productivity).toContain("Exportar CSV (.csv)");
     expect(productivity).toContain("analytics.productivity.export.useMutation");
-    expect(productivity).toContain("analytics.productivity.exportXlsx.useMutation");
+    expect(productivity).toContain(
+      "analytics.productivity.exportXlsx.useMutation"
+    );
     expect(productivity).toContain("analytics.productivity.list.useQuery");
     expect(productivity).toContain('className="v2-productivity-daily-bar"');
     expect(productivity).toContain("value > 0 && <b>{number(value)}</b>");
@@ -321,8 +360,12 @@ describe("FLUXO visual system experience contracts", () => {
     expect(reports).toContain("hideClear");
     expect(styles).toContain(".v2-reports-toolbar-fields");
     expect(styles).toContain(".v2-reports-toolbar-actions");
-    expect(styles).toContain(".v2-reports-toolbar { grid-template-columns:repeat(5");
-    expect(styles).toContain(".v2-reports-toolbar-actions { grid-column:4 / span 2");
+    expect(styles).toContain(
+      ".v2-reports-toolbar { grid-template-columns:repeat(5"
+    );
+    expect(styles).toContain(
+      ".v2-reports-toolbar-actions { grid-column:4 / span 2"
+    );
     expect(styles).toContain('[data-analytics-field="campaign"]');
   });
 
@@ -369,11 +412,15 @@ describe("FLUXO visual system experience contracts", () => {
 
   it("keeps a single accessible internal return control in shared page headers", () => {
     expect(pageHeader).toContain('className="v2-page-title-row"');
-    expect(pageHeader).toContain("<V2BackButton fallbackPath={backFallback} />");
+    expect(pageHeader).toContain(
+      "<V2BackButton fallbackPath={backFallback} />"
+    );
     expect(backButton).toContain("resolveV2BackPath");
     expect(backButton).toContain("useV2PreviousInternalPath");
     expect(backButton).toContain('aria-label="Voltar"');
-    expect(backButton).toContain("<TooltipContent side=\"bottom\">Voltar</TooltipContent>");
+    expect(backButton).toContain(
+      '<TooltipContent side="bottom">Voltar</TooltipContent>'
+    );
     expect(backButton).toContain("<ArrowLeft");
     expect(backButton).toContain("window.history.back()");
     expect(backButton).toContain("navigate(target, { replace: true })");
@@ -383,5 +430,13 @@ describe("FLUXO visual system experience contracts", () => {
     expect(leads).toContain('backFallback="/v2/dashboard"');
     expect(productivity).toContain('backFallback="/v2/dashboard"');
     expect(reports).toContain('backFallback="/v2/productivity"');
+  });
+
+  it("keeps the V2 shell mounted while routes change so internal return context survives", () => {
+    expect(app).toContain("<V2AppShell>");
+    expect(app).toContain("<Switch>");
+    expect(app.indexOf("<V2AppShell>")).toBeLessThan(app.indexOf("<Switch>"));
+    expect(app).not.toContain("function V2Route");
+    expect(app).not.toContain("<V2Route>");
   });
 });

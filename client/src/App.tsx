@@ -18,122 +18,40 @@ import { PwaUpdateNotice } from "./components/PwaUpdateNotice";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { V2AppShell } from "./components/v2/V2AppShell";
 import { v2RoutePaths } from "./components/v2/v2Navigation";
-import type { ReactNode } from "react";
-
-function V2Route({ children }: { children: ReactNode }) {
-  return <V2AppShell>{children}</V2AppShell>;
-}
 
 function Router() {
   return (
-    <Switch>
-      <Route
-        path="/"
-        component={() => (
-          <V2Route>
-            <V2Administration />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.administration}
-        component={() => (
-          <V2Route>
-            <V2Administration />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.importSettings}
-        component={() => (
-          <V2Route>
-            <V2ImportConfiguration />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.dashboard}
-        component={() => (
-          <V2Route>
-            <V2Dashboard />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.productivity}
-        component={() => (
-          <V2Route>
-            <V2Productivity />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.reports}
-        component={() => (
-          <V2Route>
-            <V2Reports />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.campaignImports}
-        component={() => (
-          <V2Route>
-            <V2Importer />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.campaignDetail}
-        component={() => (
-          <V2Route>
-            <V2CampaignDetail />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.campaigns}
-        component={() => (
-          <V2Route>
-            <V2Campaigns />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.leadDetail}
-        component={() => (
-          <V2Route>
-            <V2SeparatedLeadJourney />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.leads}
-        component={() => (
-          <V2Route>
-            <V2Leads />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.followUps}
-        component={() => (
-          <V2Route>
-            <V2FollowUps />
-          </V2Route>
-        )}
-      />
-      <Route
-        path={v2RoutePaths.governance}
-        component={() => (
-          <V2Route>
-            <V2Governance />
-          </V2Route>
-        )}
-      />
-      <Route path="/404" component={NotFound} />
-      <Route component={NotFound} />
-    </Switch>
+    <V2AppShell>
+      <Switch>
+        <Route path="/" component={V2Administration} />
+        <Route
+          path={v2RoutePaths.administration}
+          component={V2Administration}
+        />
+        <Route
+          path={v2RoutePaths.importSettings}
+          component={V2ImportConfiguration}
+        />
+        <Route path={v2RoutePaths.dashboard} component={V2Dashboard} />
+        <Route path={v2RoutePaths.productivity} component={V2Productivity} />
+        <Route path={v2RoutePaths.reports} component={V2Reports} />
+        <Route path={v2RoutePaths.campaignImports} component={V2Importer} />
+        <Route
+          path={v2RoutePaths.campaignDetail}
+          component={V2CampaignDetail}
+        />
+        <Route path={v2RoutePaths.campaigns} component={V2Campaigns} />
+        <Route
+          path={v2RoutePaths.leadDetail}
+          component={() => <V2SeparatedLeadJourney />}
+        />
+        <Route path={v2RoutePaths.leads} component={V2Leads} />
+        <Route path={v2RoutePaths.followUps} component={V2FollowUps} />
+        <Route path={v2RoutePaths.governance} component={V2Governance} />
+        <Route path="/404" component={NotFound} />
+        <Route component={NotFound} />
+      </Switch>
+    </V2AppShell>
   );
 }
 
