@@ -73,6 +73,7 @@ import {
   type V2NavigationItem,
   type V2NavigationRole,
 } from "./v2Navigation";
+import { currentV2Path } from "@/lib/operationalNavigation";
 
 type V2SessionUser = {
   id: number;
@@ -84,11 +85,21 @@ type V2SessionUser = {
 };
 
 const V2SessionContext = createContext<V2SessionUser | null>(null);
+const V2PreviousInternalPathContext = createContext<string | null>(null);
+const V2NavigationRoleContext = createContext<V2NavigationRole | null>(null);
 
 export function useV2Session() {
   const session = useContext(V2SessionContext);
   if (!session) throw new Error("A sessão V2 não está disponível.");
   return session;
+}
+
+export function useV2PreviousInternalPath() {
+  return useContext(V2PreviousInternalPathContext);
+}
+
+export function useV2NavigationRole() {
+  return useContext(V2NavigationRoleContext);
 }
 
 const icons: Record<V2NavigationItem["key"], LucideIcon> = {
@@ -508,6 +519,8 @@ function ShellFrame({
   children: ReactNode;
 }) {
   const [location, setLocation] = useLocation();
+  const [previousInternalPath, setPreviousInternalPath] = useState<string | null>(null);
+  const currentInternalPath = useRef<string | null>(null);
   const [partnerId, setPartnerId] = useState(() => {
     try {
       return localStorage.getItem("v2-active-partner") ?? "";
@@ -575,6 +588,17 @@ function ShellFrame({
     partner => String(partner.id) === partnerId
   );
 
+  useEffect(() => {
+    const current = currentV2Path();
+    const previous = currentInternalPath.current;
+    const currentPathname = current.split(/[?#]/, 1)[0];
+    const previousPathname = previous?.split(/[?#]/, 1)[0];
+    if (previous && previous !== current && previousPathname !== currentPathname) {
+      setPreviousInternalPath(previous);
+    }
+    currentInternalPath.current = current;
+  }, [location]);
+
   const selectPartner = (value: string) => {
     if (!value || value === partnerId) return;
     try {
@@ -594,6 +618,8 @@ function ShellFrame({
   };
 
   return (
+    <V2NavigationRoleContext.Provider value={role}>
+    <V2PreviousInternalPathContext.Provider value={previousInternalPath}>
     <div className="v2-app-shell">
       <aside className="v2-desktop-sidebar">
         <div className="v2-sidebar-brand">
@@ -738,6 +764,8 @@ function ShellFrame({
         </SheetContent>
       </Sheet>
     </div>
+    </V2PreviousInternalPathContext.Provider>
+    </V2NavigationRoleContext.Provider>
   );
 }
 

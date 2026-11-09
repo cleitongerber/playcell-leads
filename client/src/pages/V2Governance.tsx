@@ -14,7 +14,6 @@ import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { KpiCard, SectionCard } from "@/components/v2/V2Layout";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Link } from "wouter";
 
 export default function V2Governance() {
   const access = v2trpc.access.context.useQuery();
@@ -57,12 +56,8 @@ export default function V2Governance() {
       <V2PageHeader
         eyebrow="Administração"
         title="Governança operacional"
+        backFallback="/v2/admin"
         description="Defina os requisitos padrão de qualidade das tratativas deste parceiro. Uma campanha pode usar este padrão ou declarar seu próprio override."
-        actions={
-          <Link href="/v2/admin">
-            <Button variant="outline">← Administração</Button>
-          </Link>
-        }
       />
       <section className="v2-metric-grid v2-governance-summary">
         <KpiCard label="Canais autorizados" value={form.allowedChannels?.length ?? "Todos"} detail={form.allowedChannels ? "configurados" : "sem restrição"} />

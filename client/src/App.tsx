@@ -17,6 +17,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { PwaUpdateNotice } from "./components/PwaUpdateNotice";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { V2AppShell } from "./components/v2/V2AppShell";
+import { v2RoutePaths } from "./components/v2/v2Navigation";
 import type { ReactNode } from "react";
 
 function V2Route({ children }: { children: ReactNode }) {
@@ -35,7 +36,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/admin"
+        path={v2RoutePaths.administration}
         component={() => (
           <V2Route>
             <V2Administration />
@@ -43,7 +44,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/import-settings"
+        path={v2RoutePaths.importSettings}
         component={() => (
           <V2Route>
             <V2ImportConfiguration />
@@ -51,7 +52,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/dashboard"
+        path={v2RoutePaths.dashboard}
         component={() => (
           <V2Route>
             <V2Dashboard />
@@ -59,7 +60,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/productivity"
+        path={v2RoutePaths.productivity}
         component={() => (
           <V2Route>
             <V2Productivity />
@@ -67,7 +68,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/reports"
+        path={v2RoutePaths.reports}
         component={() => (
           <V2Route>
             <V2Reports />
@@ -75,7 +76,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/campaigns/:id/imports"
+        path={v2RoutePaths.campaignImports}
         component={() => (
           <V2Route>
             <V2Importer />
@@ -83,7 +84,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/campaigns/:id"
+        path={v2RoutePaths.campaignDetail}
         component={() => (
           <V2Route>
             <V2CampaignDetail />
@@ -91,7 +92,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/campaigns"
+        path={v2RoutePaths.campaigns}
         component={() => (
           <V2Route>
             <V2Campaigns />
@@ -99,7 +100,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/leads/:id"
+        path={v2RoutePaths.leadDetail}
         component={() => (
           <V2Route>
             <V2SeparatedLeadJourney />
@@ -107,7 +108,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/leads"
+        path={v2RoutePaths.leads}
         component={() => (
           <V2Route>
             <V2Leads />
@@ -115,7 +116,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/follow-ups"
+        path={v2RoutePaths.followUps}
         component={() => (
           <V2Route>
             <V2FollowUps />
@@ -123,7 +124,7 @@ function Router() {
         )}
       />
       <Route
-        path="/v2/governance"
+        path={v2RoutePaths.governance}
         component={() => (
           <V2Route>
             <V2Governance />

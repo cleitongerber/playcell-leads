@@ -26,7 +26,6 @@ import { CampaignLeadManagement } from "@/components/v2/CampaignLeadManagement";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { DataTable, PageToolbar } from "@/components/v2/V2Layout";
 import { V2ErrorState, V2LoadingState } from "@/components/v2/V2QueryState";
-import { safeV2ReturnPath } from "@/lib/operationalNavigation";
 import { v2trpc } from "@/lib/v2trpc";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -110,6 +109,7 @@ export default function V2Campaigns() {
       <V2PageHeader
         eyebrow="Operação"
         title="Campanhas"
+        backFallback="/v2/dashboard"
         description="Crie a campanha, defina os PDVs e deixe-a pronta para a importação de Leads."
         actions={canManage ? <Button onClick={() => setCreateOpen(true)}>+ Nova campanha</Button> : undefined}
       />
@@ -306,12 +306,6 @@ export function V2CampaignDetail() {
   const [, params] = useRoute("/v2/campaigns/:id");
   const [, setLocation] = useLocation();
   const id = Number(params?.id);
-  const returnTo = safeV2ReturnPath(
-    typeof window === "undefined"
-      ? null
-      : new URLSearchParams(window.location.search).get("from"),
-    "/v2/campaigns"
-  );
   const detail = v2trpc.campaigns.get.useQuery(
     { id },
     { enabled: Number.isInteger(id) && id > 0 }
@@ -446,6 +440,7 @@ export function V2CampaignDetail() {
       <V2PageHeader
         eyebrow="Campanha"
         title={campaign.name}
+        backFallback="/v2/campaigns"
         description={`${campaign.code} · ${campaign.description || "Sem descrição"}`}
         actions={
           <>
@@ -453,9 +448,6 @@ export function V2CampaignDetail() {
             {campaign.isFrozen && (
               <Badge variant="destructive">Congelada</Badge>
             )}
-            <Link href={returnTo}>
-              <Button variant="outline">← Voltar</Button>
-            </Link>
           </>
         }
       />

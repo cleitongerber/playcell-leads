@@ -43,7 +43,6 @@ import {
 import {
   buildV2Path,
   currentV2Path,
-  safeV2ReturnPath,
 } from "@/lib/operationalNavigation";
 import { presentTimelineEvent } from "@/lib/timelinePresentation";
 import { v2trpc } from "@/lib/v2trpc";
@@ -55,7 +54,6 @@ import {
 } from "@shared/whatsappContact";
 import {
   AlertTriangle,
-  ArrowLeft,
   CalendarClock,
   CheckCircle2,
   ChevronDown,
@@ -444,12 +442,6 @@ export function V2SeparatedLeadJourney() {
   const [, params] = useRoute("/v2/leads/:id");
   const id = Number(params?.id);
   const session = useV2Session();
-  const returnTo = safeV2ReturnPath(
-    typeof window === "undefined"
-      ? null
-      : new URLSearchParams(window.location.search).get("from"),
-    "/v2/leads"
-  );
   const utils = v2trpc.useUtils();
   const detail = v2trpc.leads.get.useQuery(
     { id },
@@ -1180,6 +1172,7 @@ export function V2SeparatedLeadJourney() {
       <V2PageHeader
         eyebrow="Área de trabalho"
         title={lead.name || "Lead sem nome"}
+        backFallback="/v2/leads"
         description={`${lead.phone || "Sem telefone"} · ${detail.data?.campaign?.name ?? "Campanha não informada"} · ${detail.data?.pdv?.name ?? "PDV não informado"}`}
         actions={
           <>
@@ -1201,11 +1194,6 @@ export function V2SeparatedLeadJourney() {
                       : "Campanha ativa"}
               </Badge>
             )}
-            <Link href={returnTo}>
-              <Button variant="outline">
-                <ArrowLeft className="mr-2 size-4" /> Leads
-              </Button>
-            </Link>
           </>
         }
       />

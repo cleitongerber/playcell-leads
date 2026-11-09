@@ -107,6 +107,7 @@ export default function V2Reports() {
       <V2PageHeader
         eyebrow="Gestão"
         title="Relatórios"
+        backFallback="/v2/productivity"
         description="Análise histórica e exportação CSV com o mesmo escopo autorizado da consulta."
       />
 

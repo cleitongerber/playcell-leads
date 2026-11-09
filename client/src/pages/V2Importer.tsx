@@ -435,12 +435,8 @@ export default function V2Importer() {
       <V2PageHeader
         eyebrow="Campanhas / Importações"
         title="Importar leads"
+        backFallback={`/v2/campaigns/${campaignId}`}
         description={`${setupData.campaign.name} · o CSV é validado no servidor antes de qualquer lead ser criado.`}
-        actions={
-          <Link href={`/v2/campaigns/${campaignId}`}>
-            <Button variant="outline">← Campanha</Button>
-          </Link>
-        }
       />
 
       <section className="v2-import-step-grid sm:grid-cols-4">

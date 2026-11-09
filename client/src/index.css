@@ -181,7 +181,11 @@
   .v2-page { width:100%; max-width:100rem; margin:0 auto; padding:1.75rem var(--space-4) var(--space-10); }
   .v2-dashboard-page,.v2-reports-page { display:grid; gap:1rem; }
   .v2-page-header { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:0; }
+  .v2-page-title-row { display:flex; min-width:0; align-items:center; gap:.5rem; }
   .v2-page-header h1 { font-size:clamp(1.75rem,2.2vw,2.25rem); font-weight:700; line-height:1.15; letter-spacing:-.04em; }
+  .v2-back-button { width:2.375rem; min-width:2.375rem; height:2.375rem; padding:0; color:var(--brand-primary); }
+  .v2-back-button:hover { background:color-mix(in srgb,var(--brand-accent)10%,transparent); color:var(--brand-secondary); }
+  .v2-back-button:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
   .v2-page-header p { max-width:52rem; margin-top:.25rem; color:var(--muted-foreground); font-size:.9375rem; line-height:1.5; }
   .v2-page-header-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:.5rem; }
   .v2-eyebrow { color:var(--brand-secondary); font-size:.75rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }

@@ -7,7 +7,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { V2PageHeader } from "@/components/v2/V2PageHeader";
 import { SectionCard } from "@/components/v2/V2Layout";
 import { v2trpc } from "@/lib/v2trpc";
-import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -58,7 +57,7 @@ export default function V2ImportConfiguration() {
   const openEditField = (item: NonNullable<typeof fields.data>[number]) => { setEditingKey(item.key); setField({ key: item.key, label: item.label ?? item.key, fieldType: item.fieldType as FieldType, options: item.options?.join(", ") ?? "", isRequired: item.isRequired, isActive: item.isActive }); setFieldDialogOpen(true); };
   const templateDetails = templates.data?.find(template => template.id === templateDetailsId) ?? null;
   return <main className="v2-page v2-import-settings-page space-y-6">
-    <V2PageHeader eyebrow="Administração" title="Configuração de importações" description="Defina as regras, os campos e os mapeamentos reutilizáveis do parceiro." actions={<Link href="/v2/admin"><Button variant="outline">← Administração</Button></Link>} />
+    <V2PageHeader eyebrow="Administração" title="Configuração de importações" backFallback="/v2/admin" description="Defina as regras, os campos e os mapeamentos reutilizáveis do parceiro." />
     {!canManage ? <SectionCard><div className="p-6 text-sm text-muted-foreground">Seu perfil não pode administrar importações.</div></SectionCard> : <>
       <SectionCard><div className="border-b border-border/70 p-6 pb-4"><p className="text-xs font-semibold uppercase tracking-[.12em] text-primary">Regras de duplicidade</p><h2 className="mt-1 text-xl font-semibold">Regras de duplicidade</h2><p className="mt-1 text-sm text-muted-foreground">Defina como o FLUXO identifica registros que já existem na sua base.</p></div><div className="space-y-6 p-6">
         {legacyAnd ? <div className="rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm"><p className="font-medium">Regra existente: Telefone + E-mail</p><p className="mt-1 text-muted-foreground">Esta regra anterior exige que telefone e e-mail coincidam no mesmo Lead.</p><Button className="mt-3" size="sm" variant="outline" onClick={() => setIsV2(true)}>Usar nova regra</Button></div> : <fieldset><legend className="text-sm font-semibold">Como identificar registros duplicados?</legend><div className="mt-3 grid gap-3 sm:grid-cols-3">{([ ["phone", "Telefone"], ["cpf", "CPF"], ["email", "E-mail"] ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center gap-3 rounded-lg border p-3 text-sm"><Checkbox checked={identifiers.includes(key)} onCheckedChange={() => toggleIdentifier(key)} />{label}</label>)}</div><p className="mt-3 text-xs text-muted-foreground">Um registro é considerado duplicado quando qualquer identificador selecionado já pertence a um Lead deste parceiro.</p><p className="mt-1 text-xs text-muted-foreground">Abrangência: todos os Leads deste parceiro, inclusive de outras campanhas.</p></fieldset>}

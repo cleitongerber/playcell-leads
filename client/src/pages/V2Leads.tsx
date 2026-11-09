@@ -411,6 +411,7 @@ export default function V2Leads() {
       <V2PageHeader
         eyebrow="Operação"
         title="Leads"
+        backFallback="/v2/dashboard"
         description="Fila, carteira e trabalho operacional no contexto autorizado."
         actions={
           (followUpAlerts.data?.overdue ?? 0) +

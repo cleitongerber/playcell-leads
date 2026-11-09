@@ -253,6 +253,7 @@ export default function V2Productivity() {
       <V2PageHeader
         eyebrow="Gestão"
         title="Produtividade"
+        backFallback="/v2/dashboard"
         description="Esforço, contato efetivo, disciplina de follow-up e resultado por vendedor."
         actions={
           <DropdownMenu>

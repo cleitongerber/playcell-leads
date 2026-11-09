@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isAuthorizedV2Route,
   isV2NavigationActive,
   visibleV2Navigation,
 } from "./v2Navigation";
@@ -40,5 +41,12 @@ describe("V2 navigation", () => {
     expect(isV2NavigationActive("/v2/leads", "/v2/leads/42")).toBe(true);
     expect(isV2NavigationActive("/v2/campaigns", "/v2/campaigns/8/imports")).toBe(true);
     expect(isV2NavigationActive("/v2/reports", "/v2/dashboard")).toBe(false);
+  });
+
+  it("uses the same route catalogue for dynamic paths and role-aware navigation", () => {
+    expect(isAuthorizedV2Route("/v2/leads/42", "seller")).toBe(true);
+    expect(isAuthorizedV2Route("/v2/campaigns/8/imports", "seller")).toBe(false);
+    expect(isAuthorizedV2Route("/v2/campaigns/8/imports", "partner_admin")).toBe(true);
+    expect(isAuthorizedV2Route("/v2/not-a-route", "partner_admin")).toBe(false);
   });
 });

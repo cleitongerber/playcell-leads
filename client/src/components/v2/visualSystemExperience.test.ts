@@ -23,6 +23,12 @@ describe("FLUXO visual system experience contracts", () => {
   const journey = readProjectFile(
     "client/src/components/v2/V2SeparatedLeadJourney.tsx"
   );
+  const pageHeader = readProjectFile(
+    "client/src/components/v2/V2PageHeader.tsx"
+  );
+  const backButton = readProjectFile(
+    "client/src/components/v2/V2BackButton.tsx"
+  );
 
   it("keeps the shared visual tokens and responsive shell centralized", () => {
     for (const token of [
@@ -359,5 +365,23 @@ describe("FLUXO visual system experience contracts", () => {
     expect(importer).toContain("Regra existente: Telefone + E-mail");
     expect(importer).toContain("duplicateIdentifiers,");
     expect(importer).toContain('duplicateMatchVersion: "any_v2"');
+  });
+
+  it("keeps a single accessible internal return control in shared page headers", () => {
+    expect(pageHeader).toContain('className="v2-page-title-row"');
+    expect(pageHeader).toContain("<V2BackButton fallbackPath={backFallback} />");
+    expect(backButton).toContain("resolveV2BackPath");
+    expect(backButton).toContain("useV2PreviousInternalPath");
+    expect(backButton).toContain('aria-label="Voltar"');
+    expect(backButton).toContain("<TooltipContent side=\"bottom\">Voltar</TooltipContent>");
+    expect(backButton).toContain("<ArrowLeft");
+    expect(backButton).toContain("window.history.back()");
+    expect(backButton).toContain("navigate(target, { replace: true })");
+    expect(styles).toContain(".v2-back-button");
+    expect(styles).toContain(".v2-back-button:focus-visible");
+    expect(journey).toContain('backFallback="/v2/leads"');
+    expect(leads).toContain('backFallback="/v2/dashboard"');
+    expect(productivity).toContain('backFallback="/v2/dashboard"');
+    expect(reports).toContain('backFallback="/v2/productivity"');
   });
 });
