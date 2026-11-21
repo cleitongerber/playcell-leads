@@ -87,6 +87,7 @@ export const leadTimelineType = [
 ] as const;
 export const timelineVisibility = ["partner", "restricted"] as const;
 export const followUpStatus = ["pending", "completed", "cancelled"] as const;
+export const pushSubscriptionStatus = ["active", "revoked", "invalid"] as const;
 export const governanceRuleMode = ["inherit", "override"] as const;
 export const governanceRuleSource = ["partner", "campaign"] as const;
 export const evidenceStorageProvider = ["forge_s3", "s3"] as const;
@@ -1206,6 +1207,60 @@ export const followUps = mysqlTable(
         leadTimelineEvents.leadId,
       ],
       name: "follow_ups_origin_timeline_lead_tenant_fk",
+    }).onDelete("restrict"),
+  })
+);
+
+/** Browser subscriptions are encrypted at rest and always tenant-bound. */
+export const pushSubscriptions = mysqlTable(
+  "push_subscriptions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    partnerId: int("partnerId").notNull(),
+    userId: int("userId").notNull(),
+    membershipId: int("membershipId").notNull(),
+    /** Stable SHA-256 digest used only for deduplication and revocation. */
+    endpointHash: varchar("endpointHash", { length: 64 }).notNull(),
+    endpointCiphertext: text("endpointCiphertext").notNull(),
+    keysCiphertext: text("keysCiphertext").notNull(),
+    userAgentHash: varchar("userAgentHash", { length: 64 }),
+    status: mysqlEnum("status", pushSubscriptionStatus)
+      .notNull()
+      .default("active"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
+    lastSeenAt: timestamp("lastSeenAt").notNull().defaultNow(),
+    revokedAt: timestamp("revokedAt"),
+    invalidatedAt: timestamp("invalidatedAt"),
+  },
+  table => ({
+    membershipStatusIdx: index("push_subscriptions_membership_status_idx").on(
+      table.partnerId,
+      table.membershipId,
+      table.status
+    ),
+    endpointUnique: uniqueIndex("push_subscriptions_partner_membership_endpoint_unique").on(
+      table.partnerId,
+      table.membershipId,
+      table.endpointHash
+    ),
+    endpointLookupIdx: index("push_subscriptions_endpoint_hash_idx").on(
+      table.endpointHash
+    ),
+    partnerReference: foreignKey({
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+      name: "push_subscriptions_partner_fk",
+    }).onDelete("restrict"),
+    userReference: foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: "push_subscriptions_user_fk",
+    }).onDelete("restrict"),
+    membershipTenantReference: foreignKey({
+      columns: [table.membershipId, table.partnerId],
+      foreignColumns: [userPartners.id, userPartners.partnerId],
+      name: "push_subscriptions_membership_tenant_fk",
     }).onDelete("restrict"),
   })
 );

@@ -2,6 +2,12 @@ import type { CookieOptions, Request } from "express";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
+/**
+ * Deliberately opt-in for disposable localhost homologation only. A host
+ * header alone must never downgrade a session served by a deployed instance.
+ */
+const LOCAL_HTTP_SESSION_ENV = "V2_ALLOW_LOCAL_HTTP_SESSION";
+
 function isIpAddress(host: string) {
   // Basic IPv4 check and IPv6 presence detection.
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
@@ -21,8 +27,26 @@ function isSecureRequest(req: Request) {
   return protoList.some(proto => proto.trim().toLowerCase() === "https");
 }
 
+function isLoopbackAddress(address: string | undefined) {
+  return (
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "::ffff:127.0.0.1"
+  );
+}
+
+function allowsLocalHttpSession(req: Request, environment: NodeJS.ProcessEnv) {
+  return (
+    environment[LOCAL_HTTP_SESSION_ENV] === "true" &&
+    !isSecureRequest(req) &&
+    LOCAL_HOSTS.has(req.hostname.toLowerCase()) &&
+    isLoopbackAddress(req.socket.remoteAddress)
+  );
+}
+
 export function getSessionCookieOptions(
-  req: Request
+  req: Request,
+  environment: NodeJS.ProcessEnv = process.env
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
   // const hostname = req.hostname;
   // const shouldSetDomain =
@@ -39,10 +63,20 @@ export function getSessionCookieOptions(
   //       ? hostname
   //       : undefined;
 
+  if (allowsLocalHttpSession(req, environment)) {
+    return {
+      httpOnly: true,
+      path: "/",
+      sameSite: "lax",
+      secure: false,
+    };
+  }
+
+  // Fail closed outside the explicit loopback-only homologation mode.
   return {
     httpOnly: true,
     path: "/",
     sameSite: "none",
-    secure: isSecureRequest(req),
+    secure: true,
   };
 }

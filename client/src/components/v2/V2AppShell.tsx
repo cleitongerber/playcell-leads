@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InstallAppButton } from "@/components/InstallAppButton";
+import { V2PushNotificationControl } from "./V2PushNotificationControl";
 import { v2trpc } from "@/lib/v2trpc";
 import { cn } from "@/lib/utils";
 import {
@@ -549,6 +550,23 @@ function ShellFrame({
     },
     onError: error => toast.error(error.message),
   });
+  const revokeBrowserPushSession = v2trpc.pushNotifications.revokeBrowserSession.useMutation();
+
+  const logoutWithPushRevocation = async () => {
+    try {
+      if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+          await revokeBrowserPushSession.mutateAsync({ endpoint: subscription.endpoint });
+          await subscription.unsubscribe();
+        }
+      }
+    } catch {
+      // Logout must remain available even if browser Push cleanup is unavailable.
+    }
+    logout.mutate();
+  };
 
   useEffect(() => {
     if (!partners.data || initialSelection.current) return;
@@ -643,11 +661,12 @@ function ShellFrame({
         </nav>
         <div className="v2-sidebar-footer">
           <InstallAppButton />
+          <V2PushNotificationControl enabled={Boolean(partnerId) && role === "seller"} />
           <UserMenu
             user={user}
             role={role}
             compact
-            onLogout={() => logout.mutate()}
+            onLogout={logoutWithPushRevocation}
             onChangePassword={() => setPasswordOpen(true)}
           />
         </div>
@@ -673,7 +692,7 @@ function ShellFrame({
             <UserMenu
               user={user}
               role={role}
-              onLogout={() => logout.mutate()}
+              onLogout={logoutWithPushRevocation}
               onChangePassword={() => setPasswordOpen(true)}
             />
           </div>
@@ -759,6 +778,7 @@ function ShellFrame({
             )}
             <div className="pt-3">
               <InstallAppButton />
+              <V2PushNotificationControl enabled={Boolean(partnerId) && role === "seller"} />
             </div>
           </nav>
         </SheetContent>

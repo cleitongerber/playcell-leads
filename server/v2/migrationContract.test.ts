@@ -15,6 +15,7 @@ import {
   followUps,
   partnerGovernanceRules,
   partnerSettings,
+  pushSubscriptions,
   userPartners,
   users,
 } from "../../drizzle-v2/schema";
@@ -264,9 +265,9 @@ describe("V2 migration tenant-key contract", () => {
     expect(migration).toContain("leads_partner_normalized_cpf_idx");
     expect(migration).toContain("ADD `duplicateIdentifiers` json");
     expect(migration).toContain("ADD `duplicateReasonCodes` json");
-    expect(migration).not.toMatch(/\bUPDATE\b/i);
-    expect(migration).not.toMatch(/\bINSERT\b/i);
-    expect(migration).not.toMatch(/\bDELETE\b/i);
+    expect(migration).not.toMatch(/\bUPDATE\s+`/i);
+    expect(migration).not.toMatch(/\bINSERT\s+INTO\b/i);
+    expect(migration).not.toMatch(/\bDELETE\s+FROM\b/i);
     expect(migration).not.toMatch(/\bDROP\b/i);
     expect(
       getTableConfig(leads).columns.some(
@@ -371,5 +372,23 @@ describe("V2 migration tenant-key contract", () => {
       tag: "0015_v2_management_viewer_scopes",
     });
     expect(entry?.when).toBeGreaterThan(prior?.when ?? 0);
+  });
+
+  it("adds encrypted Push subscriptions without touching operational follow-up data", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle-v2/0019_v2_push_subscriptions.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("CREATE TABLE `push_subscriptions`");
+    expect(migration).toContain("`endpointCiphertext` text NOT NULL");
+    expect(migration).toContain("`keysCiphertext` text NOT NULL");
+    expect(migration).toContain("push_subscriptions_membership_tenant_fk");
+    expect(migration).toContain("push_subscriptions_partner_membership_endpoint_unique");
+    expect(migration).not.toMatch(/\bUPDATE\s+`/i);
+    expect(migration).not.toMatch(/\bINSERT\s+INTO\b/i);
+    expect(migration).not.toMatch(/\bDELETE\s+FROM\b/i);
+    expect(getTableConfig(pushSubscriptions).columns.map(column => column.name)).toEqual(
+      expect.arrayContaining(["partnerId", "userId", "membershipId", "endpointHash"])
+    );
   });
 });

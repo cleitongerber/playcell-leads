@@ -45,6 +45,14 @@ import {
   rescheduleFollowUp,
 } from "./followUpService";
 import {
+  currentPushSubscription,
+  pushNotificationClientConfiguration,
+  registerPushSubscription,
+  revokeBrowserPushSubscriptions,
+  revokeCurrentPushSubscription,
+} from "./pushSubscriptionService";
+import { PushTestDeliveryError, sendControlledPushTest } from "./pushDeliveryService";
+import {
   getEvidenceDownloadUrl,
   softDeleteLeadEvidence,
   uploadLeadEvidence,
@@ -217,6 +225,19 @@ const operationalFollowUpInput = z.object({
   dueAt: z.coerce.date(),
   note: z.string().max(5_000).nullable().optional(),
 });
+
+const pushSubscriptionInput = z.object({
+  endpoint: z.string().url().max(4096).refine(value => value.startsWith("https://"), {
+    message: "Endpoint de notificação inválido",
+  }),
+  keys: z.object({
+    p256dh: z.string().min(1).max(2048),
+    auth: z.string().min(1).max(1024),
+  }),
+  userAgent: z.string().max(1024).nullable().optional(),
+});
+
+const pushEndpointInput = pushSubscriptionInput.pick({ endpoint: true });
 
 const importMappingInput = z.object({
   sourceHeader: z.string().min(1).max(255),
@@ -400,6 +421,41 @@ export const v2FoundationRouter = v2Router({
         })
       )
       .mutation(({ ctx, input }) => changeOwnPassword(ctx.user.id, input)),
+  }),
+  pushNotifications: v2Router({
+    config: v2PartnerProcedure.query(() => pushNotificationClientConfiguration()),
+    current: v2PartnerProcedure
+      .input(pushEndpointInput)
+      .query(({ ctx, input }) => currentPushSubscription(ctx.partner, input.endpoint)),
+    subscribe: v2OperationalProcedure
+      .input(pushSubscriptionInput)
+      .mutation(({ ctx, input }) => registerPushSubscription(ctx.partner, input)),
+    revokeCurrent: v2OperationalProcedure
+      .input(pushEndpointInput)
+      .mutation(({ ctx, input }) => revokeCurrentPushSubscription(ctx.partner, input.endpoint)),
+    revokeBrowserSession: v2ProtectedProcedure
+      .input(pushEndpointInput)
+      .mutation(({ ctx, input }) => revokeBrowserPushSubscriptions(ctx.user.id, input.endpoint)),
+    sendControlledTest: v2PartnerProcedure.mutation(async ({ ctx }) => {
+      try {
+        return await sendControlledPushTest(ctx.partner, ctx.user);
+      } catch (error) {
+        if (error instanceof PushTestDeliveryError) {
+          throw new TRPCError({
+            code:
+              error.reason === "FORBIDDEN"
+                ? "FORBIDDEN"
+                : error.reason === "NOT_FOUND"
+                  ? "NOT_FOUND"
+                  : error.reason === "CONFLICT"
+                    ? "CONFLICT"
+                    : "BAD_GATEWAY",
+            message: error.message,
+          });
+        }
+        throw error;
+      }
+    }),
   }),
   access: v2Router({
     context: v2PartnerProcedure.query(({ ctx }) => ctx.partner),

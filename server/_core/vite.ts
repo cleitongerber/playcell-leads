@@ -1,10 +1,29 @@
-import express, { type Express } from "express";
+import express, { type Express, type Response } from "express";
 import fs from "fs";
 import { type Server } from "http";
 import { nanoid } from "nanoid";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
+
+/**
+ * A missing worker script must never be answered with the SPA document. Browsers
+ * reject that response because its MIME type is text/html, which makes PWA
+ * diagnostics misleading and prevents safe future Push registration.
+ */
+function isJavaScriptAssetRequest(originalUrl: string): boolean {
+  const pathname = new URL(originalUrl, "http://localhost").pathname;
+  return /\.(?:[cm]?js)$/i.test(pathname);
+}
+
+function rejectMissingJavaScriptAsset(
+  originalUrl: string,
+  res: Response
+): boolean {
+  if (!isJavaScriptAssetRequest(originalUrl)) return false;
+  res.status(404).type("text/plain").send("Not found");
+  return true;
+}
 
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
@@ -23,6 +42,8 @@ export async function setupVite(app: Express, server: Server) {
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
+
+    if (rejectMissingJavaScriptAsset(url, res)) return;
 
     try {
       const clientTemplate = path.resolve(
@@ -61,7 +82,8 @@ export function serveStatic(app: Express) {
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
+  app.use("*", (req, res) => {
+    if (rejectMissingJavaScriptAsset(req.originalUrl, res)) return;
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }

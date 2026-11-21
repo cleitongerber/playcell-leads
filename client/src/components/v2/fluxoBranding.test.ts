@@ -76,6 +76,13 @@ describe("FLUXO visual identity contracts", () => {
     expect(index).toContain("/icons/apple-touch-icon.png");
     expect(index).toContain("/icons/favicon-32.png");
     expect(serviceWorker).toContain('const CACHE = "fluxo-app-v4"');
+    expect(serviceWorker).toContain('addEventListener("push"');
+    expect(serviceWorker).toContain('addEventListener("notificationclick"');
+    expect(serviceWorker).toContain('addEventListener("pushsubscriptionchange"');
+    expect(serviceWorker).toContain('^\\/v2\\/leads\\/\\d+$');
+    expect(serviceWorker).toContain("const navigated = await existing.navigate(target)");
+    expect(serviceWorker).toContain("return self.clients.openWindow(target)");
+    expect(serviceWorker).not.toContain("existing.focus().then(() => existing.navigate(target))");
     expect(serviceWorker).not.toContain("icon-192.svg");
     expect(serviceWorker).not.toContain("icon-512.svg");
 
@@ -92,5 +99,19 @@ describe("FLUXO visual identity contracts", () => {
     ]) {
       expect(existsSync(resolve(process.cwd(), asset))).toBe(true);
     }
+  });
+
+  it("keeps the canonical service worker registration and update contract", () => {
+    const registration = readProjectFile(
+      "client/src/components/PwaUpdateNotice.tsx"
+    );
+    const staticServer = readProjectFile("server/_core/vite.ts");
+
+    expect(registration).toContain('.register("/sw.js", { updateViaCache: "none" })');
+    expect(registration).toContain('addEventListener("updatefound"');
+    expect(registration).toContain('addEventListener("controllerchange"');
+    expect(registration).toContain('type: "SKIP_WAITING"');
+    expect(staticServer).toContain("isJavaScriptAssetRequest");
+    expect(staticServer).toContain('res.status(404).type("text/plain").send("Not found")');
   });
 });
