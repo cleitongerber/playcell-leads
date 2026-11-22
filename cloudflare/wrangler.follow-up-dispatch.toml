@@ -1,9 +1,11 @@
-name = "fluxo-follow-up-dispatch"
+name = "fluxo-follow-up-dispatch-hml"
 main = "follow-up-dispatch-worker.ts"
 compatibility_date = "2026-11-21"
 
-[triggers]
-crons = ["*/5 * * * *"]
+# Intentionally no [triggers] block. A five-minute Cron may only be added
+# after a valid synthetic subscription exists and a separate authorization.
+# The Worker source still enforces the HML Render URL and Service ID.
 
-# FLUXO_DISPATCH_URL and FLUXO_FOLLOW_UP_DISPATCH_HMAC_SECRET are secrets.
-# They must be provisioned outside this repository before any deployment.
+# The following variables must be configured as Cloudflare secrets, never here:
+# FLUXO_DISPATCH_URL, FLUXO_FOLLOW_UP_DISPATCH_HMAC_SECRET,
+# FLUXO_HML_WORKER_ENABLED and FLUXO_HML_SERVICE_ID.
