@@ -3,6 +3,8 @@ import type { Request, Response } from "express";
 import { getV2Db } from "./database";
 import { dispatchFollowUpNotifications, type DispatchResult, type FollowUpPushTransport } from "./followUpNotificationDispatcher";
 import { createFollowUpNotificationDispatcherRepository } from "./followUpNotificationDispatcherRepository";
+import { createWebPushFollowUpTransport } from "./followUpNotificationWebPushTransport";
+import { remoteHmlAutomaticPushTransportEnabled } from "./webPushConfig";
 
 export const FOLLOW_UP_DISPATCH_PATH = "/internal/v2/follow-up-notifications/dispatch";
 export const FOLLOW_UP_DISPATCH_MAX_BODY_BYTES = 128;
@@ -67,7 +69,11 @@ export function createFollowUpDispatchTriggerHandler(dependencies: TriggerDepend
     const db = await getV2Db();
     return dispatchFollowUpNotifications({
       repository: createFollowUpNotificationDispatcherRepository(db),
-      transport: inertFollowUpPushTransport,
+      // Real delivery is impossible unless every independent HML identity gate
+      // is configured. Production and unknown environments remain inert.
+      transport: remoteHmlAutomaticPushTransportEnabled(environment)
+        ? createWebPushFollowUpTransport(db, environment)
+        : inertFollowUpPushTransport,
       environment,
       batchSize: 25,
     });

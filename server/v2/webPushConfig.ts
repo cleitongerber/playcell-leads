@@ -40,6 +40,27 @@ export function remoteHmlControlledPushTestEnabled(
   }
 }
 
+/**
+ * Separate, fail-closed gate for the future automatic dispatcher in the one
+ * synthetic HML service. This intentionally does not reuse the manual-test
+ * flag: enabling a manual test must never make automation possible.
+ */
+export function remoteHmlAutomaticPushTransportEnabled(
+  environment: NodeJS.ProcessEnv = process.env
+) {
+  if (environment.WEB_PUSH_REMOTE_HML_TRANSPORT_ENABLED !== "true") return false;
+  if (environment.WEB_PUSH_REMOTE_HML_SERVICE_ID !== REMOTE_HML_SERVICE_ID) return false;
+  if (environment.V2_APP_DATABASE !== REMOTE_HML_DATABASE) return false;
+  if (environment.V2_FOLLOW_UP_DISPATCH_HTTP_ENABLED !== "true") return false;
+  if (environment.WEB_PUSH_FOLLOW_UP_AUTOMATION_ENABLED !== "true") return false;
+  try {
+    const url = new URL(environment.V2_DATABASE_URL ?? "");
+    return url.protocol === "mysql:" && url.hostname === REMOTE_HML_DATABASE_HOST;
+  } catch {
+    return false;
+  }
+}
+
 /** The browser may receive only this value; it is not a secret. */
 export function webPushPublicConfiguration(environment: NodeJS.ProcessEnv = process.env) {
   const config = readWebPushConfiguration(environment);

@@ -1,9 +1,23 @@
 export type FollowUpDispatchWorkerEnvironment = {
   FLUXO_DISPATCH_URL: string;
   FLUXO_FOLLOW_UP_DISPATCH_HMAC_SECRET: string;
+  FLUXO_HML_WORKER_ENABLED?: string;
+  FLUXO_HML_SERVICE_ID?: string;
 };
 
 const BODY = '{"v":1}';
+const HML_SERVICE_ID = "srv-dc1f8k142hec73a6tt10";
+const HML_DISPATCH_URL = "https://fluxo-webpush-homologacao.onrender.com/internal/v2/follow-up-notifications/dispatch";
+
+/** This Worker is intentionally incapable of calling any production URL. */
+export function hmlWorkerEnabled(env: FollowUpDispatchWorkerEnvironment) {
+  return (
+    env.FLUXO_HML_WORKER_ENABLED === "true" &&
+    env.FLUXO_HML_SERVICE_ID === HML_SERVICE_ID &&
+    env.FLUXO_DISPATCH_URL === HML_DISPATCH_URL &&
+    Boolean(env.FLUXO_FOLLOW_UP_DISPATCH_HMAC_SECRET)
+  );
+}
 
 export function isOperationalFollowUpWindow(instant: Date) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -24,6 +38,7 @@ async function signature(secret: string, timestamp: string) {
 }
 
 export async function invokeFollowUpDispatch(env: FollowUpDispatchWorkerEnvironment, instant: Date, request = fetch) {
+  if (!hmlWorkerEnabled(env)) return { invoked: false as const, reason: "hml_identity_not_confirmed" };
   if (!isOperationalFollowUpWindow(instant)) return { invoked: false as const, reason: "outside_operational_window" };
   const timestamp = String(instant.getTime());
   const response = await request(env.FLUXO_DISPATCH_URL, {
