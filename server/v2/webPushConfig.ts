@@ -1,5 +1,9 @@
 import * as webPush from "web-push";
 
+const REMOTE_HML_SERVICE_ID = "srv-dc1f8k142hec73a6tt10";
+const REMOTE_HML_DATABASE = "fluxo_webpush_homologacao";
+const REMOTE_HML_DATABASE_HOST = "gateway01.sa-east-1.prod.aws.tidbcloud.com";
+
 export type WebPushConfiguration = {
   publicKey: string | null;
   privateKey: string | null;
@@ -16,6 +20,26 @@ export function readWebPushConfiguration(
   };
 }
 
+/**
+ * Deliberately narrow gate for the one approved remote, synthetic HML test.
+ * This remains false in production and for any environment identity drift.
+ */
+export function remoteHmlControlledPushTestEnabled(
+  environment: NodeJS.ProcessEnv = process.env
+) {
+  if (environment.WEB_PUSH_REMOTE_HML_TEST_ENABLED !== "true") return false;
+  if (environment.WEB_PUSH_REMOTE_HML_SERVICE_ID !== REMOTE_HML_SERVICE_ID) return false;
+  if (environment.V2_APP_DATABASE !== REMOTE_HML_DATABASE) return false;
+  if (environment.V2_FOLLOW_UP_DISPATCH_HTTP_ENABLED === "true") return false;
+  if (environment.WEB_PUSH_FOLLOW_UP_AUTOMATION_ENABLED === "true") return false;
+  try {
+    const url = new URL(environment.V2_DATABASE_URL ?? "");
+    return url.protocol === "mysql:" && url.hostname === REMOTE_HML_DATABASE_HOST;
+  } catch {
+    return false;
+  }
+}
+
 /** The browser may receive only this value; it is not a secret. */
 export function webPushPublicConfiguration(environment: NodeJS.ProcessEnv = process.env) {
   const config = readWebPushConfiguration(environment);
@@ -23,8 +47,9 @@ export function webPushPublicConfiguration(environment: NodeJS.ProcessEnv = proc
     enabled: Boolean(config.publicKey),
     publicKey: config.publicKey,
     controlledTestEnabled:
-      environment.WEB_PUSH_TEST_SEND_ENABLED === "true" &&
-      environment.NODE_ENV !== "production",
+      (environment.WEB_PUSH_TEST_SEND_ENABLED === "true" &&
+        environment.NODE_ENV !== "production") ||
+      remoteHmlControlledPushTestEnabled(environment),
   };
 }
 

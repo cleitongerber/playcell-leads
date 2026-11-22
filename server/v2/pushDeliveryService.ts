@@ -6,7 +6,10 @@ import { getV2Db } from "./database";
 import { decryptPushSubscriptionValue } from "./pushSubscriptionCrypto";
 import { writeV2Audit } from "./partnerService";
 import { invalidatePushSubscription } from "./pushSubscriptionService";
-import { configureWebPushDelivery } from "./webPushConfig";
+import {
+  configureWebPushDelivery,
+  remoteHmlControlledPushTestEnabled,
+} from "./webPushConfig";
 
 const SYNTHETIC_SELLER_EMAIL = "vendedor1.demo@playcell.example";
 const TEST_PAYLOAD = {
@@ -15,8 +18,15 @@ const TEST_PAYLOAD = {
   path: "/v2/follow-ups",
   tag: "fluxo-web-push-test",
 } as const;
+const REMOTE_HML_TEST_PAYLOAD = {
+  title: "FLUXO — Teste Web Push",
+  body: "Primeira notificação de homologação do FLUXO.",
+  path: "/v2/follow-ups",
+  tag: "fluxo-web-push-hml-test",
+} as const;
 
 const activeTestDeliveries = new Set<string>();
+const completedRemoteHmlTestDeliveries = new Set<string>();
 
 export class PushTestDeliveryError extends Error {
   constructor(
@@ -47,8 +57,19 @@ export function allowsControlledPushTest(environment: NodeJS.ProcessEnv = proces
   );
 }
 
+/**
+ * A deliberately narrow escape hatch for one remote, synthetic HML send.
+ * It is not a production feature flag: every independent identity check must
+ * match the single approved Render service and synthetic TiDB database.
+ */
+export const allowsRemoteHmlControlledPushTest = remoteHmlControlledPushTestEnabled;
+
 export function controlledPushTestPayload() {
   return TEST_PAYLOAD;
+}
+
+export function remoteHmlControlledPushTestPayload() {
+  return REMOTE_HML_TEST_PAYLOAD;
 }
 
 function providerStatus(error: unknown) {
@@ -80,8 +101,9 @@ export async function sendControlledPushTest(
   user: Pick<V2User, "email">,
   environment: NodeJS.ProcessEnv = process.env
 ) {
+  const remoteHml = allowsRemoteHmlControlledPushTest(environment);
   if (
-    !allowsControlledPushTest(environment) ||
+    (!allowsControlledPushTest(environment) && !remoteHml) ||
     context.role !== "seller" ||
     context.membershipId === null ||
     user.email !== SYNTHETIC_SELLER_EMAIL
@@ -91,6 +113,8 @@ export async function sendControlledPushTest(
 
   const slot = `${context.partnerId}:${context.membershipId}`;
   if (activeTestDeliveries.has(slot)) throw new PushTestDeliveryError("CONFLICT");
+  if (remoteHml && completedRemoteHmlTestDeliveries.has(slot))
+    throw new PushTestDeliveryError("CONFLICT");
   activeTestDeliveries.add(slot);
 
   try {
@@ -130,7 +154,7 @@ export async function sendControlledPushTest(
       configureWebPushDelivery(environment);
       const response = await webPush.sendNotification(
         subscriptionFromRecord(record),
-        JSON.stringify(TEST_PAYLOAD),
+        JSON.stringify(remoteHml ? REMOTE_HML_TEST_PAYLOAD : TEST_PAYLOAD),
         { TTL: 60, urgency: "normal" }
       );
       await writeV2Audit(db, {
@@ -140,8 +164,9 @@ export async function sendControlledPushTest(
         action: "push_test_delivery_succeeded",
         entityType: "push_subscription",
         entityId,
-        metadata: { providerStatus: response.statusCode },
+        metadata: { providerStatus: response.statusCode, mode: remoteHml ? "remote_hml" : "local" },
       });
+      if (remoteHml) completedRemoteHmlTestDeliveries.add(slot);
       return { delivered: true, providerStatus: response.statusCode };
     } catch (error) {
       const status = providerStatus(error);
