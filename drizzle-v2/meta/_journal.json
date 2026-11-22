@@ -141,6 +141,13 @@
       "when": 1795261200000,
       "tag": "0019_v2_push_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1795274629955,
+      "tag": "0020_v2_follow_up_notification_outbox",
+      "breakpoints": true
     }
   ]
 }

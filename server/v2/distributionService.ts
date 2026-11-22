@@ -959,7 +959,11 @@ async function processCandidate(
       if (transferable.length) {
         await tx
           .update(followUps)
-          .set({ ownerMembershipId: nextMembershipId, updatedAt: now })
+          .set({
+            ownerMembershipId: nextMembershipId,
+            notificationVersion: sql`${followUps.notificationVersion} + 1`,
+            updatedAt: now,
+          })
           .where(
             and(
               eq(followUps.partnerId, context.partnerId),

@@ -15,7 +15,8 @@
     "bootstrap:v2": "tsx server/v2/bootstrapCli.ts",
     "recover:v2:admin": "tsx server/v2/adminRecoveryCli.ts",
     "provision:v2:database": "tsx server/v2/provisionDatabaseCli.ts",
-    "seed:v2:demo": "tsx server/v2/demoSeedCli.ts"
+    "seed:v2:demo": "tsx server/v2/demoSeedCli.ts",
+    "dispatch:v2:synthetic": "tsx server/v2/followUpNotificationDispatchCli.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",

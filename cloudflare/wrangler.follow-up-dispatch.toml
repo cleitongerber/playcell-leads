@@ -1,0 +1,9 @@
+name = "fluxo-follow-up-dispatch"
+main = "follow-up-dispatch-worker.ts"
+compatibility_date = "2026-11-21"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+# FLUXO_DISPATCH_URL and FLUXO_FOLLOW_UP_DISPATCH_HMAC_SECRET are secrets.
+# They must be provisioned outside this repository before any deployment.

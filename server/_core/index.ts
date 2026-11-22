@@ -7,6 +7,11 @@ import { readBuildInfo } from "./buildInfo";
 import { serveStatic, setupVite } from "./vite";
 import { v2FoundationRouter } from "../v2/router";
 import { createV2Context } from "../v2/context";
+import {
+  createFollowUpDispatchTriggerHandler,
+  FOLLOW_UP_DISPATCH_MAX_BODY_BYTES,
+  FOLLOW_UP_DISPATCH_PATH,
+} from "../v2/followUpNotificationDispatchTrigger";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -47,6 +52,16 @@ async function startServer() {
     throw new Error(
       "V2_ENABLE_API requer V2_DATABASE_URL, V2_APP_DATABASE e V2_SESSION_SECRET configurados"
     );
+  }
+
+  if (v2Mode) {
+    // This precedes the general JSON parser so the HMAC covers the exact body.
+    app.post(
+      FOLLOW_UP_DISPATCH_PATH,
+      express.raw({ type: "application/json", limit: FOLLOW_UP_DISPATCH_MAX_BODY_BYTES }),
+      createFollowUpDispatchTriggerHandler()
+    );
+    app.all(FOLLOW_UP_DISPATCH_PATH, (_req, res) => res.sendStatus(405));
   }
 
   // Configure body parser with larger size limit for file uploads

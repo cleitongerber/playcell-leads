@@ -88,6 +88,16 @@ export const leadTimelineType = [
 export const timelineVisibility = ["partner", "restricted"] as const;
 export const followUpStatus = ["pending", "completed", "cancelled"] as const;
 export const pushSubscriptionStatus = ["active", "revoked", "invalid"] as const;
+export const followUpNotificationStage = ["PRE30", "DUE", "LATE60"] as const;
+export const followUpNotificationDeliveryStatus = [
+  "pending",
+  "sending",
+  "sent",
+  "failed",
+  "invalid",
+  "suppressed",
+  "abandoned",
+] as const;
 export const governanceRuleMode = ["inherit", "override"] as const;
 export const governanceRuleSource = ["partner", "campaign"] as const;
 export const evidenceStorageProvider = ["forge_s3", "s3"] as const;
@@ -1148,6 +1158,8 @@ export const followUps = mysqlTable(
     rescheduledFromId: int("rescheduledFromId"),
     /** Null means an independent or legacy follow-up. */
     originTimelineEventId: int("originTimelineEventId"),
+    /** Bumped when the responsible seller changes, invalidating prior alerts. */
+    notificationVersion: int("notificationVersion").notNull().default(1),
     dueAt: timestamp("dueAt").notNull(),
     status: mysqlEnum("status", followUpStatus).notNull().default("pending"),
     note: text("note"),
@@ -1261,6 +1273,60 @@ export const pushSubscriptions = mysqlTable(
       columns: [table.membershipId, table.partnerId],
       foreignColumns: [userPartners.id, userPartners.partnerId],
       name: "push_subscriptions_membership_tenant_fk",
+    }).onDelete("restrict"),
+  })
+);
+
+/** Durable, per-device outbox. It never contains a Push endpoint or payload. */
+export const followUpNotificationDeliveries = mysqlTable(
+  "follow_up_notification_deliveries",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    partnerId: int("partnerId").notNull(),
+    followUpId: int("followUpId").notNull(),
+    notificationVersion: int("notificationVersion").notNull(),
+    stage: mysqlEnum("stage", followUpNotificationStage).notNull(),
+    subscriptionId: int("subscriptionId").notNull(),
+    scheduledFor: timestamp("scheduledFor").notNull(),
+    eligibleUntil: timestamp("eligibleUntil").notNull(),
+    status: mysqlEnum("status", followUpNotificationDeliveryStatus)
+      .notNull()
+      .default("pending"),
+    claimToken: varchar("claimToken", { length: 64 }),
+    claimedAt: timestamp("claimedAt"),
+    processedAt: timestamp("processedAt"),
+    providerStatus: int("providerStatus"),
+    outcomeCode: varchar("outcomeCode", { length: 64 }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
+  },
+  table => ({
+    deliveryUnique: uniqueIndex("follow_up_notification_delivery_unique").on(
+      table.followUpId,
+      table.notificationVersion,
+      table.stage,
+      table.subscriptionId
+    ),
+    partnerStatusScheduleIdx: index(
+      "follow_up_notification_deliveries_partner_status_scheduled_idx"
+    ).on(table.partnerId, table.status, table.scheduledFor),
+    followUpVersionIdx: index(
+      "follow_up_notification_deliveries_follow_up_version_idx"
+    ).on(table.followUpId, table.notificationVersion),
+    followUpReference: foreignKey({
+      columns: [table.followUpId],
+      foreignColumns: [followUps.id],
+      name: "follow_up_notification_deliveries_follow_up_fk",
+    }).onDelete("restrict"),
+    subscriptionReference: foreignKey({
+      columns: [table.subscriptionId],
+      foreignColumns: [pushSubscriptions.id],
+      name: "follow_up_notification_deliveries_subscription_fk",
+    }).onDelete("restrict"),
+    partnerReference: foreignKey({
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+      name: "follow_up_notification_deliveries_partner_fk",
     }).onDelete("restrict"),
   })
 );
@@ -1913,6 +1979,9 @@ export type LeadTimelineType = (typeof leadTimelineType)[number];
 export type LeadDistributionBatchType =
   (typeof leadDistributionBatchType)[number];
 export type FollowUpStatus = (typeof followUpStatus)[number];
+export type FollowUpNotificationStage = (typeof followUpNotificationStage)[number];
+export type FollowUpNotificationDeliveryStatus =
+  (typeof followUpNotificationDeliveryStatus)[number];
 export type GovernanceRuleMode = (typeof governanceRuleMode)[number];
 export type GovernanceRuleSource = (typeof governanceRuleSource)[number];
 export type EvidenceStorageStatus = (typeof evidenceStorageStatus)[number];
