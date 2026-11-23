@@ -5,6 +5,7 @@ export const SUPPORTED_EVIDENCE_MIME_TYPES = [
   "image/jpeg",
   "image/webp",
   "application/pdf",
+  "text/plain",
 ] as const;
 
 export const DEFAULT_MAX_EVIDENCE_SIZE_BYTES = 5 * 1024 * 1024;

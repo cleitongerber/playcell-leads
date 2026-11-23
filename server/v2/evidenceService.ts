@@ -9,13 +9,26 @@ import {
 import type { PartnerContext } from "./access";
 import {
   createEvidenceStorageKey,
+  decodePlainTextEvidence,
   EvidenceStorageConfigurationError,
   getEvidenceStorage,
+  MAX_TEXT_EVIDENCE_SIZE_BYTES,
   resolveEvidenceStorageProvider,
   validateEvidenceUpload,
   type EvidenceStorage,
   type EvidenceStorageProvider,
 } from "./evidenceStorage";
+
+export const TEXT_EVIDENCE_PREVIEW_LIMIT = 120_000;
+
+export function createTextEvidencePreview(fileName: string, bytes: Buffer) {
+  const text = decodePlainTextEvidence(bytes);
+  return {
+    fileName,
+    text: text.slice(0, TEXT_EVIDENCE_PREVIEW_LIMIT),
+    truncated: text.length > TEXT_EVIDENCE_PREVIEW_LIMIT,
+  };
+}
 import {
   assertEvidenceLeadScope,
   assertEvidenceTimelineTarget,
@@ -380,6 +393,37 @@ export async function getEvidenceDownloadUrl(
     storage ??
     getEvidenceStorage(evidence.storageProvider as EvidenceStorageProvider);
   return { url: await activeStorage.getSignedUrl(evidence.storageKey) };
+}
+
+/**
+ * Loads a bounded TXT preview only after the same partner/PDV access checks
+ * used for downloads. The original object remains private and downloadable.
+ */
+export async function getEvidenceTextPreview(
+  context: PartnerContext,
+  evidenceId: number,
+  storage?: EvidenceStorage
+) {
+  const db = await getV2Db();
+  const { evidence } = await loadAccessibleEvidence(db, context, evidenceId);
+  if (
+    evidence.deletedAt ||
+    evidence.storageStatus !== "available" ||
+    evidence.mimeType !== "text/plain"
+  ) {
+    throw new Error("Prévia de evidência indisponível");
+  }
+  const activeStorage =
+    storage ??
+    getEvidenceStorage(evidence.storageProvider as EvidenceStorageProvider);
+  if (!activeStorage.read) throw new Error("Prévia de evidência indisponível");
+  return createTextEvidencePreview(
+    evidence.fileName,
+    await activeStorage.read(
+      evidence.storageKey,
+      MAX_TEXT_EVIDENCE_SIZE_BYTES
+    )
+  );
 }
 
 export async function softDeleteLeadEvidence(

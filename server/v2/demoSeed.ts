@@ -544,7 +544,7 @@ export async function seedV2DemoData(config = readV2DemoSeedConfig()) {
       "sale_completed",
       "other_contact",
     ],
-    allowedEvidenceMimeTypes: ["image/png", "image/jpeg", "application/pdf"],
+    allowedEvidenceMimeTypes: ["image/png", "image/jpeg", "application/pdf", "text/plain"],
     maxEvidenceSizeBytes: 5 * 1024 * 1024,
     retentionDays: 365,
   });

@@ -45,6 +45,7 @@ export const supportedEvidenceTypes = [
   { mime: "image/jpeg", label: "JPEG" },
   { mime: "image/webp", label: "WEBP" },
   { mime: "application/pdf", label: "PDF" },
+  { mime: "text/plain", label: "TXT" },
 ] as const;
 
 export const blankGovernanceRule: GovernanceRuleFormValue = {

@@ -31,6 +31,13 @@ export function readEvidenceFileAsBase64(file: File) {
   });
 }
 
+export function evidenceUploadMimeType(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return extension === "txt" && (!file.type || file.type === "application/octet-stream")
+    ? "text/plain"
+    : file.type;
+}
+
 /**
  * Shared private-storage upload surface. The target timeline event is always
  * explicit so an attachment cannot accidentally satisfy another operation.
@@ -84,7 +91,7 @@ export const LeadEvidenceUploader = forwardRef<
         leadId,
         timelineEventId,
         fileName: file.name,
-        mimeType: file.type,
+        mimeType: evidenceUploadMimeType(file),
         base64: await readEvidenceFileAsBase64(file),
       });
     } catch (error) {
@@ -106,7 +113,7 @@ export const LeadEvidenceUploader = forwardRef<
       type="file"
       className="sr-only"
       aria-label="Selecionar evidência"
-      accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+      accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,image/png,image/jpeg,image/webp,application/pdf,text/plain"
       onChange={event => setFile(event.target.files?.[0] ?? null)}
     />
   );
@@ -154,7 +161,7 @@ export const LeadEvidenceUploader = forwardRef<
         </Button>
       )}
       <p className="text-xs text-muted-foreground">
-        Arquivos permitidos: PNG, JPG, WEBP ou PDF. O envio é privado e fica
+        Arquivos permitidos: PNG, JPG, WEBP, PDF ou TXT. O envio é privado e fica
         vinculado somente a este evento.
       </p>
     </div>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   EvidenceAttachmentUploadError,
   EvidenceStorageUploadError,
+  createTextEvidencePreview,
   evidenceAuditMetadata,
   preparePrivateEvidence,
 } from "./evidenceService";
@@ -9,6 +10,18 @@ import type { EvidenceStorage } from "./evidenceStorage";
 import { defaultAttemptGovernanceRule } from "./governancePolicy";
 
 describe("V2 evidence audit metadata", () => {
+  it("builds a bounded plain-text preview without altering the original text", () => {
+    const content = `01/01/2026, 10:00 - Cliente: <script>texto</script>\r\n${"á".repeat(120_001)}`;
+    const preview = createTextEvidencePreview(
+      "conversa-whatsapp.txt",
+      Buffer.from(content, "utf8")
+    );
+    expect(preview.fileName).toBe("conversa-whatsapp.txt");
+    expect(preview.text).toBe(content.slice(0, 120_000));
+    expect(preview.truncated).toBe(true);
+    expect(preview.text).toContain("<script>texto</script>");
+  });
+
   it("does not include a storage key, signed URL or file content", () => {
     const metadata = evidenceAuditMetadata({
       leadId: 11,

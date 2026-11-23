@@ -18,11 +18,17 @@ const mimeToExtensions: Record<string, readonly string[]> = {
   "image/jpeg": ["jpg", "jpeg"],
   "image/webp": ["webp"],
   "application/pdf": ["pdf"],
+  "text/plain": ["txt"],
 };
+
+/** Text evidence is intentionally smaller so its in-app preview stays usable. */
+export const MAX_TEXT_EVIDENCE_SIZE_BYTES = 1024 * 1024;
 
 export type EvidenceStorage = {
   put(key: string, bytes: Buffer, mimeType: string): Promise<void>;
   getSignedUrl(key: string): Promise<string>;
+  /** Optional for lightweight upload test doubles; production providers read privately. */
+  read?(key: string, maxBytes?: number): Promise<Buffer>;
   remove?(key: string): Promise<void>;
 };
 
@@ -44,6 +50,19 @@ export const forgeEvidenceStorage: EvidenceStorage = {
     await storagePutExact(key, bytes, mimeType);
   },
   getSignedUrl: storageGetSignedUrl,
+  async read(key, maxBytes) {
+    const response = await fetch(await storageGetSignedUrl(key));
+    if (!response.ok) throw new Error("Não foi possível ler a evidência");
+    const length = Number(response.headers.get("content-length") ?? 0);
+    if (maxBytes && (!Number.isFinite(length) || length > maxBytes)) {
+      throw new Error("A prévia de evidência excede o limite permitido");
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (maxBytes && bytes.length > maxBytes) {
+      throw new Error("A prévia de evidência excede o limite permitido");
+    }
+    return bytes;
+  },
 };
 
 type S3EvidenceConfiguration = {
@@ -332,6 +351,34 @@ function createS3EvidenceStorage(
         { expiresIn: EVIDENCE_DOWNLOAD_TTL_SECONDS }
       );
     },
+    async read(key, maxBytes) {
+      const response = await client.send(
+        new GetObjectCommand({ Bucket: config.bucket, Key: key })
+      );
+      const body = response.Body;
+      if (!body) throw new Error("Não foi possível ler a evidência");
+      if (maxBytes && (response.ContentLength ?? 0) > maxBytes) {
+        throw new Error("A prévia de evidência excede o limite permitido");
+      }
+      if ("transformToByteArray" in body) {
+        const bytes = Buffer.from(await body.transformToByteArray());
+        if (maxBytes && bytes.length > maxBytes) {
+          throw new Error("A prévia de evidência excede o limite permitido");
+        }
+        return bytes;
+      }
+      const chunks: Buffer[] = [];
+      let total = 0;
+      for await (const chunk of body as AsyncIterable<Uint8Array>) {
+        const next = Buffer.from(chunk);
+        total += next.length;
+        if (maxBytes && total > maxBytes) {
+          throw new Error("A prévia de evidência excede o limite permitido");
+        }
+        chunks.push(next);
+      }
+      return Buffer.concat(chunks);
+    },
     async remove(key) {
       await client.send(
         new DeleteObjectCommand({ Bucket: config.bucket, Key: key })
@@ -393,6 +440,41 @@ function expectedMimeFromBytes(bytes: Buffer) {
   return null;
 }
 
+/**
+ * TXT exports from WhatsApp are UTF-8 text. Reject binary/control content;
+ * the UI renders the returned string as text, never as HTML.
+ */
+export function decodePlainTextEvidence(bytes: Buffer) {
+  if (!bytes.length || bytes.includes(0)) {
+    throw new Error("O arquivo TXT deve conter texto simples válido");
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("O arquivo TXT deve estar codificado como texto UTF-8");
+  }
+  if (/[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) {
+    throw new Error("O arquivo TXT contém conteúdo não textual");
+  }
+  if (!text.trim()) throw new Error("O arquivo TXT está vazio");
+  return text;
+}
+
+function normalizedUploadMimeType(fileName: string, inputMimeType: string) {
+  const declared = inputMimeType.trim().toLowerCase();
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  // Browsers often report exported .txt files as octet-stream or omit the
+  // type. The extension is only a hint; byte validation below remains final.
+  if (
+    extension === "txt" &&
+    (declared === "" || declared === "application/octet-stream")
+  ) {
+    return "text/plain";
+  }
+  return declared;
+}
+
 function decodeBase64(value: string) {
   const compact = value.replace(/\s/g, "");
   if (
@@ -415,7 +497,7 @@ export function validateEvidenceUpload(
   >
 ) {
   const fileName = sanitizeOriginalFileName(input.fileName);
-  const mimeType = input.mimeType.trim().toLowerCase();
+  const mimeType = normalizedUploadMimeType(fileName, input.mimeType);
   const permitted = allowedEvidenceMimeTypes(rule);
   if (!permitted.has(mimeType))
     throw new Error("Este tipo de evidência não é permitido pela governança");
@@ -424,10 +506,17 @@ export function validateEvidenceUpload(
     throw new Error("A extensão do arquivo não corresponde ao tipo informado");
   }
   const bytes = decodeBase64(input.base64);
-  if (bytes.length > rule.maxEvidenceSizeBytes)
+  const maximumSize =
+    mimeType === "text/plain"
+      ? Math.min(rule.maxEvidenceSizeBytes, MAX_TEXT_EVIDENCE_SIZE_BYTES)
+      : rule.maxEvidenceSizeBytes;
+  if (bytes.length > maximumSize)
     throw new Error("O arquivo excede o limite configurado para evidências");
+  if (mimeType === "text/plain") {
+    decodePlainTextEvidence(bytes);
+  }
   const detected = expectedMimeFromBytes(bytes);
-  if (detected !== mimeType)
+  if (mimeType !== "text/plain" && detected !== mimeType)
     throw new Error("O conteúdo do arquivo não corresponde ao tipo informado");
   return {
     fileName,

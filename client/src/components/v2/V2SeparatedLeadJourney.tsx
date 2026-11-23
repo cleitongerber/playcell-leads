@@ -5,6 +5,7 @@ import {
 } from "@/components/v2/FollowUpCompletionDialog";
 import {
   LeadEvidenceUploader,
+  evidenceUploadMimeType,
   readEvidenceFileAsBase64,
   type LeadEvidenceUploaderHandle,
 } from "@/components/v2/LeadEvidenceUploader";
@@ -60,6 +61,7 @@ import {
   CircleAlert,
   Clock3,
   FileUp,
+  FileText,
   MessageCircle,
   PhoneCall,
   RotateCcw,
@@ -346,7 +348,7 @@ function OperationEvidenceField({
         className="sr-only"
         aria-describedby={descriptionId}
         aria-required={required}
-        accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+        accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,image/png,image/jpeg,image/webp,application/pdf,text/plain"
         onChange={event => onFileChange(event.target.files?.[0] ?? null)}
       />
       <Label htmlFor={inputId} className="font-medium">
@@ -387,7 +389,7 @@ function OperationEvidenceField({
         </Button>
       )}
       <p className="mt-2 text-xs text-muted-foreground">
-        Arquivos permitidos: PNG, JPG, WEBP ou PDF. O envio é privado.
+        Arquivos permitidos: PNG, JPG, WEBP, PDF ou TXT. O envio é privado.
       </p>
     </div>
   );
@@ -501,6 +503,9 @@ export function V2SeparatedLeadJourney() {
     string | null
   >(null);
   const [reopenRequestKey, setReopenRequestKey] = useState<string | null>(null);
+  const [textEvidencePreviewId, setTextEvidencePreviewId] = useState<
+    number | null
+  >(null);
   const restoredExternalActionForLead = useRef<number | null>(null);
   const lastSuggestedResultId = useRef<string | null>(null);
   const attemptEvidenceInputRef = useRef<HTMLInputElement>(null);
@@ -715,6 +720,10 @@ export function V2SeparatedLeadJourney() {
     onSuccess: ({ url }) => window.open(url, "_blank", "noopener,noreferrer"),
     onError: error => toast.error(error.message),
   });
+  const previewTextEvidence = v2trpc.evidences.previewText.useQuery(
+    { id: textEvidencePreviewId ?? 0 },
+    { enabled: textEvidencePreviewId !== null }
+  );
   const removeEvidence = v2trpc.evidences.remove.useMutation({
     onSuccess: () => {
       refresh();
@@ -1062,7 +1071,7 @@ export function V2SeparatedLeadJourney() {
       const evidence = attemptEvidence
         ? {
             fileName: attemptEvidence.name,
-            mimeType: attemptEvidence.type,
+            mimeType: evidenceUploadMimeType(attemptEvidence),
             base64: await readEvidenceFileAsBase64(attemptEvidence),
           }
         : null;
@@ -1135,7 +1144,7 @@ export function V2SeparatedLeadJourney() {
       const evidence = treatmentEvidence
         ? {
             fileName: treatmentEvidence.name,
-            mimeType: treatmentEvidence.type,
+            mimeType: evidenceUploadMimeType(treatmentEvidence),
             base64: await readEvidenceFileAsBase64(treatmentEvidence),
           }
         : null;
@@ -1837,7 +1846,13 @@ export function V2SeparatedLeadJourney() {
                             key={evidence.id}
                             className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-border p-2 text-xs"
                           >
-                            <span className="font-medium">
+                            <span className="flex items-center gap-1 font-medium">
+                              {evidence.mimeType === "text/plain" && (
+                                <FileText
+                                  className="size-3.5 text-muted-foreground"
+                                  aria-label="Arquivo de texto"
+                                />
+                              )}
                               {evidence.fileName}
                             </span>
                             <Badge variant="outline">
@@ -1851,16 +1866,32 @@ export function V2SeparatedLeadJourney() {
                             </Badge>
                             {evidence.storageStatus === "available" &&
                               !evidence.deletedAt && (
-                                <Button
-                                  size="sm"
-                                  type="button"
-                                  variant="outline"
-                                  onClick={() =>
-                                    downloadEvidence.mutate({ id: evidence.id })
-                                  }
-                                >
-                                  Visualizar
-                                </Button>
+                                <>
+                                  {evidence.mimeType === "text/plain" && (
+                                    <Button
+                                      size="sm"
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() =>
+                                        setTextEvidencePreviewId(evidence.id)
+                                      }
+                                    >
+                                      <FileText className="mr-1 size-3.5" /> Ver texto
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() =>
+                                      downloadEvidence.mutate({ id: evidence.id })
+                                    }
+                                  >
+                                    {evidence.mimeType === "text/plain"
+                                      ? "Baixar original"
+                                      : "Visualizar"}
+                                  </Button>
+                                </>
                               )}
                             {canManageEvidence && !evidence.deletedAt && (
                               <Button
@@ -2625,6 +2656,48 @@ export function V2SeparatedLeadJourney() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={textEvidencePreviewId !== null}
+        onOpenChange={open => !open && setTextEvidencePreviewId(null)}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Histórico em texto</DialogTitle>
+            <DialogDescription>
+              {previewTextEvidence.data?.fileName ?? "Carregando evidência…"}
+            </DialogDescription>
+          </DialogHeader>
+          {previewTextEvidence.isLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando texto…</p>
+          ) : previewTextEvidence.error ? (
+            <p className="text-sm text-destructive">
+              {previewTextEvidence.error.message}
+            </p>
+          ) : (
+            <div className="max-h-[60vh] overflow-auto rounded-md border bg-muted/20 p-3">
+              <pre className="whitespace-pre-wrap break-words font-sans text-sm">
+                {previewTextEvidence.data?.text}
+              </pre>
+              {previewTextEvidence.data?.truncated && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  A prévia foi limitada para manter a leitura estável. Baixe o
+                  arquivo original para ver todo o conteúdo.
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setTextEvidencePreviewId(null)}
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

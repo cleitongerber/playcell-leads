@@ -47,6 +47,7 @@ import {
 } from "./followUpService";
 import {
   getEvidenceDownloadUrl,
+  getEvidenceTextPreview,
   softDeleteLeadEvidence,
   uploadLeadEvidence,
 } from "./evidenceService";
@@ -1280,7 +1281,7 @@ export const v2FoundationRouter = v2Router({
           leadId: z.number().int().positive(),
           timelineEventId: z.number().int().positive(),
           fileName: z.string().min(1).max(255),
-          mimeType: z.string().min(1).max(128),
+          mimeType: z.string().max(128),
           // 10 MiB binary payload is at most ~13.4 MiB of base64.
           base64: z.string().min(4).max(14_000_000),
         })
@@ -1291,6 +1292,9 @@ export const v2FoundationRouter = v2Router({
       .mutation(({ ctx, input }) =>
         getEvidenceDownloadUrl(ctx.partner, input.id)
       ),
+    previewText: v2PartnerProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(({ ctx, input }) => getEvidenceTextPreview(ctx.partner, input.id)),
     remove: v2PartnerAdminProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(({ ctx, input }) =>

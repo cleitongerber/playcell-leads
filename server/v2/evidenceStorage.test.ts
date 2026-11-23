@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createEvidenceStorageKey,
+  decodePlainTextEvidence,
   evidenceStorageUploadDiagnostic,
   EvidenceStorageConfigurationError,
   putS3EvidenceObject,
@@ -25,6 +26,62 @@ const s3Configuration = {
 };
 
 describe("V2 evidence upload validation", () => {
+  it("accepts a UTF-8 WhatsApp TXT export, including generic browser MIME types", () => {
+    const whatsappText = "23/11/2026, 09:30 - Vendedor: Olá, João!\n23/11/2026, 09:31 - Cliente: Tudo bem.";
+    const upload = validateEvidenceUpload(
+      {
+        fileName: "Conversa do WhatsApp.txt",
+        mimeType: "application/octet-stream",
+        base64: Buffer.from(whatsappText, "utf8").toString("base64"),
+      },
+      defaultGovernanceRule
+    );
+    expect(upload.mimeType).toBe("text/plain");
+    expect(decodePlainTextEvidence(upload.bytes)).toBe(whatsappText);
+  });
+
+  it("rejects empty, oversized and binary files disguised as TXT", () => {
+    expect(() =>
+      validateEvidenceUpload(
+        { fileName: "vazia.txt", mimeType: "text/plain", base64: "ICAgIA==" },
+        defaultGovernanceRule
+      )
+    ).toThrow(/vazio/i);
+    expect(() =>
+      validateEvidenceUpload(
+        {
+          fileName: "malicioso.txt",
+          mimeType: "text/plain",
+          base64: Buffer.from([0x00, 0xff, 0x10]).toString("base64"),
+        },
+        defaultGovernanceRule
+      )
+    ).toThrow(/texto simples/i);
+    expect(() =>
+      validateEvidenceUpload(
+        {
+          fileName: "grande.txt",
+          mimeType: "text/plain",
+          base64: Buffer.from("a".repeat(1025 * 1024)).toString("base64"),
+        },
+        defaultGovernanceRule
+      )
+    ).toThrow(/excede/i);
+  });
+
+  it("keeps an explicit governance allowlist authoritative for TXT", () => {
+    expect(() =>
+      validateEvidenceUpload(
+        {
+          fileName: "conversa.txt",
+          mimeType: "text/plain",
+          base64: Buffer.from("histórico", "utf8").toString("base64"),
+        },
+        { ...defaultGovernanceRule, allowedEvidenceMimeTypes: ["application/pdf"] }
+      )
+    ).toThrow(/não é permitido/i);
+  });
+
   it("accepts a supported file and records a checksum without trusting its name for storage", () => {
     const upload = validateEvidenceUpload(
       {

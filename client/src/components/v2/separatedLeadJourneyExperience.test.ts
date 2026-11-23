@@ -53,7 +53,7 @@ describe("016.4 unified lead journey experience contract", () => {
   it("opens the native evidence picker directly from each operational action without persisting a new fact", () => {
     const evidenceAction = workspace.slice(
       workspace.indexOf("function EvidenceAttachmentAction"),
-      workspace.indexOf("/**\n * Operational Lead workspace")
+      workspace.indexOf("export function V2SeparatedLeadJourney")
     );
     expect(workspace).toContain("EvidenceAttachmentAction");
     expect(evidenceAction).toContain("uploaderRef.current?.openFilePicker()");
@@ -83,6 +83,8 @@ describe("016.4 unified lead journey experience contract", () => {
     );
     expect(evidenceUploader).toContain("toast.error(");
     expect(evidenceUploader).toContain("Enviar evidência");
+    expect(evidenceUploader).toContain(".txt");
+    expect(evidenceUploader).toContain("text/plain");
   });
 
   it("uses a safe attachment-specific message without exposing storage internals", () => {
@@ -177,5 +179,13 @@ describe("016.4 unified lead journey experience contract", () => {
     expect(workspace).toContain("min-h-11");
     expect(styles).toContain(".v2-lead-journey .v2-mobile-detail-grid strong");
     expect(styles).toContain("overflow-wrap: anywhere;");
+  });
+
+  it("renders TXT evidence as escaped, bounded text and preserves original download", () => {
+    expect(workspace).toContain("evidences.previewText.useQuery");
+    expect(workspace).toContain("<pre className=\"whitespace-pre-wrap break-words");
+    expect(workspace).toContain("Baixar original");
+    expect(workspace).toContain("A prévia foi limitada");
+    expect(workspace).toContain("FileText");
   });
 });
