@@ -582,6 +582,7 @@ export function V2SeparatedLeadJourney() {
       utils.leads.operationRequirements.invalidate(),
       utils.leads.list.invalidate(),
       utils.followUps.alerts.invalidate(),
+      utils.followUps.managementAlerts.invalidate(),
       utils.followUps.list.invalidate(),
     ]).then(() => undefined);
 

@@ -238,6 +238,7 @@ export default function V2Dashboard() {
   };
   const canQuery =
     filters.preset !== "custom" || Boolean(filters.fromDate && filters.toDate);
+  const access = v2trpc.access.context.useQuery();
   const dashboard = v2trpc.analytics.dashboard.useQuery(filters, {
     enabled: canQuery,
   });
@@ -249,6 +250,18 @@ export default function V2Dashboard() {
       pageSize: 25,
     },
     { enabled: healthDetail !== null }
+  );
+  const followUpManagement = v2trpc.followUps.managementAlerts.useQuery(
+    {
+      pdvId: filters.pdvId,
+      ownerMembershipId: filters.sellerMembershipId,
+      campaignId: filters.campaignId,
+    },
+    {
+      enabled: canQuery && Boolean(access.data && access.data.role !== "seller"),
+      refetchInterval: () => typeof document !== "undefined" && document.visibilityState === "visible" ? 60_000 : false,
+      refetchOnWindowFocus: true,
+    }
   );
   const healthTotalPages = healthDetails.data
     ? Math.max(
@@ -432,6 +445,30 @@ export default function V2Dashboard() {
               </CardContent>
             </Card>
           </section>
+
+          {access.data?.role !== "seller" && followUpManagement.data && (
+            <section className="v2-dashboard-health-shell" aria-labelledby="follow-up-management-title">
+              <Card className="v2-section-card v2-dashboard-health">
+                <CardHeader>
+                  <CardTitle id="follow-up-management-title">Gestão de follow-ups vencidos</CardTitle>
+                  <p className="text-sm text-muted-foreground">Pendências atuais no escopo e filtros selecionados.</p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="v2-metric-grid sm:grid-cols-5">
+                    <MetricCard title="Vencidos" value={number(followUpManagement.data.overdue)} destructive href={followUpPath("overdue")} />
+                    <MetricCard title="Vendedores" value={number(followUpManagement.data.sellers)} />
+                    <MetricCard title="Até 1h" value={number(followUpManagement.data.upToOneHour)} />
+                    <MetricCard title="De 1h a 24h" value={number(followUpManagement.data.oneTo24Hours)} />
+                    <MetricCard title="Acima de 24h" value={number(followUpManagement.data.over24Hours)} destructive />
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div><h3 className="mb-2 text-sm font-semibold">Vendedores com pendências</h3>{followUpManagement.data.ranking.length ? <ol className="space-y-2">{followUpManagement.data.ranking.map(row => <li key={row.membershipId} className="flex items-center justify-between rounded border p-2 text-sm"><Link href={buildV2Path("/v2/follow-ups", { view: "overdue", ownerMembershipId: row.membershipId, pdvId: filters.pdvId, campaignId: filters.campaignId })}>{row.name}</Link><Badge variant="destructive">{row.overdue}</Badge></li>)}</ol> : <p className="text-sm text-muted-foreground">Nenhuma pendência vencida.</p>}</div>
+                    <div><h3 className="mb-2 text-sm font-semibold">Mais antigos</h3>{followUpManagement.data.items.slice(0, 5).map(item => <article key={item.id} className="mb-2 rounded border p-2 text-sm"><div className="flex justify-between gap-2"><Link href={buildV2Path(`/v2/leads/${item.leadId}`, { from: currentV2Path() })} className="font-medium">{item.leadName || "Lead"}</Link><Badge variant="destructive">{item.overdueBand === "upToOneHour" ? "Até 1h" : item.overdueBand === "oneTo24Hours" ? "1h–24h" : ">24h"}</Badge></div><p className="text-xs text-muted-foreground">{item.ownerName} · {item.pdvName} · {new Date(item.dueAt).toLocaleString("pt-BR")}</p></article>)}</div>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
+          )}
 
           <section className="v2-dashboard-journey-shell" aria-labelledby="dashboard-journey-title">
             <Card className="v2-section-card v2-dashboard-journey">

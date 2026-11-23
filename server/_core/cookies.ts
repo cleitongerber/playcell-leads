@@ -21,6 +21,24 @@ function isSecureRequest(req: Request) {
   return protoList.some(proto => proto.trim().toLowerCase() === "https");
 }
 
+function isLoopbackAddress(address: string | undefined) {
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
+/**
+ * HTTP cookies are permitted only for the disposable local test stack.
+ * This requires an explicit opt-in and a TCP loopback connection so a Host
+ * header cannot downgrade a remotely served session cookie.
+ */
+function allowsLocalHttpSession(req: Request) {
+  return (
+    process.env.V2_ALLOW_LOCAL_HTTP_SESSION === "true" &&
+    !isSecureRequest(req) &&
+    LOCAL_HOSTS.has(req.hostname) &&
+    isLoopbackAddress(req.socket.remoteAddress)
+  );
+}
+
 export function getSessionCookieOptions(
   req: Request
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
@@ -38,6 +56,10 @@ export function getSessionCookieOptions(
   //     : shouldSetDomain
   //       ? hostname
   //       : undefined;
+
+  if (allowsLocalHttpSession(req)) {
+    return { httpOnly: true, path: "/", sameSite: "lax", secure: false };
+  }
 
   return {
     httpOnly: true,

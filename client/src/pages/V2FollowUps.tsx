@@ -121,6 +121,7 @@ export default function V2FollowUps() {
   }, [campaignId, ownerMembershipId, page, pdvId, view]);
   const refresh = () => {
     utils.followUps.alerts.invalidate();
+    utils.followUps.managementAlerts.invalidate();
     utils.followUps.list.invalidate();
     utils.leads.get.invalidate();
   };

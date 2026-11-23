@@ -28,6 +28,7 @@ import {
   campaignAllowsNewFollowUp,
   derivedFollowUpStatus,
 } from "./followUpPolicy";
+import { inAppFollowUpStage, overdueBand } from "./followUpInAppAlertPolicy";
 import { resolvePdvScope } from "./pdvScope";
 
 type FollowView = "overdue" | "today" | "upcoming" | "completed";
@@ -678,7 +679,7 @@ export async function followUpAlerts(context: PartnerContext) {
   const bounds = partnerDayBounds(timezone, now);
   const scope = await scopedPdvs(db, context);
   if (scope && !scope.length)
-    return { overdue: 0, today: 0, nextDueAt: null, timezone };
+    return { overdue: 0, today: 0, nextDueAt: null, timezone, items: [] };
   const base = [
     eq(followUps.partnerId, context.partnerId),
     eq(followUps.status, "pending"),
@@ -689,7 +690,7 @@ export async function followUpAlerts(context: PartnerContext) {
   if (scope) base.push(inArray(leads.pdvId, scope));
   if (context.role === "seller")
     base.push(eq(followUps.ownerMembershipId, context.membershipId!));
-  const [overdue, today, next] = await Promise.all([
+  const [overdue, today, next, pending] = await Promise.all([
     db
       .select({ total: count() })
       .from(followUps)
@@ -710,11 +711,66 @@ export async function followUpAlerts(context: PartnerContext) {
       .innerJoin(leads, eq(leads.id, followUps.leadId))
       .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
       .where(and(...base)),
+    db
+      .select({ id: followUps.id, leadId: followUps.leadId, dueAt: followUps.dueAt, leadName: leads.name })
+      .from(followUps)
+      .innerJoin(leads, eq(leads.id, followUps.leadId))
+      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
+      .where(and(...base))
+      .orderBy(asc(followUps.dueAt), asc(followUps.id))
+      .limit(20),
   ]);
   return {
     overdue: Number(overdue[0]?.total ?? 0),
     today: Number(today[0]?.total ?? 0),
     nextDueAt: next[0]?.dueAt ?? null,
     timezone,
+    items: pending.flatMap(item => {
+      const stage = inAppFollowUpStage({ status: "pending", dueAt: item.dueAt, now, timeZone: timezone });
+      return stage ? [{ ...item, stage }] : [];
+    }),
+  };
+}
+
+/** Read-only management snapshot. All filters remain bounded by PartnerContext. */
+export async function followUpManagementAlerts(
+  context: PartnerContext,
+  input: { pdvId?: number; ownerMembershipId?: number; campaignId?: number }
+) {
+  const db = await getV2Db();
+  const now = new Date();
+  const scope = await scopedPdvs(db, context);
+  if (context.role === "seller" || (scope && !scope.length))
+    return { overdue: 0, sellers: 0, upToOneHour: 0, oneTo24Hours: 0, over24Hours: 0, ranking: [], items: [] };
+  const conditions = [
+    eq(followUps.partnerId, context.partnerId), eq(followUps.status, "pending"), lt(followUps.dueAt, now),
+    isNull(leads.deletedAt), eq(campaigns.status, "active"), eq(campaigns.isFrozen, false),
+  ];
+  if (scope) conditions.push(inArray(leads.pdvId, scope));
+  if (input.pdvId) conditions.push(eq(leads.pdvId, input.pdvId));
+  if (input.ownerMembershipId) conditions.push(eq(followUps.ownerMembershipId, input.ownerMembershipId));
+  if (input.campaignId) conditions.push(eq(leads.campaignId, input.campaignId));
+  const rows = await db.select({
+    id: followUps.id, leadId: followUps.leadId, dueAt: followUps.dueAt,
+    leadName: leads.name, pdvName: pdvs.name, ownerMembershipId: followUps.ownerMembershipId, ownerName: users.name,
+  }).from(followUps)
+    .innerJoin(leads, eq(leads.id, followUps.leadId))
+    .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
+    .innerJoin(pdvs, eq(pdvs.id, leads.pdvId))
+    .innerJoin(userPartners, and(eq(userPartners.id, followUps.ownerMembershipId), eq(userPartners.partnerId, followUps.partnerId)))
+    .innerJoin(users, eq(users.id, userPartners.userId))
+    .where(and(...conditions)).orderBy(asc(followUps.dueAt), asc(followUps.id)).limit(100);
+  const bands = { upToOneHour: 0, oneTo24Hours: 0, over24Hours: 0 };
+  const ranking = new Map<number, { membershipId: number; name: string; overdue: number }>();
+  for (const row of rows) {
+    bands[overdueBand(row.dueAt, now)] += 1;
+    const entry = ranking.get(row.ownerMembershipId) ?? { membershipId: row.ownerMembershipId, name: row.ownerName, overdue: 0 };
+    entry.overdue += 1;
+    ranking.set(row.ownerMembershipId, entry);
+  }
+  return {
+    overdue: rows.length, sellers: ranking.size, ...bands,
+    ranking: Array.from(ranking.values()).sort((a, b) => b.overdue - a.overdue || a.name.localeCompare(b.name)),
+    items: rows.map(row => ({ ...row, overdueBand: overdueBand(row.dueAt, now) })),
   };
 }

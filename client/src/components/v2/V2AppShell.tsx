@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InstallAppButton } from "@/components/InstallAppButton";
+import { V2FollowUpAlertBell } from "./V2FollowUpAlertBell";
 import { v2trpc } from "@/lib/v2trpc";
 import { cn } from "@/lib/utils";
 import {
@@ -670,6 +671,7 @@ function ShellFrame({
             <div className="hidden md:block">
               <PartnerSelector value={partnerId} onChange={selectPartner} />
             </div>
+            <V2FollowUpAlertBell enabled={Boolean(partnerId) && role === "seller"} />
             <UserMenu
               user={user}
               role={role}

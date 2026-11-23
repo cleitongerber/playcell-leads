@@ -40,6 +40,7 @@ import {
   completeFollowUp,
   createFollowUp,
   followUpAlerts,
+  followUpManagementAlerts,
   listFollowUpFilters,
   listFollowUps,
   rescheduleFollowUp,
@@ -1008,6 +1009,13 @@ export const v2FoundationRouter = v2Router({
   }),
   followUps: v2Router({
     alerts: v2PartnerProcedure.query(({ ctx }) => followUpAlerts(ctx.partner)),
+    managementAlerts: v2PartnerProcedure
+      .input(z.object({
+        ownerMembershipId: z.number().int().positive().optional(),
+        pdvId: z.number().int().positive().optional(),
+        campaignId: z.number().int().positive().optional(),
+      }).optional())
+      .query(({ ctx, input }) => followUpManagementAlerts(ctx.partner, input ?? {})),
     filters: v2PartnerProcedure.query(({ ctx }) =>
       listFollowUpFilters(ctx.partner)
     ),
